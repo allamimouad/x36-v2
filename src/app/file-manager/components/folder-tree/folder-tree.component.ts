@@ -1,0 +1,78 @@
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import type { TreeNode } from 'primeng/api';
+import { Tree, type TreeNodeExpandEvent, type TreeNodeSelectEvent } from 'primeng/tree';
+import type { FolderNode } from '../../models/file-system-node.model';
+
+@Component({
+  selector: 'app-folder-tree',
+  standalone: true,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [Tree],
+  template: `
+    <p-tree
+      [value]="nodes()"
+      selectionMode="single"
+      [selection]="selectedTreeNode()"
+      (onNodeExpand)="handleExpand($event)"
+      (onNodeCollapse)="handleCollapse($event)"
+      (onNodeSelect)="handleSelect($event)"
+      styleClass="fm-tree"
+    />
+  `,
+  styles: [
+    `
+      :host {
+        display: block;
+        height: 100%;
+        overflow: auto;
+      }
+      :host ::ng-deep .fm-tree {
+        border: 0;
+        background: transparent;
+      }
+    `,
+  ],
+})
+export class FolderTreeComponent {
+  readonly nodes = input.required<TreeNode<FolderNode>[]>();
+  readonly currentFolderId = input<string | null>(null);
+
+  readonly nodeSelected = output<string>();
+  readonly nodeExpanded = output<string>();
+  readonly nodeCollapsed = output<string>();
+
+  protected readonly selectedTreeNode = computed<TreeNode<FolderNode> | null>(() => {
+    const id = this.currentFolderId();
+    if (!id) return null;
+    return findNodeByKey(this.nodes(), id);
+  });
+
+  protected handleExpand(event: TreeNodeExpandEvent): void {
+    const key = event.node?.key;
+    if (typeof key === 'string') this.nodeExpanded.emit(key);
+  }
+
+  protected handleCollapse(event: TreeNodeExpandEvent): void {
+    const key = event.node?.key;
+    if (typeof key === 'string') this.nodeCollapsed.emit(key);
+  }
+
+  protected handleSelect(event: TreeNodeSelectEvent): void {
+    const key = event.node?.key;
+    if (typeof key === 'string') this.nodeSelected.emit(key);
+  }
+}
+
+function findNodeByKey(
+  nodes: TreeNode<FolderNode>[],
+  key: string,
+): TreeNode<FolderNode> | null {
+  for (const n of nodes) {
+    if (n.key === key) return n;
+    if (n.children?.length) {
+      const found = findNodeByKey(n.children as TreeNode<FolderNode>[], key);
+      if (found) return found;
+    }
+  }
+  return null;
+}
