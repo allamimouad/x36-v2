@@ -39,7 +39,7 @@
 **Stores**
 - `stores/file-system.store.ts` — Signal Store with `withEntities<FileSystemNode>` keyed by `id`. Phase 1 methods: `loadChildren(parentId)`, `invalidate(parentId)`. Other methods exist as placeholders returning `Promise.reject(new Error('Phase 2'))`.
 - `stores/navigation.store.ts` — full implementation: state, computed, `navigateTo`, `back`, `forward`, `up`, `expand`, `collapse`. Selection methods can be stubs (Phase 3).
-- `stores/clipboard.store.ts` — shell only (empty state, no-op methods). Full impl in Phase 3.
+- `services/clipboard.service.ts` — plain signal service with clipboard ids/mode and `cut`, `copy`, `clear`. Paste orchestration deferred to Phase 3.
 
 **Components (dumb)**
 - `components/folder-tree/folder-tree.component.ts`:
@@ -170,16 +170,16 @@
 
 **Stores**
 - `stores/navigation.store.ts` — implement `select(id, mode: 'single' | 'toggle' | 'range')`, `selectRange(id)`, `clearSelection()`
-- `stores/clipboard.store.ts` — full implementation: `cut(ids)`, `copy(ids)`, `clear()`, and `paste(targetParentId)` which dispatches to `fileSystemStore.move` (cut) or `fileSystemStore.copy` (copy) — bulk-aware
 - `stores/file-system.store.ts` — accept arrays in `delete`, `move`, `copy` (pessimistic + progress for bulk); uses `ConcurrencyQueue`
 
 **Services**
 - `services/concurrency-queue.ts` — generic queue, max N concurrent; returns per-task results with errors isolated
+- `services/clipboard.service.ts` — keep as pure clipboard state (`cut`, `copy`, `clear`, `isEmpty`, `has`). Paste orchestration lives in `file-manager.component.ts` or a dedicated use-case service and dispatches to `fileSystemStore.move` / `.copy`.
 
 **Components**
 - `components/file-table/file-table.component.ts`:
   - Multi-select wired (p-table selectionMode="multiple")
-  - Cut items render at 50% opacity (read from `ClipboardStore`)
+  - Cut items render at 50% opacity (read from `ClipboardService`)
   - Context menu adds: Cut, Copy, Paste (if clipboard not empty)
 - `file-manager.component.ts`:
   - `@HostListener` or signal-based key handler for all shortcuts (SPEC §3.8)

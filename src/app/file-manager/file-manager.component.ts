@@ -15,7 +15,8 @@ import {
 } from './models/file-system-node.model';
 import { FileSystemApi } from './services/file-system-api';
 import { MockFileSystemApi } from './services/mock-file-system-api';
-import { ClipboardStore } from './stores/clipboard.store';
+import { ClipboardService } from './services/clipboard.service';
+import { FileSystemReader } from './stores/file-system-reader';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore } from './stores/navigation.store';
 import { FILE_MANAGER_CONFIG } from './tokens/file-manager-config.token';
@@ -31,8 +32,9 @@ import { NavToolbarComponent } from './components/nav-toolbar/nav-toolbar.compon
   imports: [FolderTreeComponent, FileTableComponent, PathBarComponent, NavToolbarComponent],
   providers: [
     FileSystemStore,
+    { provide: FileSystemReader, useExisting: FileSystemStore },
     NavigationStore,
-    ClipboardStore,
+    ClipboardService,
     { provide: FileSystemApi, useClass: MockFileSystemApi },
   ],
   template: `
@@ -57,6 +59,7 @@ import { NavToolbarComponent } from './components/nav-toolbar/nav-toolbar.compon
           <app-folder-tree
             [nodes]="treeNodes()"
             [currentFolderId]="navigation.currentFolderId()"
+            [loadingByParentId]="fileSystem.loadingByParentId()"
             (nodeSelected)="onTreeNodeSelected($event)"
             (nodeExpanded)="onTreeNodeExpanded($event)"
             (nodeCollapsed)="onTreeNodeCollapsed($event)"

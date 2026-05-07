@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { FileSystemApi } from '../services/file-system-api';
 import { MockFileSystemApi } from '../services/mock-file-system-api';
 import { MOCK_CONFIG } from '../tokens/mock-config.token';
+import { FileSystemReader } from './file-system-reader';
 import { FileSystemStore } from './file-system.store';
 import { NavigationStore } from './navigation.store';
 
@@ -13,6 +14,7 @@ describe('NavigationStore', () => {
     TestBed.configureTestingModule({
       providers: [
         FileSystemStore,
+        { provide: FileSystemReader, useExisting: FileSystemStore },
         NavigationStore,
         { provide: FileSystemApi, useClass: MockFileSystemApi },
         {
@@ -32,12 +34,19 @@ describe('NavigationStore', () => {
     await fs.loadChildren('/');
   });
 
-  it('starts empty before any navigation', () => {
-    const fresh = TestBed.inject(NavigationStore);
-    // Same instance after seed; just assert post-seed state still has no current.
-    // Confirm initial fields are the defaults a brand-new store would have.
-    expect(fresh.history().length === 0 || fresh.history().length >= 0).toBe(true);
-    expect(fresh.expandedTreeIds() instanceof Set).toBe(true);
+  it('starts with empty navigation state before any navigation', () => {
+    expect(nav.currentFolderId()).toBeNull();
+    expect(nav.history()).toEqual([]);
+    expect(nav.historyIndex()).toBe(-1);
+    expect(nav.expandedTreeIds().size).toBe(0);
+    expect(nav.selectedIds().size).toBe(0);
+    expect(nav.focusedId()).toBeNull();
+    expect(nav.renamingId()).toBeNull();
+    expect(nav.canGoBack()).toBe(false);
+    expect(nav.canGoForward()).toBe(false);
+    expect(nav.canGoUp()).toBe(false);
+    expect(nav.pathSegments()).toEqual([]);
+    expect(nav.currentFolderChildren()).toEqual({ folders: [], files: [] });
   });
 
   it('navigateTo records history and sets current', () => {

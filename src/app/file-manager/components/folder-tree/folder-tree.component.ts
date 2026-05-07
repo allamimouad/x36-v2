@@ -10,9 +10,10 @@ import type { FolderNode } from '../../models/file-system-node.model';
   imports: [Tree],
   template: `
     <p-tree
-      [value]="nodes()"
+      [value]="visibleNodes()"
       selectionMode="single"
       [selection]="selectedTreeNode()"
+      loadingMode="icon"
       (onNodeExpand)="handleExpand($event)"
       (onNodeCollapse)="handleCollapse($event)"
       (onNodeSelect)="handleSelect($event)"
@@ -36,6 +37,7 @@ import type { FolderNode } from '../../models/file-system-node.model';
 export class FolderTreeComponent {
   readonly nodes = input.required<TreeNode<FolderNode>[]>();
   readonly currentFolderId = input<string | null>(null);
+  readonly loadingByParentId = input<Record<string, boolean>>({});
 
   readonly nodeSelected = output<string>();
   readonly nodeExpanded = output<string>();
@@ -44,8 +46,12 @@ export class FolderTreeComponent {
   protected readonly selectedTreeNode = computed<TreeNode<FolderNode> | null>(() => {
     const id = this.currentFolderId();
     if (!id) return null;
-    return findNodeByKey(this.nodes(), id);
+    return findNodeByKey(this.visibleNodes(), id);
   });
+
+  protected readonly visibleNodes = computed<TreeNode<FolderNode>[]>(() =>
+    applyLoading(this.nodes(), this.loadingByParentId()),
+  );
 
   protected handleExpand(event: TreeNodeExpandEvent): void {
     const key = event.node?.key;
@@ -61,6 +67,19 @@ export class FolderTreeComponent {
     const key = event.node?.key;
     if (typeof key === 'string') this.nodeSelected.emit(key);
   }
+}
+
+function applyLoading(
+  nodes: TreeNode<FolderNode>[],
+  loadingByParentId: Record<string, boolean>,
+): TreeNode<FolderNode>[] {
+  return nodes.map((node) => ({
+    ...node,
+    loading: typeof node.key === 'string' && loadingByParentId[node.key] === true,
+    children: node.children
+      ? applyLoading(node.children as TreeNode<FolderNode>[], loadingByParentId)
+      : node.children,
+  }));
 }
 
 function findNodeByKey(

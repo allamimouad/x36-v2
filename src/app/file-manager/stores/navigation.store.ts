@@ -6,7 +6,7 @@ import {
   type FileSystemNode,
   type FolderNode,
 } from '../models/file-system-node.model';
-import { FileSystemStore } from './file-system.store';
+import { FileSystemReader } from './file-system-reader';
 
 export interface PathSegment {
   id: string;
@@ -41,9 +41,9 @@ const initialState: NavigationState = {
 export const NavigationStore = signalStore(
   withState(initialState),
   withComputed((store) => {
-    const fsStore = inject(FileSystemStore);
-    const entityMap = fsStore.entityMap;
-    const entities = fsStore.entities;
+    const fsReader = inject(FileSystemReader);
+    const entityMap = fsReader.entityMap;
+    const entities = fsReader.entities;
 
     const currentFolder = computed<FolderNode | null>(() => {
       const id = store.currentFolderId();

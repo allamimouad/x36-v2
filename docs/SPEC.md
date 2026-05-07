@@ -39,7 +39,7 @@ Stores **MUST NOT know about SharePoint**. They depend on an abstract `FileSyste
 The interface uses generic terminology (`id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. The SharePoint adapter internally maps `id` ↔ `serverRelativeUrl`.
 
 ### 2.3 Signal Store for entities, plain signals for simple state
-`FileSystemStore` uses `withEntities` because folders and files are viewed in multiple places (tree + table) and must stay in sync. `NavigationStore` and `ClipboardStore` use Signal Store too, for consistency. Simple component-local state stays as plain `signal()` inside the component — don't over-store.
+`FileSystemStore` uses `withEntities` because folders and files are viewed in multiple places (tree + table) and must stay in sync. `NavigationStore` uses Signal Store because it owns navigation history, expansion, focus, selection, rename state, and file-system-derived computeds. Small command-style state uses plain signal services; `ClipboardService` is a plain injectable service with `signal()` / `computed()`, not a Signal Store. Simple component-local state stays as plain `signal()` inside the component — don't over-store.
 
 ### 2.4 Optimistic single, pessimistic bulk
 Single rename/move/delete/create/copy: apply change in store immediately, rollback on error.
@@ -118,7 +118,7 @@ All scenarios must work:
 ### 3.6 Cut / copy / paste clipboard
 
 - Shortcuts: `Ctrl+X`, `Ctrl+C`, `Ctrl+V` (plus context menu)
-- Clipboard: `{ items: string[] /* ids */, mode: 'cut' | 'copy' }` in `ClipboardStore`
+- Clipboard: `{ ids: ReadonlySet<string>, mode: 'cut' | 'copy' | null }` in `ClipboardService`
 - Cut items render at 50% opacity until pasted or cleared
 - Paste cut into same folder: no-op (silent)
 - Paste copy where name collides: prompt (Replace / Keep both / Skip / Cancel)
@@ -313,11 +313,14 @@ export abstract class FileSystemApi {
 - Computed: `canGoBack`, `canGoForward`, `canGoUp`, `pathSegments`, `parentId`, `currentFolderChildren`
 - Methods: `navigateTo(id)`, `back()`, `forward()`, `up()`, `expand(id)`, `collapse(id)`, `select(id, mode)`, `selectRange(id)`, `clearSelection()`, `startRename(id)`, `endRename()`
 
-**`ClipboardStore`**:
-- State: `ids: string[]`, `mode: 'cut' | 'copy' | null`
-- Methods: `cut(ids)`, `copy(ids)`, `clear()`, `paste(targetParentId)` (coordinates with `FileSystemStore`)
+**`ClipboardService`**:
+- Plain injectable signal service, not a Signal Store
+- State: `ids: ReadonlySet<string>`, `mode: 'cut' | 'copy' | null`
+- Computed/helpers: `isEmpty`, `has(id)`
+- Methods: `cut(ids)`, `copy(ids)`, `clear()`
+- Paste orchestration belongs in `FileManagerComponent` or a dedicated use-case service because it coordinates `ClipboardService`, `NavigationStore`, and `FileSystemStore`
 
-All three provided at `FileManagerComponent` level.
+All stores and feature services are provided at `FileManagerComponent` level.
 
 ### 8.2 Services
 
@@ -326,6 +329,7 @@ All three provided at `FileManagerComponent` level.
 - **`SharePointFileSystemApi`** — §7
 - **`DragDropService`** — cross-component drag state (signal-based); methods: `startDrag`, `updateEffect`, `endDrag`, `canDropOn`
 - **`UploadService`** — upload queue with concurrency limit; exposes task signals for the panel
+- **`ClipboardService`** — small signal-based clipboard state holder
 - **`ConcurrencyQueue`** — generic promise-based queue, max N concurrent; used for bulk ops and uploads
 - **`NotificationService`** — wraps `MessageService` (p-toast); centralizes success/error messages
 
@@ -347,9 +351,9 @@ file-manager/
   stores/
     file-system.store.ts
     navigation.store.ts
-    clipboard.store.ts
   services/
     file-system-api.ts                 # abstract class
+    clipboard.service.ts               # plain signal clipboard state
     mock-file-system-api.ts
     sharepoint-file-system-api.ts      # stub
     mock-seed.ts                       # seed data
