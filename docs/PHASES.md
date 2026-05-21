@@ -329,7 +329,7 @@
 - Implement each method in `sharepoint-file-system-api.ts` per the stub's JSDoc comments
 - Add `interceptors/digest.interceptor.ts` — injects `X-RequestDigest`, catches 403, refreshes, retries once
 - Add form digest caching (singleton service, expires with safety margin)
-- Implement `id` ↔ `serverRelativeUrl` mapping as `id = serverRelativeUrl`; keep `path` equal to the same normalized value
+- Implement `id` as the SharePoint `UniqueId` (GUID) and `path` as `ServerRelativeUrl`. Source operations address items via `GetFolderById('<id>')` / `GetFileById('<id>')`. The adapter is a thin shim over the auto-generated SharePoint client — every API method takes full `FolderNode` / `FileSystemNode` arguments, so the shim can read whichever fields (`id`, `path`, `name`, `parent.id`, `parent.path`, ...) the generated DTOs require.
 - Error code mapping from SharePoint error codes to `FileSystemError` codes
 - Implement chunked upload (`StartUpload` / `ContinueUpload` / `FinishUpload`)
 - Flip provider in `app.config.ts` from `MockFileSystemApi` to `SharePointFileSystemApi`

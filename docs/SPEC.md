@@ -36,7 +36,7 @@ Stores **MUST NOT know about SharePoint**. They depend on an abstract `FileSyste
 - `MockFileSystemApi` — in-memory, used for dev and tests (default provider)
 - `SharePointFileSystemApi` — stubbed now, implemented later on another machine
 
-The interface uses generic terminology (`id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. For this app, `id` is the normalized full path. The SharePoint adapter maps it directly to `serverRelativeUrl`.
+The interface uses generic terminology (`id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. `id` is a stable, opaque UUID for the entity's lifetime. `path` is the mutable, human-readable backend path. In the mock, `id` is a `crypto.randomUUID()` value; in the SharePoint adapter, `id = UniqueId` (the GUID SharePoint exposes per list item) and `path = ServerRelativeUrl`. Operations take full `FolderNode` / `FileSystemNode` arguments so each implementation can read whatever fields it needs (mock uses `id`; SharePoint adapter uses `id` for source addressing and `parent.path` for URL construction). No internal id↔url mapping cache.
 
 ### 2.3 Signal Store for entities, plain signals for simple state
 `FileSystemStore` uses `withEntities` because folders and files are viewed in multiple places (tree + table) and must stay in sync. `NavigationStore` uses Signal Store because it owns navigation history, expansion, focus, selection, rename state, and file-system-derived computeds. Small command-style state uses plain signal services; `ClipboardService` is a plain injectable service with `signal()` / `computed()`, not a Signal Store. Simple component-local state stays as plain `signal()` inside the component — don't over-store.
@@ -199,7 +199,7 @@ export function isFolder(n: FileSystemNode): n is FolderNode {
 }
 ```
 
-**Why `id` AND `path`**: `id` is the primary key used everywhere for store lookups, drag targets, selection, clipboard, and navigation. In this app, `id` is the normalized full path, matching SharePoint on-prem's `serverRelativeUrl` shape. `path` is kept as the display/logging value and should equal `id` for mock and SharePoint implementations. After rename or move, both `id` and `path` change for the item and any loaded descendants; stores must remap cached entities and navigation references.
+**Why `id` AND `path`**: `id` is a stable, opaque UUID used everywhere for store lookups, drag targets, selection, clipboard, and navigation. It does not change for the lifetime of the entity. `path` is the mutable, human-readable backend path used for display and (in the SharePoint adapter) for constructing URLs on write operations. Rename and move update `path` for the item and any loaded descendants but leave `id` untouched, so navigation history, expansion state, selection, clipboard, and drag references all survive mutations without any remapping logic.
 
 ---
 
@@ -208,39 +208,41 @@ export function isFolder(n: FileSystemNode): n is FolderNode {
 ```ts
 // services/file-system-api.ts
 export abstract class FileSystemApi {
+  /** Get root folder (always available). */
+  abstract getRoot(): Promise<FolderNode>;
+
   /** List direct children of a folder. */
-  abstract listChildren(folderId: string): Promise<{
+  abstract listChildren(folder: FolderNode): Promise<{
     folders: FolderNode[];
     files: FileNode[];
   }>;
 
-  /** Get root folder (always available). */
-  abstract getRoot(): Promise<FolderNode>;
-
-  /** Create a new folder. Throws on name collision. */
-  abstract createFolder(parentId: string, name: string): Promise<FolderNode>;
+  /** Create a new folder under `parent`. Throws on name collision. */
+  abstract createFolder(parent: FolderNode, name: string): Promise<FolderNode>;
 
   /** Rename a folder or file. Throws on name collision or invalid name. */
-  abstract rename(id: string, newName: string): Promise<FileSystemNode>;
+  abstract rename(node: FileSystemNode, newName: string): Promise<FileSystemNode>;
 
   /** Move a folder or file to a new parent. Throws on descendant move, name collision. */
-  abstract move(id: string, newParentId: string): Promise<FileSystemNode>;
+  abstract move(node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode>;
 
   /** Copy a folder (recursive) or file to a new parent. */
-  abstract copy(id: string, newParentId: string): Promise<FileSystemNode>;
+  abstract copy(node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode>;
 
   /** Delete a folder (recursive) or file. */
-  abstract delete(id: string): Promise<void>;
+  abstract delete(node: FileSystemNode): Promise<void>;
 
   /** Upload a file. Emits progress (0-100). Returns the created FileNode. */
   abstract upload(
-    parentId: string,
+    parent: FolderNode,
     file: File,
     onProgress: (percent: number) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<FileNode>;
 }
 ```
+
+**Rationale for passing nodes (not primitive ids):** the SharePoint adapter will be implemented as a thin shim over an auto-generated client built from the SharePoint OpenAPI spec — that client's signatures are dictated externally. Passing full `FolderNode` / `FileSystemNode` values gives the adapter all the fields it might need (`id` for `GetFolderById`, `path` for URL construction, `name`, etc.) so it can map onto whatever the generated client expects, without our API churning every time the wire spec adds a field. The mock just reads `arg.id` to look up its canonical copy.
 
 **Rules for implementations**:
 - All errors throw typed `FileSystemError` with a `code`:

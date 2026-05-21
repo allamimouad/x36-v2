@@ -13,6 +13,11 @@ interface SeedFileSpec {
   contentType: string;
 }
 
+export interface SeedResult {
+  rootId: string;
+  nodes: Map<string, FileSystemNode>;
+}
+
 const NOW = '2026-04-01T09:00:00.000Z';
 const EARLIER = '2026-01-15T14:30:00.000Z';
 
@@ -116,13 +121,12 @@ const SEED: SeedFolderSpec[] = [
   },
 ];
 
-export const ROOT_ID = ROOT_PATH;
-
-export function buildSeed(): Map<string, FileSystemNode> {
-  const map = new Map<string, FileSystemNode>();
+export function buildSeed(): SeedResult {
+  const nodes = new Map<string, FileSystemNode>();
+  const rootId = crypto.randomUUID();
   const root: FolderNode = {
     kind: 'folder',
-    id: ROOT_ID,
+    id: rootId,
     path: ROOT_PATH,
     name: '',
     parentId: null,
@@ -130,15 +134,15 @@ export function buildSeed(): Map<string, FileSystemNode> {
     createdAt: EARLIER,
     modifiedAt: NOW,
   };
-  map.set(root.id, root);
+  nodes.set(root.id, root);
   for (const spec of SEED) {
-    addFolder(map, spec, ROOT_ID, ROOT_PATH);
+    addFolder(nodes, spec, rootId, ROOT_PATH);
   }
-  return map;
+  return { rootId, nodes };
 }
 
 function addFolder(
-  map: Map<string, FileSystemNode>,
+  nodes: Map<string, FileSystemNode>,
   spec: SeedFolderSpec,
   parentId: string,
   parentPath: string,
@@ -147,7 +151,7 @@ function addFolder(
   const itemCount = (spec.folders?.length ?? 0) + (spec.files?.length ?? 0);
   const folder: FolderNode = {
     kind: 'folder',
-    id: path,
+    id: crypto.randomUUID(),
     path,
     name: spec.name,
     parentId,
@@ -155,17 +159,17 @@ function addFolder(
     createdAt: EARLIER,
     modifiedAt: NOW,
   };
-  map.set(folder.id, folder);
+  nodes.set(folder.id, folder);
   for (const sub of spec.folders ?? []) {
-    addFolder(map, sub, folder.id, path);
+    addFolder(nodes, sub, folder.id, path);
   }
   for (const fileSpec of spec.files ?? []) {
-    addFile(map, fileSpec, folder.id, path);
+    addFile(nodes, fileSpec, folder.id, path);
   }
 }
 
 function addFile(
-  map: Map<string, FileSystemNode>,
+  nodes: Map<string, FileSystemNode>,
   spec: SeedFileSpec,
   parentId: string,
   parentPath: string,
@@ -173,7 +177,7 @@ function addFile(
   const path = parentPath === ROOT_PATH ? `/${spec.name}` : `${parentPath}/${spec.name}`;
   const file: FileNode = {
     kind: 'file',
-    id: path,
+    id: crypto.randomUUID(),
     path,
     name: spec.name,
     parentId,
@@ -182,5 +186,5 @@ function addFile(
     modifiedAt: NOW,
     contentType: spec.contentType,
   };
-  map.set(file.id, file);
+  nodes.set(file.id, file);
 }

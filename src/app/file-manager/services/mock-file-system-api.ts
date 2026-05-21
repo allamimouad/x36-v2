@@ -10,38 +10,34 @@ import { MOCK_CONFIG, type MockConfig } from '../tokens/mock-config.token';
 import { joinPath } from '../utils/path.utils';
 import { validateName } from '../utils/naming.utils';
 import { FileSystemApi } from './file-system-api';
-import { ROOT_ID, buildSeed } from './mock-seed';
+import { buildSeed } from './mock-seed';
 
 @Injectable()
 export class MockFileSystemApi extends FileSystemApi {
   private readonly config: MockConfig = inject(MOCK_CONFIG);
-  private readonly nodes: Map<string, FileSystemNode> = buildSeed();
+  private readonly seed = buildSeed();
+  private readonly nodes: Map<string, FileSystemNode> = this.seed.nodes;
+  private readonly rootId: string = this.seed.rootId;
 
   override async getRoot(): Promise<FolderNode> {
     await this.delay('read');
-    const root = this.nodes.get(ROOT_ID);
+    const root = this.nodes.get(this.rootId);
     if (!root || !isFolder(root)) {
       throw new FileSystemError('not-found', 'Root folder is missing');
     }
     return clone(root);
   }
 
-  override async listChildren(folderId: string): Promise<{
+  override async listChildren(folder: FolderNode): Promise<{
     folders: FolderNode[];
     files: FileNode[];
   }> {
     await this.delay('read');
-    const parent = this.nodes.get(folderId);
-    if (!parent) {
-      throw new FileSystemError('not-found', `Folder not found: ${folderId}`);
-    }
-    if (!isFolder(parent)) {
-      throw new FileSystemError('not-found', `Not a folder: ${folderId}`);
-    }
+    const parent = this.requireFolder(folder.id);
     const folders: FolderNode[] = [];
     const files: FileNode[] = [];
     for (const node of this.nodes.values()) {
-      if (node.parentId !== folderId) continue;
+      if (node.parentId !== parent.id) continue;
       if (isFolder(node)) folders.push(clone(node));
       else files.push(clone(node));
     }
@@ -50,90 +46,95 @@ export class MockFileSystemApi extends FileSystemApi {
     return { folders, files };
   }
 
-  override async createFolder(parentId: string, name: string): Promise<FolderNode> {
+  override async createFolder(parent: FolderNode, name: string): Promise<FolderNode> {
     await this.delay('write');
     this.maybeFail();
-    const parent = this.requireFolder(parentId);
+    const parentNode = this.requireFolder(parent.id);
     this.assertValidName(name);
-    this.assertNameAvailable(parent.id, name);
+    this.assertNameAvailable(parentNode.id, name);
 
     const now = nowIso();
     const folder: FolderNode = {
       kind: 'folder',
-      id: joinPath(parent.path, name.trim()),
-      path: joinPath(parent.path, name.trim()),
+      id: crypto.randomUUID(),
+      path: joinPath(parentNode.path, name.trim()),
       name: name.trim(),
-      parentId: parent.id,
+      parentId: parentNode.id,
       itemCount: 0,
       createdAt: now,
       modifiedAt: now,
     };
     this.nodes.set(folder.id, folder);
-    this.touchParentCounts(parent.id);
+    this.touchParentCounts(parentNode.id);
     return clone(folder);
   }
 
-  override async rename(id: string, newName: string): Promise<FileSystemNode> {
+  override async rename(node: FileSystemNode, newName: string): Promise<FileSystemNode> {
     await this.delay('write');
     this.maybeFail();
-    const node = this.requireNode(id);
-    if (node.parentId === null) {
+    const current = this.requireNode(node.id);
+    if (current.parentId === null) {
       throw new FileSystemError('invalid-name', 'Root folder cannot be renamed');
     }
     this.assertValidName(newName);
-    this.assertNameAvailable(node.parentId, newName, id);
-    const parent = this.requireFolder(node.parentId);
+    this.assertNameAvailable(current.parentId, newName, current.id);
+    const parent = this.requireFolder(current.parentId);
     return this.repathNode(
-      id,
-      node.parentId,
+      current.id,
+      current.parentId,
       joinPath(parent.path, newName.trim()),
       newName.trim(),
     );
   }
 
-  override async move(id: string, newParentId: string): Promise<FileSystemNode> {
+  override async move(node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode> {
     await this.delay('write');
     this.maybeFail();
-    const node = this.requireNode(id);
-    const newParent = this.requireFolder(newParentId);
-    if (node.parentId === null) {
+    const current = this.requireNode(node.id);
+    const target = this.requireFolder(newParent.id);
+    if (current.parentId === null) {
       throw new FileSystemError('invalid-name', 'Root folder cannot be moved');
     }
-    if (node.parentId === newParentId) return clone(node);
-    if (isFolder(node) && this.isAncestorOrSelf(node.id, newParentId)) {
+    if (current.parentId === target.id) return clone(current);
+    if (isFolder(current) && this.isAncestorOrSelf(current.id, target.id)) {
       throw new FileSystemError(
         'descendant-move',
         'Cannot move a folder into itself or a descendant',
       );
     }
-    this.assertNameAvailable(newParent.id, node.name, id);
-    const oldParentId = node.parentId;
-    const moved = this.repathNode(id, newParent.id, joinPath(newParent.path, node.name), node.name);
+    this.assertNameAvailable(target.id, current.name, current.id);
+    const oldParentId = current.parentId;
+    const moved = this.repathNode(
+      current.id,
+      target.id,
+      joinPath(target.path, current.name),
+      current.name,
+    );
     this.touchParentCounts(oldParentId);
-    this.touchParentCounts(newParent.id);
+    this.touchParentCounts(target.id);
     return moved;
   }
 
-  override async copy(id: string, newParentId: string): Promise<FileSystemNode> {
+  override async copy(node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode> {
     await this.delay('write');
     this.maybeFail();
-    const node = this.requireNode(id);
-    const newParent = this.requireFolder(newParentId);
-    this.assertNameAvailable(newParent.id, node.name);
-    const copied = this.copyRecursive(node, newParent.id, newParent.path, node.name);
-    this.touchParentCounts(newParent.id);
+    const source = this.requireNode(node.id);
+    const target = this.requireFolder(newParent.id);
+    this.assertNameAvailable(target.id, source.name);
+    const copied = this.copyRecursive(source, target.id, target.path, source.name);
+    this.touchParentCounts(target.id);
     return clone(copied);
   }
 
-  override async delete(id: string): Promise<void> {
+  override async delete(node: FileSystemNode): Promise<void> {
     await this.delay('write');
     this.maybeFail();
-    const node = this.requireNode(id);
-    if (node.parentId === null) {
+    const current = this.requireNode(node.id);
+    if (current.parentId === null) {
       throw new FileSystemError('permission-denied', 'Root folder cannot be deleted');
     }
-    const parentId = node.parentId;
-    const ids = isFolder(node) ? this.collectDescendantIds(id) : [id];
+    const parentId = current.parentId;
+    const ids = isFolder(current) ? this.collectDescendantIds(current.id) : [current.id];
     for (const nodeId of ids) {
       this.nodes.delete(nodeId);
     }
@@ -141,7 +142,7 @@ export class MockFileSystemApi extends FileSystemApi {
   }
 
   override upload(
-    _parentId: string,
+    _parent: FolderNode,
     _file: File,
     _onProgress: (percent: number) => void,
     _signal?: AbortSignal,
@@ -208,6 +209,10 @@ export class MockFileSystemApi extends FileSystemApi {
     return false;
   }
 
+  /**
+   * Update path/name/parentId on `id` and rewrite the `path` prefix of its descendants.
+   * IDs never change — they're stable UUIDs.
+   */
   private repathNode(
     id: string,
     newParentId: string,
@@ -217,34 +222,27 @@ export class MockFileSystemApi extends FileSystemApi {
     const node = this.requireNode(id);
     const oldPath = node.path;
     const now = nowIso();
-    const updates = isFolder(node)
+    const subtree = isFolder(node)
       ? this.collectDescendantIds(id).map((nodeId) => this.requireNode(nodeId))
       : [node];
 
-    for (const current of updates) {
-      this.nodes.delete(current.id);
-    }
-
     let updatedRoot: FileSystemNode | null = null;
-    for (const current of updates) {
+    for (const current of subtree) {
       const isRoot = current.id === id;
       const updatedPath = isRoot ? newPath : current.path.replace(`${oldPath}/`, `${newPath}/`);
-      const parentId = isRoot ? newParentId : current.parentId?.replace(oldPath, newPath);
       const updated: FileSystemNode = isFolder(current)
         ? {
             ...current,
-            id: updatedPath,
             path: updatedPath,
             name: isRoot ? newName : current.name,
-            parentId: parentId ?? null,
+            parentId: isRoot ? newParentId : current.parentId,
             modifiedAt: isRoot ? now : current.modifiedAt,
           }
         : {
             ...current,
-            id: updatedPath,
             path: updatedPath,
             name: isRoot ? newName : current.name,
-            parentId: parentId ?? newParentId,
+            parentId: isRoot ? newParentId : current.parentId,
             modifiedAt: isRoot ? now : current.modifiedAt,
           };
       this.nodes.set(updated.id, updated);
@@ -265,9 +263,7 @@ export class MockFileSystemApi extends FileSystemApi {
   ): FileSystemNode {
     const now = nowIso();
     const targetPath = joinPath(targetParentPath, name);
-    if (this.nodes.has(targetPath)) {
-      throw new FileSystemError('name-collision', `An item named "${name}" already exists`);
-    }
+    this.assertNameAvailable(targetParentId, name);
     const children = isFolder(source)
       ? Array.from(this.nodes.values()).filter((node) => node.parentId === source.id)
       : [];
@@ -275,7 +271,7 @@ export class MockFileSystemApi extends FileSystemApi {
     if (!isFolder(source)) {
       const file: FileNode = {
         ...source,
-        id: targetPath,
+        id: crypto.randomUUID(),
         path: targetPath,
         name,
         parentId: targetParentId,
@@ -288,7 +284,7 @@ export class MockFileSystemApi extends FileSystemApi {
 
     const folder: FolderNode = {
       ...source,
-      id: targetPath,
+      id: crypto.randomUUID(),
       path: targetPath,
       name,
       parentId: targetParentId,

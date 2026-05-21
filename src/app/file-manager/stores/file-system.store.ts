@@ -68,7 +68,11 @@ export const FileSystemStore = signalStore(
       setLoading(parentId, true);
       setError(parentId, undefined);
       try {
-        const { folders, files } = await api.listChildren(parentId);
+        const parent = store.entityMap()[parentId];
+        if (!parent || !isFolder(parent)) {
+          throw new FileSystemError('not-found', `Folder not found in cache: ${parentId}`);
+        }
+        const { folders, files } = await api.listChildren(parent);
         const nodes: FileSystemNode[] = [...folders, ...files];
         const incomingIds = new Set(nodes.map((node) => node.id));
         const staleIds = store
@@ -128,54 +132,40 @@ export const FileSystemStore = signalStore(
       );
     };
 
-    const repathCachedSubtree = (
+    /**
+     * Compute the new cached subtree after a rename or move. IDs are stable —
+     * only path, plus name/parentId/modifiedAt on the root, change.
+     */
+    const updateCachedSubtreePaths = (
       id: string,
       newParentId: string,
       newPath: string,
       newName: string,
-    ): { oldIds: string[]; updatedNodes: FileSystemNode[]; updatedRoot: FileSystemNode } => {
+    ): FileSystemNode[] => {
       const nodes = cachedSubtree(id);
       const root = nodes.find((node) => node.id === id);
       if (!root) throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
       const oldPath = root.path;
-      const updatedNodes = nodes.map((node): FileSystemNode => {
+      const now = new Date().toISOString();
+      return nodes.map((node): FileSystemNode => {
         const isRoot = node.id === id;
         const path = isRoot ? newPath : node.path.replace(`${oldPath}/`, `${newPath}/`);
-        const parentId = isRoot ? newParentId : node.parentId?.replace(oldPath, newPath);
         return isFolder(node)
           ? {
               ...node,
-              id: path,
               path,
               name: isRoot ? newName : node.name,
-              parentId: parentId ?? null,
-              modifiedAt: isRoot ? new Date().toISOString() : node.modifiedAt,
+              parentId: isRoot ? newParentId : node.parentId,
+              modifiedAt: isRoot ? now : node.modifiedAt,
             }
           : {
               ...node,
-              id: path,
               path,
               name: isRoot ? newName : node.name,
-              parentId: parentId ?? newParentId,
-              modifiedAt: isRoot ? new Date().toISOString() : node.modifiedAt,
+              parentId: isRoot ? newParentId : node.parentId,
+              modifiedAt: isRoot ? now : node.modifiedAt,
             };
       });
-      const updatedRoot = updatedNodes.find((node) => node.path === newPath);
-      if (!updatedRoot) throw new FileSystemError('unknown', `Failed to repath node: ${id}`);
-      return {
-        oldIds: nodes.map((node) => node.id),
-        updatedNodes,
-        updatedRoot,
-      };
-    };
-
-    const restoreSnapshot = (removeIds: string[], snapshot: FileSystemNode[]): void => {
-      if (removeIds.length > 0) {
-        patchState(store, removeEntities(removeIds));
-      }
-      if (snapshot.length > 0) {
-        patchState(store, setEntities(snapshot));
-      }
     };
 
     const createFolder = async (parentId: string, name: string): Promise<FolderNode> => {
@@ -198,7 +188,7 @@ export const FileSystemStore = signalStore(
       patchState(store, setEntity<FileSystemNode>(temp));
       adjustParentCount(parentId, 1);
       try {
-        const created = await api.createFolder(parentId, trimmed);
+        const created = await api.createFolder(parent, trimmed);
         patchState(store, removeEntity(temp.id), setEntity<FileSystemNode>(created));
         return created;
       } catch (e) {
@@ -220,28 +210,21 @@ export const FileSystemStore = signalStore(
           `Parent folder not found in cache: ${node.parentId}`,
         );
       }
-      const optimistic = repathCachedSubtree(
+      const snapshot = cachedSubtree(id);
+      const updated = updateCachedSubtreePaths(
         id,
         node.parentId,
         joinPath(parent.path, newName),
         newName,
       );
-      const snapshot = cachedSubtree(id);
-      patchState(store, removeEntities(optimistic.oldIds), setEntities(optimistic.updatedNodes));
+      patchState(store, setEntities(updated));
       try {
-        const renamed = await api.rename(id, newName);
-        patchState(
-          store,
-          removeEntity(optimistic.updatedRoot.id),
-          setEntity<FileSystemNode>(renamed),
-        );
-        unmarkLoaded(id, optimistic.updatedRoot.id);
+        const renamed = await api.rename(node, newName);
+        patchState(store, setEntity<FileSystemNode>(renamed));
+        unmarkLoaded(id);
         return renamed;
       } catch (e) {
-        restoreSnapshot(
-          optimistic.updatedNodes.map((updated) => updated.id),
-          snapshot,
-        );
+        patchState(store, setEntities(snapshot));
         throw e;
       }
     };
@@ -255,10 +238,10 @@ export const FileSystemStore = signalStore(
       patchState(store, removeEntities(removedIds));
       adjustParentCount(node.parentId, -1);
       try {
-        await api.delete(id);
+        await api.delete(node);
         unmarkLoaded(id);
       } catch (e) {
-        restoreSnapshot([], snapshot);
+        patchState(store, setEntities(snapshot));
         adjustParentCount(node.parentId, 1);
         throw e;
       }
@@ -284,30 +267,24 @@ export const FileSystemStore = signalStore(
           'Cannot move a folder into itself or a descendant',
         );
       }
+      const oldParentId = node.parentId;
       const snapshot = cachedSubtree(id);
-      const optimistic = repathCachedSubtree(
+      const updated = updateCachedSubtreePaths(
         id,
         targetParentId,
         joinPath(targetParent.path, node.name),
         node.name,
       );
-      patchState(store, removeEntities(optimistic.oldIds), setEntities(optimistic.updatedNodes));
-      adjustParentCount(node.parentId, -1);
+      patchState(store, setEntities(updated));
+      adjustParentCount(oldParentId, -1);
       adjustParentCount(targetParentId, 1);
       try {
-        const moved = await api.move(id, targetParentId);
-        patchState(
-          store,
-          removeEntity(optimistic.updatedRoot.id),
-          setEntity<FileSystemNode>(moved),
-        );
-        unmarkLoaded(id, optimistic.updatedRoot.id, node.parentId, targetParentId);
+        const moved = await api.move(node, targetParent);
+        patchState(store, setEntity<FileSystemNode>(moved));
+        unmarkLoaded(id, oldParentId, targetParentId);
       } catch (e) {
-        restoreSnapshot(
-          optimistic.updatedNodes.map((updated) => updated.id),
-          snapshot,
-        );
-        adjustParentCount(node.parentId, 1);
+        patchState(store, setEntities(snapshot));
+        adjustParentCount(oldParentId, 1);
         adjustParentCount(targetParentId, -1);
         throw e;
       }
@@ -315,7 +292,18 @@ export const FileSystemStore = signalStore(
 
     const copy = async (ids: string | string[], targetParentId: string): Promise<void> => {
       const id = onlySingleId(ids, 'copy');
-      const copied = await api.copy(id, targetParentId);
+      const source = store.entityMap()[id];
+      if (!source) {
+        throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
+      }
+      const targetParent = store.entityMap()[targetParentId];
+      if (!targetParent || !isFolder(targetParent)) {
+        throw new FileSystemError(
+          'not-found',
+          `Target folder not found in cache: ${targetParentId}`,
+        );
+      }
+      const copied = await api.copy(source, targetParent);
       patchState(store, setEntity<FileSystemNode>(copied));
       adjustParentCount(targetParentId, 1);
       unmarkLoaded(targetParentId);
