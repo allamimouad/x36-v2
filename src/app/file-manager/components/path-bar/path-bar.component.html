@@ -1,0 +1,16 @@
+<nav class="fm-breadcrumb" aria-label="Folder path">
+  @for (seg of segments(); track seg.id; let last = $last; let idx = $index) {
+    <button
+      type="button"
+      class="fm-segment"
+      [class.fm-current]="last"
+      [attr.data-testid]="'fm-breadcrumb-' + idx"
+      (click)="segmentClicked.emit(seg.id)"
+    >
+      {{ seg.name || rootLabel() }}
+    </button>
+    @if (!last) {
+      <i class="pi pi-angle-right fm-sep" aria-hidden="true"></i>
+    }
+  }
+</nav>

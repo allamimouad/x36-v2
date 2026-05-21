@@ -24,83 +24,8 @@ interface RowVm {
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [TableModule, ProgressSpinner, DatePipe],
-  template: `
-    @if (loading()) {
-      <div class="fm-loading">
-        <p-progressSpinner styleClass="fm-spinner" strokeWidth="3" />
-      </div>
-    } @else {
-      <p-table [value]="rows()" dataKey="id" styleClass="fm-table">
-        <ng-template pTemplate="header">
-          <tr>
-            <th style="width: 50%">Name</th>
-            <th style="width: 15%">Size</th>
-            <th style="width: 35%">Modified</th>
-          </tr>
-        </ng-template>
-        <ng-template pTemplate="body" let-row>
-          <tr
-            [attr.data-testid]="'fm-row-' + row.id"
-            (dblclick)="onRowDblClick(row)"
-            class="fm-row"
-            [class.fm-row-folder]="row.kind === 'folder'"
-          >
-            <td>
-              <span class="fm-name">
-                <i [class]="row.icon"></i>
-                <span>{{ row.name }}</span>
-              </span>
-            </td>
-            <td>{{ row.sizeLabel }}</td>
-            <td>{{ row.modifiedAt | date: 'medium' }}</td>
-          </tr>
-        </ng-template>
-        <ng-template pTemplate="emptymessage">
-          <tr>
-            <td colspan="3" class="fm-empty">This folder is empty.</td>
-          </tr>
-        </ng-template>
-      </p-table>
-    }
-  `,
-  styles: [
-    `
-      :host {
-        display: block;
-        height: 100%;
-        overflow: hidden;
-      }
-      .fm-loading {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-      }
-      :host ::ng-deep .fm-spinner {
-        width: 36px;
-        height: 36px;
-      }
-      :host ::ng-deep .fm-table {
-        height: 100%;
-      }
-      .fm-name {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-      }
-      .fm-row {
-        cursor: default;
-      }
-      .fm-row-folder {
-        cursor: pointer;
-      }
-      .fm-empty {
-        text-align: center;
-        padding: 2rem;
-        color: var(--p-text-muted-color, #888);
-      }
-    `,
-  ],
+  templateUrl: './file-table.component.html',
+  styleUrl: './file-table.component.scss',
 })
 export class FileTableComponent {
   readonly folders = input.required<FolderNode[]>();

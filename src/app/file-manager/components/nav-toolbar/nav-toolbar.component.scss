@@ -1,0 +1,27 @@
+:host {
+  display: block;
+  border-bottom: 1px solid var(--p-content-border-color, #e5e7eb);
+  background: var(--p-content-background, #fff);
+}
+
+.fm-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  gap: 0.5rem;
+}
+
+.fm-toolbar-left,
+.fm-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.fm-divider {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--p-content-border-color, #e5e7eb);
+  margin: 0 0.25rem;
+}

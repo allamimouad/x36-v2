@@ -107,6 +107,34 @@ describe('NavigationStore', () => {
     expect(nav.expandedTreeIds().has('/')).toBe(false);
   });
 
+  it('startRename tracks the focused and renaming item, and endRename clears rename mode', () => {
+    nav.startRename('/Documents');
+    expect(nav.focusedId()).toBe('/Documents');
+    expect(nav.renamingId()).toBe('/Documents');
+
+    nav.endRename();
+    expect(nav.focusedId()).toBe('/Documents');
+    expect(nav.renamingId()).toBeNull();
+  });
+
+  it('remapPathIds updates path-based navigation references after rename or move', () => {
+    nav.navigateTo('/');
+    nav.navigateTo('/Documents');
+    nav.navigateTo('/Documents/Reports');
+    nav.expand('/Documents');
+    nav.expand('/Documents/Reports');
+    nav.startRename('/Documents/Reports');
+
+    nav.remapPathIds('/Documents', '/Shared/Documents');
+
+    expect(nav.currentFolderId()).toBe('/Shared/Documents/Reports');
+    expect(nav.history()).toEqual(['/', '/Shared/Documents', '/Shared/Documents/Reports']);
+    expect(nav.expandedTreeIds().has('/Shared/Documents')).toBe(true);
+    expect(nav.expandedTreeIds().has('/Shared/Documents/Reports')).toBe(true);
+    expect(nav.focusedId()).toBe('/Shared/Documents/Reports');
+    expect(nav.renamingId()).toBe('/Shared/Documents/Reports');
+  });
+
   it('exposes pathSegments derived from FileSystemStore entities', () => {
     nav.navigateTo('/Documents');
     const segs = nav.pathSegments();

@@ -1,0 +1,37 @@
+:host {
+  display: block;
+  height: 100%;
+}
+
+.fm-root {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  height: 100%;
+  background: var(--p-content-background, #fff);
+  color: var(--p-text-color, #111);
+}
+
+.fm-body {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 0;
+  border-top: 1px solid var(--p-content-border-color, #e5e7eb);
+}
+
+.fm-tree-pane {
+  border-right: 1px solid var(--p-content-border-color, #e5e7eb);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.fm-table-pane {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.fm-status {
+  padding: 0.4rem 0.75rem;
+  border-top: 1px solid var(--p-content-border-color, #e5e7eb);
+  font-size: 0.85rem;
+  color: var(--p-text-muted-color, #888);
+}

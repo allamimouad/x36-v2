@@ -36,13 +36,14 @@ Stores **MUST NOT know about SharePoint**. They depend on an abstract `FileSyste
 - `MockFileSystemApi` — in-memory, used for dev and tests (default provider)
 - `SharePointFileSystemApi` — stubbed now, implemented later on another machine
 
-The interface uses generic terminology (`id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. The SharePoint adapter internally maps `id` ↔ `serverRelativeUrl`.
+The interface uses generic terminology (`id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. For this app, `id` is the normalized full path. The SharePoint adapter maps it directly to `serverRelativeUrl`.
 
 ### 2.3 Signal Store for entities, plain signals for simple state
 `FileSystemStore` uses `withEntities` because folders and files are viewed in multiple places (tree + table) and must stay in sync. `NavigationStore` uses Signal Store because it owns navigation history, expansion, focus, selection, rename state, and file-system-derived computeds. Small command-style state uses plain signal services; `ClipboardService` is a plain injectable service with `signal()` / `computed()`, not a Signal Store. Simple component-local state stays as plain `signal()` inside the component — don't over-store.
 
 ### 2.4 Optimistic single, pessimistic bulk
-Single rename/move/delete/create/copy: apply change in store immediately, rollback on error.
+Single create/rename/move/delete: apply change in store immediately, rollback on error.
+Single copy: wait for the API result because copy creates new entities.
 Bulk ops (multi-select): show progress, apply per-item as each succeeds, summarize errors at end.
 Uploads: always progress-based, update store on completion.
 
@@ -171,7 +172,7 @@ export type FileSystemNode = FolderNode | FileNode;
 
 export interface FolderNode {
   kind: 'folder';
-  id: string;              // unique, stable, primary key
+  id: string;              // unique primary key; normalized full path
   path: string;            // full path from root, e.g. "/Documents/Reports/2026"
   name: string;
   parentId: string | null; // null for root
@@ -198,7 +199,7 @@ export function isFolder(n: FileSystemNode): n is FolderNode {
 }
 ```
 
-**Why `id` AND `path`**: `id` is the stable primary key (use everywhere for store lookups, drag targets, selection). `path` is derived/display-friendly (breadcrumb rendering, human-readable logs). After a move, `path` changes but `id` stays the same. For the mock, `id` can equal the initial path of the node, or be a UUID — doesn't matter as long as it's stable. For SharePoint, `id` maps to `serverRelativeUrl` internally.
+**Why `id` AND `path`**: `id` is the primary key used everywhere for store lookups, drag targets, selection, clipboard, and navigation. In this app, `id` is the normalized full path, matching SharePoint on-prem's `serverRelativeUrl` shape. `path` is kept as the display/logging value and should equal `id` for mock and SharePoint implementations. After rename or move, both `id` and `path` change for the item and any loaded descendants; stores must remap cached entities and navigation references.
 
 ---
 

@@ -8,31 +8,8 @@ import type { FolderNode } from '../../models/file-system-node.model';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Tree],
-  template: `
-    <p-tree
-      [value]="visibleNodes()"
-      selectionMode="single"
-      [selection]="selectedTreeNode()"
-      loadingMode="icon"
-      (onNodeExpand)="handleExpand($event)"
-      (onNodeCollapse)="handleCollapse($event)"
-      (onNodeSelect)="handleSelect($event)"
-      styleClass="fm-tree"
-    />
-  `,
-  styles: [
-    `
-      :host {
-        display: block;
-        height: 100%;
-        overflow: auto;
-      }
-      :host ::ng-deep .fm-tree {
-        border: 0;
-        background: transparent;
-      }
-    `,
-  ],
+  templateUrl: './folder-tree.component.html',
+  styleUrl: './folder-tree.component.scss',
 })
 export class FolderTreeComponent {
   readonly nodes = input.required<TreeNode<FolderNode>[]>();

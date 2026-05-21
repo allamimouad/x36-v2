@@ -1,0 +1,83 @@
+<div class="fm-toolbar">
+  <div class="fm-toolbar-left">
+    <button
+      pButton
+      type="button"
+      icon="pi pi-arrow-left"
+      [disabled]="!canGoBack()"
+      (click)="back.emit()"
+      pTooltip="Back (Alt+Left)"
+      tooltipPosition="bottom"
+      [text]="true"
+      severity="secondary"
+      data-testid="fm-btn-back"
+      aria-label="Back"
+    ></button>
+    <button
+      pButton
+      type="button"
+      icon="pi pi-arrow-right"
+      [disabled]="!canGoForward()"
+      (click)="forward.emit()"
+      pTooltip="Forward (Alt+Right)"
+      tooltipPosition="bottom"
+      [text]="true"
+      severity="secondary"
+      data-testid="fm-btn-forward"
+      aria-label="Forward"
+    ></button>
+    <button
+      pButton
+      type="button"
+      icon="pi pi-arrow-up"
+      [disabled]="!canGoUp()"
+      (click)="up.emit()"
+      pTooltip="Parent folder (Alt+Up)"
+      tooltipPosition="bottom"
+      [text]="true"
+      severity="secondary"
+      data-testid="fm-btn-up"
+      aria-label="Parent folder"
+    ></button>
+    <span class="fm-divider"></span>
+    <button
+      pButton
+      type="button"
+      icon="pi pi-refresh"
+      (click)="refresh.emit()"
+      pTooltip="Refresh (F5)"
+      tooltipPosition="bottom"
+      [text]="true"
+      severity="secondary"
+      data-testid="fm-btn-refresh"
+      aria-label="Refresh"
+    ></button>
+  </div>
+
+  <div class="fm-toolbar-right">
+    <button
+      pButton
+      type="button"
+      icon="pi pi-folder-plus"
+      label="New folder"
+      [disabled]="true"
+      pTooltip="Coming in Phase 2"
+      tooltipPosition="bottom"
+      severity="secondary"
+      [outlined]="true"
+      data-testid="fm-btn-new-folder"
+    ></button>
+    <button
+      pButton
+      type="button"
+      icon="pi pi-upload"
+      label="Upload"
+      [disabled]="true"
+      pTooltip="Coming in Phase 5"
+      tooltipPosition="bottom"
+      severity="secondary"
+      [outlined]="true"
+      data-testid="fm-btn-upload"
+    ></button>
+  </div>
+</div>

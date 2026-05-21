@@ -1,0 +1,10 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow: auto;
+}
+
+:host ::ng-deep .fm-tree {
+  border: 0;
+  background: transparent;
+}

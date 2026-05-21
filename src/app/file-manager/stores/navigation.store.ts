@@ -161,6 +161,40 @@ export const NavigationStore = signalStore(
       patchState(store, { expandedTreeIds: new Set(ids) });
     };
 
+    const remapPathIds = (oldRootId: string, newRootId: string): void => {
+      const remap = (id: string | null): string | null => {
+        if (id === null) return null;
+        if (id === oldRootId) return newRootId;
+        const prefix = oldRootId.endsWith('/') ? oldRootId : `${oldRootId}/`;
+        return id.startsWith(prefix) ? `${newRootId}/${id.slice(prefix.length)}` : id;
+      };
+      const remapSet = (ids: Set<string>): Set<string> => {
+        const next = new Set<string>();
+        for (const id of ids) {
+          const mapped = remap(id);
+          if (mapped !== null) next.add(mapped);
+        }
+        return next;
+      };
+
+      patchState(store, {
+        currentFolderId: remap(store.currentFolderId()),
+        history: store.history().map((id) => remap(id) ?? id),
+        expandedTreeIds: remapSet(store.expandedTreeIds()),
+        selectedIds: remapSet(store.selectedIds()),
+        focusedId: remap(store.focusedId()),
+        renamingId: remap(store.renamingId()),
+      });
+    };
+
+    const startRename = (id: string): void => {
+      patchState(store, { focusedId: id, renamingId: id });
+    };
+
+    const endRename = (): void => {
+      patchState(store, { renamingId: null });
+    };
+
     return {
       navigateTo,
       back,
@@ -169,6 +203,7 @@ export const NavigationStore = signalStore(
       expand,
       collapse,
       setExpanded,
+      remapPathIds,
       // Phase 3 stubs (kept here so containers can reference them already)
       select(_id: string, _mode: 'single' | 'toggle' | 'range'): void {
         /* Phase 3 */
@@ -179,13 +214,8 @@ export const NavigationStore = signalStore(
       clearSelection(): void {
         /* Phase 3 */
       },
-      // Phase 2 stubs
-      startRename(_id: string): void {
-        /* Phase 2 */
-      },
-      endRename(): void {
-        /* Phase 2 */
-      },
+      startRename,
+      endRename,
     };
   }),
 );

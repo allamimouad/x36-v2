@@ -1,0 +1,10 @@
+<p-tree
+  [value]="visibleNodes()"
+  selectionMode="single"
+  [selection]="selectedTreeNode()"
+  loadingMode="icon"
+  (onNodeExpand)="handleExpand($event)"
+  (onNodeCollapse)="handleCollapse($event)"
+  (onNodeSelect)="handleSelect($event)"
+  styleClass="fm-tree"
+/>

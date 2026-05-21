@@ -23,8 +23,8 @@
  *   expired), refresh once and retry — implement in `digest.interceptor.ts`.
  *
  * id ↔ serverRelativeUrl mapping
- *   Suggested: `id = serverRelativeUrl` (cleanest, debuggable). Components
- *   already treat `id` as opaque, so URL-as-id is fine. Use
+ *   Required project invariant: `id = serverRelativeUrl` and `path = id`.
+ *   This keeps the mock and on-prem implementation aligned. Use
  *   `encodeURIComponent` consistently when interpolating into request URLs.
  *
  * Endpoints per method

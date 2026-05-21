@@ -329,7 +329,7 @@
 - Implement each method in `sharepoint-file-system-api.ts` per the stub's JSDoc comments
 - Add `interceptors/digest.interceptor.ts` — injects `X-RequestDigest`, catches 403, refreshes, retries once
 - Add form digest caching (singleton service, expires with safety margin)
-- Implement `id` ↔ `serverRelativeUrl` mapping (suggestion: `id = base64(serverRelativeUrl)` for opacity, or just use the URL directly if simpler)
+- Implement `id` ↔ `serverRelativeUrl` mapping as `id = serverRelativeUrl`; keep `path` equal to the same normalized value
 - Error code mapping from SharePoint error codes to `FileSystemError` codes
 - Implement chunked upload (`StartUpload` / `ContinueUpload` / `FinishUpload`)
 - Flip provider in `app.config.ts` from `MockFileSystemApi` to `SharePointFileSystemApi`

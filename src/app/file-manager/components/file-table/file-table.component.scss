@@ -1,0 +1,41 @@
+:host {
+  display: block;
+  height: 100%;
+  overflow: hidden;
+}
+
+.fm-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+:host ::ng-deep .fm-spinner {
+  width: 36px;
+  height: 36px;
+}
+
+:host ::ng-deep .fm-table {
+  height: 100%;
+}
+
+.fm-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fm-row {
+  cursor: default;
+}
+
+.fm-row-folder {
+  cursor: pointer;
+}
+
+.fm-empty {
+  text-align: center;
+  padding: 2rem;
+  color: var(--p-text-muted-color, #888);
+}

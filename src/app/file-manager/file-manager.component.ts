@@ -37,85 +37,8 @@ import { NavToolbarComponent } from './components/nav-toolbar/nav-toolbar.compon
     ClipboardService,
     { provide: FileSystemApi, useClass: MockFileSystemApi },
   ],
-  template: `
-    <div class="fm-root">
-      <app-nav-toolbar
-        [canGoBack]="navigation.canGoBack()"
-        [canGoForward]="navigation.canGoForward()"
-        [canGoUp]="navigation.canGoUp()"
-        (back)="navigation.back()"
-        (forward)="navigation.forward()"
-        (up)="navigation.up()"
-        (refresh)="onRefresh()"
-      />
-      <app-path-bar
-        [segments]="navigation.pathSegments()"
-        [rootLabel]="config.libraryRootName"
-        (segmentClicked)="onSegmentClicked($event)"
-      />
-
-      <div class="fm-body">
-        <aside class="fm-tree-pane" aria-label="Folder tree">
-          <app-folder-tree
-            [nodes]="treeNodes()"
-            [currentFolderId]="navigation.currentFolderId()"
-            [loadingByParentId]="fileSystem.loadingByParentId()"
-            (nodeSelected)="onTreeNodeSelected($event)"
-            (nodeExpanded)="onTreeNodeExpanded($event)"
-            (nodeCollapsed)="onTreeNodeCollapsed($event)"
-          />
-        </aside>
-        <main class="fm-table-pane" aria-label="Folder contents">
-          <app-file-table
-            [folders]="navigation.currentFolderChildren().folders"
-            [files]="navigation.currentFolderChildren().files"
-            [loading]="isCurrentLoading()"
-            (itemDoubleClicked)="onItemDoubleClicked($event)"
-          />
-        </main>
-      </div>
-
-      <footer class="fm-status" aria-live="polite">
-        <span>{{ statusText() }}</span>
-      </footer>
-    </div>
-  `,
-  styles: [
-    `
-      :host {
-        display: block;
-        height: 100%;
-      }
-      .fm-root {
-        display: grid;
-        grid-template-rows: auto auto 1fr auto;
-        height: 100%;
-        background: var(--p-content-background, #fff);
-        color: var(--p-text-color, #111);
-      }
-      .fm-body {
-        display: grid;
-        grid-template-columns: 280px 1fr;
-        min-height: 0;
-        border-top: 1px solid var(--p-content-border-color, #e5e7eb);
-      }
-      .fm-tree-pane {
-        border-right: 1px solid var(--p-content-border-color, #e5e7eb);
-        overflow: hidden;
-        min-height: 0;
-      }
-      .fm-table-pane {
-        overflow: hidden;
-        min-height: 0;
-      }
-      .fm-status {
-        padding: 0.4rem 0.75rem;
-        border-top: 1px solid var(--p-content-border-color, #e5e7eb);
-        font-size: 0.85rem;
-        color: var(--p-text-muted-color, #888);
-      }
-    `,
-  ],
+  templateUrl: './file-manager.component.html',
+  styleUrl: './file-manager.component.scss',
 })
 export class FileManagerComponent {
   protected readonly fileSystem = inject(FileSystemStore);

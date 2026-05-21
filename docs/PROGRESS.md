@@ -41,7 +41,13 @@
 
 ## Phase 2 — Mutations
 
-- [ ] Not started — ready to begin
+- [x] `utils/naming.utils.ts` — `resolveNameCollision(baseName, existingNames)`
+- [x] `services/mock-file-system-api.ts` — implemented `createFolder`, `rename`, `move`, `copy`, `delete`
+- [x] `stores/file-system.store.ts` — implemented single-item create/rename/delete/move/copy
+- [x] `stores/navigation.store.ts` — implemented `startRename`, `endRename`, and path-id remapping for rename/move
+- [ ] `services/notification.service.ts`
+- [ ] Dialog components: create folder, rename, conflict-resolution shell
+- [ ] Context menu and inline rename wiring
 
 ---
 
@@ -73,11 +79,9 @@
 
 _What should the next session work on?_
 
-1. Start **Phase 2 — Mutations**.
-2. Implement `resolveNameCollision(baseName, existingNames)` in `utils/naming.utils.ts`.
-3. Complete mock mutation methods: `createFolder`, `rename`, `move`, `copy`, `delete` (upload remains Phase 5).
-4. Implement single-item mutation methods in `FileSystemStore` with Phase 2 optimistic/pessimistic behavior.
-5. Add `NotificationService` and Phase 2 dialogs/context-menu wiring, staying within the Phase 2 scope.
+1. Add `NotificationService`.
+2. Add Phase 2 dialogs: create folder, rename, conflict-resolution shell.
+3. Add context-menu and inline rename wiring, staying within the Phase 2 scope.
 
 ---
 
@@ -88,11 +92,12 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
 - **State management**: NgRx Signal Store is used for entity collections and stateful domains with non-trivial derived graphs. `FileSystemStore` uses `withEntities` for tree+table cache sync; `NavigationStore` uses Signal Store for history, expanded IDs, selection/focus/rename state, and derived folder computeds. Small command-style state uses plain signal services; `ClipboardService` is a plain injectable signal service.
 - **Drag-and-drop**: Native HTML5 DnD over PrimeNG DnD or CDK DragDrop. Reason: uniform API for internal + external drops, single drag-state source of truth.
 - **Backend abstraction**: `FileSystemApi` as abstract class (not interface + token). Reason: abstract classes work directly as DI tokens in Angular; cleaner idiom.
-- **ID vs path**: Interface uses `id` (stable) + `path` (display). SharePoint impl maps `id` ↔ `serverRelativeUrl` internally. Reason: keeps interface backend-agnostic; `path` changes on move, `id` doesn't.
+- **ID vs path**: Interface uses `id` as the normalized full path and keeps `path` equal to that display/backend path. SharePoint impl maps `id` directly to `serverRelativeUrl`. Reason: on-prem SharePoint paths are unique, easy to debug, and make the copied code simpler on the SharePoint-connected machine. Rename/move must remap ids for loaded descendants and navigation references.
 - **Optimistic for single ops, pessimistic for bulk**: Reason: no-batch SharePoint means partial failures on bulk are common; pessimistic + per-item progress is clearer UX than mass-rollback.
 - **Mock persistence**: fresh state every refresh, no localStorage. Reason: matches user's request; simpler mental model during dev.
 - **Copy is pessimistic even as single op**: copy creates a new entity on the server, so we need the real id before inserting into the store.
-- **Mock id strategy**: `id = path` for the mock seed. Reason: matches SPEC §4 hint ("id can equal the initial path of the node, or be a UUID"); keeps debugging trivial. SharePoint impl will internally map `id` to `serverRelativeUrl` (same idea, different shape).
+- **Mock id strategy**: `id = path` for the mock seed and all mock mutations. Reason: matches the SharePoint `serverRelativeUrl` strategy and keeps debugging trivial.
+- **Navigation remapping**: `NavigationStore.remapPathIds(oldRootId, newRootId)` updates current folder, history, expanded ids, selected ids, focus, and rename state after path-based ids change. Reason: with `id = path`, rename/move changes the primary key for the item and any descendants; navigation references must move with it.
 - **NavigationStore depends on a read-only `FileSystemReader` abstraction**: Reason: path-segment / parent-id / current-folder-children computeds need entity lookups, but navigation must not be able to call file-system load/mutation methods. `FileManagerComponent` provides `FileSystemReader` via `useExisting: FileSystemStore`.
 - **PrimeNG version pinned to v20.4.0** (`primeng@20.4.0`, `@primeng/themes@20.4.0`). Reason: PrimeNG `*` resolves to v21 which requires `@angular/cdk@^21` and Angular 21; we are on Angular 20. The `20.5.0-lts` line was avoided because LTS releases are gated behind a paid licence — 20.4.0 is the latest free Angular-20-compatible release.
 - **PrimeNG theme**: Aura preset, dark-mode opt-in via `.dark` class on the host. Reason: latest PrimeNG-native styling system; dark mode toggleable later without theme swap.
@@ -107,7 +112,6 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
 
 _Things noticed during implementation but not fixed in the current phase. Review before starting the next phase._
 
-- **`loadChildren` does not prune stale entities**: Phase 1 only ever adds/upserts. If a folder is deleted on the server between two `listChildren` calls, the deleted child stays in the entity cache. Acceptable for read-only Phase 1; in Phase 2 the mutation methods will remove entities directly. If `invalidate(parentId)` is followed by another `loadChildren`, stale siblings can still linger — fix in Phase 2 by tracking entities-by-parent and removing the diff.
 - **`FileSystemStore.upload` signature is `(parentId, files)`** in the store stub but the underlying `FileSystemApi.upload` takes a single `File` plus progress callback. The mismatch is intentional — the store will fan out to `UploadService` in Phase 5 — but worth flagging now so the Phase 5 implementer doesn't try to wire them 1:1.
 - **Karma runner in agent sandbox** — current sandbox cannot bind Karma's local server on port 9876 (`listen EPERM`). Specs compile here, but browser tests cannot execute in the agent environment. User confirmed local `npm test` works.
 - **`@primeng/themes@20.4.0` shows a deprecation warning on install** advising migration to `@primeuix/themes`. The package still works — the Aura preset import path (`@primeng/themes/aura`) is unchanged. Migrate to `@primeuix/themes` when convenient (likely Phase 2 or 3); not blocking.
@@ -118,6 +122,10 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-05-19 — Phase 2 structure cleanup**: externalized file-manager component templates/styles from inline `template`/`styles` blocks into sibling `.html`/`.scss` files for the container and existing child components. Behavior unchanged. Development build passes.
+- **2026-05-07 — Phase 2 SharePoint path-id adaptation**: updated SPEC/PHASES/PROGRESS to make `id = normalized path` official, matching on-prem SharePoint `serverRelativeUrl`. Implemented `NavigationStore.startRename`, `endRename`, and `remapPathIds()` so rename/move can update path-based navigation references. Added unit coverage for rename state and remapping. Development build passes.
+- **2026-05-07 — Phase 2 store mutations**: implemented `FileSystemStore` single-item create/rename/delete/move/copy. Create/rename/delete/move are optimistic with rollback snapshots; copy is pessimistic. Cached folder subtrees are repathed for id/path changes, descendant moves are guarded before optimistic updates, and `loadChildren` now prunes stale cached children on reload. Production and development builds pass.
+- **2026-05-07 — Phase 2 mock mutations**: implemented `resolveNameCollision` and completed mock `createFolder`, `rename`, `move`, `copy`, and `delete` with validation, name-collision checks, descendant move guard, path/id repathing for folder descendants, deep-cloned returns, simulated write latency, and configurable simulated write errors. Upload remains stubbed for Phase 5. Production and development builds pass.
 - **2026-05-07 — Phase 1 verification complete**: user confirmed browser acceptance and local Karma tests are working. Marked Phase 1 complete and advanced active work to Phase 2 — Mutations.
 - **2026-05-06 — Phase 1 test cleanup**: replaced the no-op navigation initial-state spec with concrete assertions for current folder, history, expanded/selected/focus/rename state, and derived computeds. Development build passes; `npm test` compiles specs but cannot execute in sandbox because Karma cannot bind port 9876.
 - **2026-05-06 — Phase 1 review fix**: added `loadingByParentId` input to `FolderTreeComponent` and maps it to PrimeNG `TreeNode.loading` with `loadingMode="icon"`, so expanded folders can show per-node loading feedback. Production and development builds pass.
@@ -139,6 +147,6 @@ _One line per session, newest at top. Include date, phase, what was completed, a
 - No feature creep beyond current phase
 - Out-of-scope features (SPEC §16) are never built, not even stubbed
 - Every mutation goes through stores; components never call `FileSystemApi` directly
-- IDs are the primary key everywhere; `path` is display-only
+- IDs are the primary key everywhere and equal normalized full paths; rename/move repath ids
 - When in doubt, re-read SPEC.md and PHASES.md before writing code
 - Update this file at session end

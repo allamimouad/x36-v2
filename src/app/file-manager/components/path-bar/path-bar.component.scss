@@ -1,0 +1,37 @@
+:host {
+  display: block;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--p-content-border-color, #e5e7eb);
+}
+
+.fm-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.fm-segment {
+  background: transparent;
+  border: 0;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  color: var(--p-primary-color, #3b82f6);
+  font: inherit;
+  border-radius: 4px;
+}
+
+.fm-segment:hover {
+  background: var(--p-content-hover-background, rgba(0, 0, 0, 0.04));
+}
+
+.fm-current {
+  color: var(--p-text-color, #111);
+  font-weight: 500;
+  cursor: default;
+}
+
+.fm-sep {
+  color: var(--p-text-muted-color, #888);
+  font-size: 0.75rem;
+}

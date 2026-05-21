@@ -1,0 +1,41 @@
+<div class="fm-root">
+  <app-nav-toolbar
+    [canGoBack]="navigation.canGoBack()"
+    [canGoForward]="navigation.canGoForward()"
+    [canGoUp]="navigation.canGoUp()"
+    (back)="navigation.back()"
+    (forward)="navigation.forward()"
+    (up)="navigation.up()"
+    (refresh)="onRefresh()"
+  />
+  <app-path-bar
+    [segments]="navigation.pathSegments()"
+    [rootLabel]="config.libraryRootName"
+    (segmentClicked)="onSegmentClicked($event)"
+  />
+
+  <div class="fm-body">
+    <aside class="fm-tree-pane" aria-label="Folder tree">
+      <app-folder-tree
+        [nodes]="treeNodes()"
+        [currentFolderId]="navigation.currentFolderId()"
+        [loadingByParentId]="fileSystem.loadingByParentId()"
+        (nodeSelected)="onTreeNodeSelected($event)"
+        (nodeExpanded)="onTreeNodeExpanded($event)"
+        (nodeCollapsed)="onTreeNodeCollapsed($event)"
+      />
+    </aside>
+    <main class="fm-table-pane" aria-label="Folder contents">
+      <app-file-table
+        [folders]="navigation.currentFolderChildren().folders"
+        [files]="navigation.currentFolderChildren().files"
+        [loading]="isCurrentLoading()"
+        (itemDoubleClicked)="onItemDoubleClicked($event)"
+      />
+    </main>
+  </div>
+
+  <footer class="fm-status" aria-live="polite">
+    <span>{{ statusText() }}</span>
+  </footer>
+</div>
