@@ -18,16 +18,16 @@ import { FileSystemApi } from '../services/file-system-api';
 import { joinPath } from '../utils/path.utils';
 
 interface FileSystemState {
-  loadingByParentId: Record<string, boolean>;
+  folderIdsWithLoadingChildren: string[];
   errorByParentId: Record<string, string | undefined>;
-  loadedParentIds: string[];
+  folderIdsWithLoadedChildren: string[];
   rootId: string | null;
 }
 
 const initialState: FileSystemState = {
-  loadingByParentId: {},
+  folderIdsWithLoadingChildren: [],
   errorByParentId: {},
-  loadedParentIds: [],
+  folderIdsWithLoadedChildren: [],
   rootId: null,
 };
 
@@ -35,9 +35,16 @@ export const FileSystemStore = signalStore(
   withEntities<FileSystemNode>(),
   withState(initialState),
   withMethods((store, api = inject(FileSystemApi)) => {
-    const setLoading = (parentId: string, loading: boolean): void => {
+    const markLoading = (folderId: string): void => {
+      const ids = store.folderIdsWithLoadingChildren();
+      if (ids.includes(folderId)) return;
+      patchState(store, { folderIdsWithLoadingChildren: [...ids, folderId] });
+    };
+    const unmarkLoading = (folderId: string): void => {
       patchState(store, {
-        loadingByParentId: { ...store.loadingByParentId(), [parentId]: loading },
+        folderIdsWithLoadingChildren: store
+          .folderIdsWithLoadingChildren()
+          .filter((id) => id !== folderId),
       });
     };
     const setError = (parentId: string, error: string | undefined): void => {
@@ -46,15 +53,17 @@ export const FileSystemStore = signalStore(
       });
     };
     const markLoaded = (parentId: string): void => {
-      const loaded = store.loadedParentIds();
+      const loaded = store.folderIdsWithLoadedChildren();
       if (loaded.includes(parentId)) return;
-      patchState(store, { loadedParentIds: [...loaded, parentId] });
+      patchState(store, { folderIdsWithLoadedChildren: [...loaded, parentId] });
     };
     const unmarkLoaded = (...parentIds: Array<string | null | undefined>): void => {
       const ids = new Set(parentIds.filter((id): id is string => typeof id === 'string'));
       if (ids.size === 0) return;
       patchState(store, {
-        loadedParentIds: store.loadedParentIds().filter((id) => !ids.has(id)),
+        folderIdsWithLoadedChildren: store
+          .folderIdsWithLoadedChildren()
+          .filter((id) => !ids.has(id)),
       });
     };
 
@@ -65,7 +74,8 @@ export const FileSystemStore = signalStore(
     };
 
     const loadChildren = async (parentId: string): Promise<void> => {
-      setLoading(parentId, true);
+      if (store.folderIdsWithLoadingChildren().includes(parentId)) return;
+      markLoading(parentId);
       setError(parentId, undefined);
       try {
         const parent = store.entityMap()[parentId];
@@ -87,13 +97,15 @@ export const FileSystemStore = signalStore(
       } catch (e) {
         setError(parentId, errorMessage(e));
       } finally {
-        setLoading(parentId, false);
+        unmarkLoading(parentId);
       }
     };
 
     const invalidate = (parentId: string): void => {
       patchState(store, {
-        loadedParentIds: store.loadedParentIds().filter((id) => id !== parentId),
+        folderIdsWithLoadedChildren: store
+          .folderIdsWithLoadedChildren()
+          .filter((id) => id !== parentId),
       });
       setError(parentId, undefined);
     };

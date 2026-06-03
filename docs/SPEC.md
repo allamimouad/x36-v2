@@ -307,12 +307,12 @@ export abstract class FileSystemApi {
 
 **`FileSystemStore`** (entity cache, keyed by `id`):
 - Entities: `FileSystemNode`
-- State: `loadingByParentId: Record<string, boolean>`, `errorByParentId: Record<string, string | undefined>`, `loadedParentIds: Set<string>`
+- State: `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, string | undefined>`, `folderIdsWithLoadedChildren: string[]`
 - Methods: `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(id, newName)`, `delete(ids)`, `move(ids, targetParentId)`, `copy(ids, targetParentId)`, `invalidate(parentId)`, `upload(parentId, files)`
 - Depends on `FileSystemApi` (injected), not on a concrete class
 
 **`NavigationStore`**:
-- State: `currentFolderId: string | null`, `history: string[]`, `historyIndex: number`, `expandedTreeIds: Set<string>`, `selectedIds: Set<string>`, `focusedId: string | null`, `renamingId: string | null`
+- State: `currentFolderId: string | null`, `history: string[]`, `currentHistoryIndex: number`, `expandedTreeIds: Set<string>`, `selectedIds: Set<string>`, `focusedId: string | null`, `renamingId: string | null`
 - Computed: `canGoBack`, `canGoForward`, `canGoUp`, `pathSegments`, `parentId`, `currentFolderChildren`
 - Methods: `navigateTo(id)`, `back()`, `forward()`, `up()`, `expand(id)`, `collapse(id)`, `select(id, mode)`, `selectRange(id)`, `clearSelection()`, `startRename(id)`, `endRename()`
 

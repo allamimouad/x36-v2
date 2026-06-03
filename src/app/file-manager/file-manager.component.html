@@ -19,7 +19,7 @@
       <app-folder-tree
         [nodes]="treeNodes()"
         [currentFolderId]="navigation.currentFolderId()"
-        [loadingByParentId]="fileSystem.loadingByParentId()"
+        [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
         (nodeSelected)="onTreeNodeSelected($event)"
         (nodeExpanded)="onTreeNodeExpanded($event)"
         (nodeCollapsed)="onTreeNodeCollapsed($event)"

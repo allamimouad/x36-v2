@@ -2,10 +2,8 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  effect,
   HostListener,
   inject,
-  untracked,
 } from '@angular/core';
 import type { TreeNode } from 'primeng/api';
 import {
@@ -52,7 +50,7 @@ export class FileManagerComponent {
     if (!root || !isFolder(root)) return [];
     const all = this.fileSystem.entities();
     const expanded = this.navigation.expandedTreeIds();
-    const loaded = new Set(this.fileSystem.loadedParentIds());
+    const loaded = new Set(this.fileSystem.folderIdsWithLoadedChildren());
     const rootLabel = this.config.libraryRootName;
     const buildNode = (folder: FolderNode): TreeNode<FolderNode> => {
       const childFolders = all
@@ -76,7 +74,7 @@ export class FileManagerComponent {
   protected readonly isCurrentLoading = computed(() => {
     const id = this.navigation.currentFolderId();
     if (!id) return false;
-    return this.fileSystem.loadingByParentId()[id] === true;
+    return this.fileSystem.folderIdsWithLoadingChildren().includes(id);
   });
 
   protected readonly statusText = computed(() => {
@@ -89,21 +87,6 @@ export class FileManagerComponent {
 
   constructor() {
     void this.bootstrap();
-
-    // Auto-load children whenever current folder changes.
-    // CRITICAL: dispatch via queueMicrotask so the loadChildren()'s synchronous
-    // patchState calls (setLoading, setError) run OUTSIDE the effect's reactive
-    // run. Calling loadChildren synchronously here triggers an infinite re-fire
-    // loop in Angular's effect scheduler — verified by bisection.
-    effect(() => {
-      const id = this.navigation.currentFolderId();
-      if (!id) return;
-      const loaded = untracked(() => this.fileSystem.loadedParentIds());
-      if (loaded.includes(id)) return;
-      queueMicrotask(() => {
-        void this.fileSystem.loadChildren(id);
-      });
-    });
   }
 
   private async bootstrap(): Promise<void> {
@@ -122,12 +105,6 @@ export class FileManagerComponent {
 
   protected onTreeNodeExpanded(id: string): void {
     this.navigation.expand(id);
-    if (!this.fileSystem.loadedParentIds().includes(id)) {
-      // Same reason as the effect: defer the call.
-      queueMicrotask(() => {
-        void this.fileSystem.loadChildren(id);
-      });
-    }
   }
 
   protected onTreeNodeCollapsed(id: string): void {
@@ -145,10 +122,7 @@ export class FileManagerComponent {
   }
 
   protected onRefresh(): void {
-    const id = this.navigation.currentFolderId();
-    if (!id) return;
-    this.fileSystem.invalidate(id);
-    void this.fileSystem.loadChildren(id);
+    this.navigation.refresh();
   }
 
   @HostListener('document:keydown.F5', ['$event'])

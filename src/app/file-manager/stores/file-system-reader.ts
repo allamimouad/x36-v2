@@ -1,7 +1,24 @@
 import type { Signal } from '@angular/core';
 import type { FileSystemNode } from '../models/file-system-node.model';
 
+/**
+ * Read-and-load surface exposed to consumers (e.g. `NavigationStore`) that need
+ * to observe file-system state and trigger loads, but must NOT mutate it.
+ *
+ * `FileSystemStore` is the only implementation; the binding is wired via
+ * `{ provide: FileSystemReader, useExisting: FileSystemStore }` on the container.
+ * Mutation methods (`createFolder`, `rename`, `move`, `copy`, `delete`, `upload`)
+ * are intentionally absent so they remain type-level forbidden here.
+ */
 export abstract class FileSystemReader {
   abstract readonly entityMap: Signal<Record<string, FileSystemNode>>;
   abstract readonly entities: Signal<FileSystemNode[]>;
+  abstract readonly folderIdsWithLoadedChildren: Signal<string[]>;
+  abstract readonly folderIdsWithLoadingChildren: Signal<string[]>;
+
+  /** Fetch (or refetch) the children of `parentId` and cache them. */
+  abstract loadChildren(parentId: string): Promise<void>;
+
+  /** Drop the cached "loaded" flag for `parentId` so the next load refetches. */
+  abstract invalidate(parentId: string): void;
 }

@@ -43,7 +43,7 @@
 
 **Components (dumb)**
 - `components/folder-tree/folder-tree.component.ts`:
-  - Inputs: `nodes`, `expandedIds`, `currentFolderId`, `loadingByParentId`
+  - Inputs: `nodes`, `expandedIds`, `currentFolderId`, `folderIdsWithLoadingChildren`
   - Outputs: `nodeSelected`, `nodeExpanded`, `nodeCollapsed`
   - Uses `p-tree` with lazy loading
   - **No DnD, no context menu in Phase 1**

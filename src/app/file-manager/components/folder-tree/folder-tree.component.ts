@@ -14,7 +14,7 @@ import type { FolderNode } from '../../models/file-system-node.model';
 export class FolderTreeComponent {
   readonly nodes = input.required<TreeNode<FolderNode>[]>();
   readonly currentFolderId = input<string | null>(null);
-  readonly loadingByParentId = input<Record<string, boolean>>({});
+  readonly folderIdsWithLoadingChildren = input<string[]>([]);
 
   readonly nodeSelected = output<string>();
   readonly nodeExpanded = output<string>();
@@ -27,7 +27,7 @@ export class FolderTreeComponent {
   });
 
   protected readonly visibleNodes = computed<TreeNode<FolderNode>[]>(() =>
-    applyLoading(this.nodes(), this.loadingByParentId()),
+    applyLoading(this.nodes(), this.folderIdsWithLoadingChildren()),
   );
 
   protected handleExpand(event: TreeNodeExpandEvent): void {
@@ -48,13 +48,21 @@ export class FolderTreeComponent {
 
 function applyLoading(
   nodes: TreeNode<FolderNode>[],
-  loadingByParentId: Record<string, boolean>,
+  folderIdsWithLoadingChildren: string[],
+): TreeNode<FolderNode>[] {
+  const loadingIds = new Set(folderIdsWithLoadingChildren);
+  return applyLoadingState(nodes, loadingIds);
+}
+
+function applyLoadingState(
+  nodes: TreeNode<FolderNode>[],
+  loadingIds: ReadonlySet<string>,
 ): TreeNode<FolderNode>[] {
   return nodes.map((node) => ({
     ...node,
-    loading: typeof node.key === 'string' && loadingByParentId[node.key] === true,
+    loading: typeof node.key === 'string' && loadingIds.has(node.key),
     children: node.children
-      ? applyLoading(node.children as TreeNode<FolderNode>[], loadingByParentId)
+      ? applyLoadingState(node.children as TreeNode<FolderNode>[], loadingIds)
       : node.children,
   }));
 }

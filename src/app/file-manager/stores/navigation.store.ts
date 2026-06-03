@@ -21,7 +21,7 @@ export interface FolderChildren {
 interface NavigationState {
   currentFolderId: string | null;
   history: string[];
-  historyIndex: number;
+  currentHistoryIndex: number;
   expandedTreeIds: Set<string>;
   selectedIds: Set<string>;
   focusedId: string | null;
@@ -31,7 +31,7 @@ interface NavigationState {
 const initialState: NavigationState = {
   currentFolderId: null,
   history: [],
-  historyIndex: -1,
+  currentHistoryIndex: -1,
   expandedTreeIds: new Set<string>(),
   selectedIds: new Set<string>(),
   focusedId: null,
@@ -85,9 +85,11 @@ export const NavigationStore = signalStore(
       return { folders, files };
     });
 
-    const canGoBack = computed(() => store.historyIndex() > 0);
+    const canGoBack = computed(() => store.currentHistoryIndex() > 0);
     const canGoForward = computed(
-      () => store.historyIndex() >= 0 && store.historyIndex() < store.history().length - 1,
+      () =>
+        store.currentHistoryIndex() >= 0 &&
+        store.currentHistoryIndex() < store.history().length - 1,
     );
     const canGoUp = computed(() => parentId() !== null);
 
@@ -102,37 +104,58 @@ export const NavigationStore = signalStore(
     };
   }),
   withMethods((store) => {
+    const fsReader = inject(FileSystemReader);
+
+    /**
+     * Kick off loadChildren(id) unless the same folder is already loading.
+     * Fire-and-forget — errors land in fileSystemStore's per-folder error map.
+     */
+    const loadChildrenUnlessAlreadyLoading = (id: string): void => {
+      if (fsReader.folderIdsWithLoadingChildren().includes(id)) return;
+      void fsReader.loadChildren(id);
+    };
+
     const navigateTo = (id: string): void => {
-      if (store.currentFolderId() === id) return;
-      const idx = store.historyIndex();
+      if (store.currentFolderId() === id) {
+        loadChildrenUnlessAlreadyLoading(id);
+        return;
+      }
+      const idx = store.currentHistoryIndex();
       const truncated = store.history().slice(0, idx + 1);
       const newHistory = [...truncated, id];
       patchState(store, {
         currentFolderId: id,
         history: newHistory,
-        historyIndex: newHistory.length - 1,
+        currentHistoryIndex: newHistory.length - 1,
       });
+      loadChildrenUnlessAlreadyLoading(id);
     };
 
     const back = (): void => {
-      const idx = store.historyIndex();
+      const idx = store.currentHistoryIndex();
       if (idx <= 0) return;
       const newIdx = idx - 1;
+      const newId = store.history()[newIdx];
+      if (!newId) return;
       patchState(store, {
-        historyIndex: newIdx,
-        currentFolderId: store.history()[newIdx] ?? null,
+        currentHistoryIndex: newIdx,
+        currentFolderId: newId,
       });
+      loadChildrenUnlessAlreadyLoading(newId);
     };
 
     const forward = (): void => {
-      const idx = store.historyIndex();
+      const idx = store.currentHistoryIndex();
       const hist = store.history();
       if (idx < 0 || idx >= hist.length - 1) return;
       const newIdx = idx + 1;
+      const newId = hist[newIdx];
+      if (!newId) return;
       patchState(store, {
-        historyIndex: newIdx,
-        currentFolderId: hist[newIdx] ?? null,
+        currentHistoryIndex: newIdx,
+        currentFolderId: newId,
       });
+      loadChildrenUnlessAlreadyLoading(newId);
     };
 
     const up = (): void => {
@@ -141,12 +164,22 @@ export const NavigationStore = signalStore(
       navigateTo(parent);
     };
 
+    const refresh = (): void => {
+      const id = store.currentFolderId();
+      if (!id) return;
+      if (fsReader.folderIdsWithLoadingChildren().includes(id)) return;
+      fsReader.invalidate(id);
+      void fsReader.loadChildren(id);
+    };
+
     const expand = (id: string): void => {
       const set = store.expandedTreeIds();
-      if (set.has(id)) return;
-      const next = new Set(set);
-      next.add(id);
-      patchState(store, { expandedTreeIds: next });
+      if (!set.has(id)) {
+        const next = new Set(set);
+        next.add(id);
+        patchState(store, { expandedTreeIds: next });
+      }
+      loadChildrenUnlessAlreadyLoading(id);
     };
 
     const collapse = (id: string): void => {
@@ -174,6 +207,7 @@ export const NavigationStore = signalStore(
       back,
       forward,
       up,
+      refresh,
       expand,
       collapse,
       setExpanded,
