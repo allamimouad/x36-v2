@@ -22,7 +22,7 @@
 
 **API layer**
 - `services/file-system-api.ts` — abstract class per SPEC §5
-- `services/file-system-api.ts` — all 8 methods signed, bodies empty (concrete classes implement)
+- `services/file-system-api.ts` — all methods signed, bodies empty (concrete classes implement); every operation receives `projectId`
 - `services/mock-file-system-api.ts` — full implementation per SPEC §6, including:
   - In-memory `Map<string, FileSystemNode>`
   - Seed data loading
@@ -30,14 +30,14 @@
   - Error simulation (rate configurable, defaults ON)
   - Constraint enforcement (name, descendant, collision, not-found)
   - Deep clone on return
-  - **For Phase 1, only `listChildren`, `getRoot` need to be correct**. Other methods must exist with correct signatures but can be stubbed to throw "Not implemented in Phase 1".
+  - **For Phase 1, only `listDocuments(projectId, parentId?)` needs to be correct**. It returns the current folder plus direct files/folders; omitted `parentId` means root.
 - `services/mock-seed.ts` — realistic seed: 3 top-level folders, each with 2 levels of subfolders, mix of files
 - `services/sharepoint-file-system-api.ts` — stub per SPEC §7 (all methods throw)
 - `tokens/mock-config.token.ts` — `MOCK_CONFIG` InjectionToken
 - `tokens/file-manager-config.token.ts` — `FILE_MANAGER_CONFIG` InjectionToken
 
 **Stores**
-- `stores/file-system.store.ts` — Signal Store with `withEntities<FileSystemNode>` keyed by `id`. Phase 1 methods: `loadChildren(parentId)`, `invalidate(parentId)`. Other methods exist as placeholders returning `Promise.reject(new Error('Phase 2'))`.
+- `stores/file-system.store.ts` — Signal Store with `withEntities<FileSystemNode>` keyed by `id`. Phase 1 methods: `initialize(projectId)`, `loadChildren(parentId)`, `invalidate(parentId)`. Other methods exist as placeholders returning `Promise.reject(new Error('Phase 2'))`.
 - `stores/navigation.store.ts` — full implementation: state, computed, `navigateTo`, `back`, `forward`, `up`, `expand`, `collapse`. Selection methods can be stubs (Phase 3).
 - `services/clipboard.service.ts` — plain signal service with clipboard ids/mode and `cut`, `copy`, `clear`. Paste orchestration deferred to Phase 3.
 
@@ -63,11 +63,12 @@
 
 **Container**
 - `file-manager.component.ts`:
+  - Required `projectId` input supplied by its host
   - Provides all three stores + `MockFileSystemApi` as `FileSystemApi`
   - Provides default `MOCK_CONFIG` and `FILE_MANAGER_CONFIG`
   - Builds tree node structure from `FileSystemStore` entities (computed)
   - Wires child outputs to store methods
-  - Subscribes to `navigationStore.currentFolderId` with an `effect` that calls `fileSystemStore.loadChildren(id)` on change
+  - Initializes root metadata and children in one listing request, then navigation actions trigger later child loads
   - Template: simple flex layout (tree left, table right, toolbar + path bar on top)
 
 **Testing**

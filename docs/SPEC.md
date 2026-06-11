@@ -36,7 +36,7 @@ Stores **MUST NOT know about SharePoint**. They depend on an abstract `FileSyste
 - `MockFileSystemApi` — in-memory, used for dev and tests (default provider)
 - `SharePointFileSystemApi` — stubbed now, implemented later on another machine
 
-The interface uses generic terminology (`id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. `id` is a stable, opaque UUID for the entity's lifetime. `path` is the mutable, human-readable backend path. In the mock, `id` is a `crypto.randomUUID()` value; in the SharePoint adapter, `id = UniqueId` (the GUID SharePoint exposes per list item) and `path = ServerRelativeUrl`. Operations take full `FolderNode` / `FileSystemNode` arguments so each implementation can read whatever fields it needs (mock uses `id`; SharePoint adapter uses `id` for source addressing and `parent.path` for URL construction). No internal id↔url mapping cache.
+The interface uses generic terminology (`projectId`, `id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. `projectId` scopes every operation to one project's document library. `id` is a stable, opaque UUID for the entity's lifetime. `path` is the mutable, human-readable backend path. In the mock, `id` is a `crypto.randomUUID()` value; in the SharePoint adapter, `id = UniqueId` (the GUID SharePoint exposes per list item) and `path = ServerRelativeUrl`. Retrieval uses one `listDocuments(projectId, parentId?)` operation that returns the current folder and its direct children; omitting `parentId` means the project library root. Mutations take full `FolderNode` / `FileSystemNode` arguments so each implementation can read whatever fields it needs. No internal id↔url mapping cache.
 
 ### 2.3 Signal Store for entities, plain signals for simple state
 `FileSystemStore` uses `withEntities` because folders and files are viewed in multiple places (tree + table) and must stay in sync. `NavigationStore` uses Signal Store because it owns navigation history, expansion, focus, selection, rename state, and file-system-derived computeds. Small command-style state uses plain signal services; `ClipboardService` is a plain injectable service with `signal()` / `computed()`, not a Signal Store. Simple component-local state stays as plain `signal()` inside the component — don't over-store.
@@ -208,32 +208,31 @@ export function isFolder(n: FileSystemNode): n is FolderNode {
 ```ts
 // services/file-system-api.ts
 export abstract class FileSystemApi {
-  /** Get root folder (always available). */
-  abstract getRoot(): Promise<FolderNode>;
-
-  /** List direct children of a folder. */
-  abstract listChildren(folder: FolderNode): Promise<{
+  /** List the project root, or `parentId` folder, with its direct children. */
+  abstract listDocuments(projectId: string, parentId?: string): Promise<{
+    currentFolder: FolderNode;
     folders: FolderNode[];
     files: FileNode[];
   }>;
 
   /** Create a new folder under `parent`. Throws on name collision. */
-  abstract createFolder(parent: FolderNode, name: string): Promise<FolderNode>;
+  abstract createFolder(projectId: string, parent: FolderNode, name: string): Promise<FolderNode>;
 
   /** Rename a folder or file. Throws on name collision or invalid name. */
-  abstract rename(node: FileSystemNode, newName: string): Promise<FileSystemNode>;
+  abstract rename(projectId: string, node: FileSystemNode, newName: string): Promise<FileSystemNode>;
 
   /** Move a folder or file to a new parent. Throws on descendant move, name collision. */
-  abstract move(node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode>;
+  abstract move(projectId: string, node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode>;
 
   /** Copy a folder (recursive) or file to a new parent. */
-  abstract copy(node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode>;
+  abstract copy(projectId: string, node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode>;
 
   /** Delete a folder (recursive) or file. */
-  abstract delete(node: FileSystemNode): Promise<void>;
+  abstract delete(projectId: string, node: FileSystemNode): Promise<void>;
 
   /** Upload a file. Emits progress (0-100). Returns the created FileNode. */
   abstract upload(
+    projectId: string,
     parent: FolderNode,
     file: File,
     onProgress: (percent: number) => void,
@@ -242,7 +241,7 @@ export abstract class FileSystemApi {
 }
 ```
 
-**Rationale for passing nodes (not primitive ids):** the SharePoint adapter will be implemented as a thin shim over an auto-generated client built from the SharePoint OpenAPI spec — that client's signatures are dictated externally. Passing full `FolderNode` / `FileSystemNode` values gives the adapter all the fields it might need (`id` for `GetFolderById`, `path` for URL construction, `name`, etc.) so it can map onto whatever the generated client expects, without our API churning every time the wire spec adds a field. The mock just reads `arg.id` to look up its canonical copy.
+**Rationale for project scope and passing nodes:** `projectId` lets the future backend resolve and authorize the project's document library without exposing SharePoint identifiers to the component. Passing full `FolderNode` / `FileSystemNode` values gives adapters the fields they need for write operations. The mock ignores `projectId` and reads `arg.id` to look up its canonical copy.
 
 **Rules for implementations**:
 - All errors throw typed `FileSystemError` with a `code`:
@@ -307,8 +306,8 @@ export abstract class FileSystemApi {
 
 **`FileSystemStore`** (entity cache, keyed by `id`):
 - Entities: `FileSystemNode`
-- State: `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, string | undefined>`, `folderIdsWithLoadedChildren: string[]`
-- Methods: `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(id, newName)`, `delete(ids)`, `move(ids, targetParentId)`, `copy(ids, targetParentId)`, `invalidate(parentId)`, `upload(parentId, files)`
+- State: `projectId: string | null`, `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, string | undefined>`, `folderIdsWithLoadedChildren: string[]`
+- Methods: `initialize(projectId)`, `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(id, newName)`, `delete(ids)`, `move(ids, targetParentId)`, `copy(ids, targetParentId)`, `invalidate(parentId)`, `upload(parentId, files)`
 - Depends on `FileSystemApi` (injected), not on a concrete class
 
 **`NavigationStore`**:

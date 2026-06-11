@@ -131,6 +131,15 @@ export const NavigationStore = signalStore(
       loadChildrenUnlessAlreadyLoading(id);
     };
 
+    const initialize = (rootId: string): void => {
+      patchState(store, {
+        currentFolderId: rootId,
+        history: [rootId],
+        currentHistoryIndex: 0,
+        expandedTreeIds: new Set([rootId]),
+      });
+    };
+
     const back = (): void => {
       const idx = store.currentHistoryIndex();
       if (idx <= 0) return;
@@ -204,6 +213,7 @@ export const NavigationStore = signalStore(
 
     return {
       navigateTo,
+      initialize,
       back,
       forward,
       up,

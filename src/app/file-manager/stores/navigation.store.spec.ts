@@ -35,9 +35,8 @@ describe('NavigationStore', () => {
     });
     fs = TestBed.inject(FileSystemStore);
     nav = TestBed.inject(NavigationStore);
-    const root = await fs.loadRoot();
+    const root = await fs.initialize('test-project');
     rootId = root.id;
-    await fs.loadChildren(rootId);
     docsId = byPath('/Documents');
     sharedId = byPath('/Shared');
   });
@@ -68,6 +67,15 @@ describe('NavigationStore', () => {
     expect(nav.currentFolderId()).toBe(rootId);
     expect(nav.history()).toEqual([rootId]);
     expect(nav.currentHistoryIndex()).toBe(0);
+  });
+
+  it('initialize sets root navigation state without triggering another load', () => {
+    nav.initialize(rootId);
+
+    expect(nav.currentFolderId()).toBe(rootId);
+    expect(nav.history()).toEqual([rootId]);
+    expect(nav.currentHistoryIndex()).toBe(0);
+    expect(nav.expandedTreeIds().has(rootId)).toBe(true);
   });
 
   it('navigateTo to the same id is a no-op', () => {
@@ -222,6 +230,15 @@ describe('NavigationStore load triggering', () => {
     nav.navigateTo(fakeDocs.id);
 
     expect(reader.loadChildrenSpy).toHaveBeenCalledOnceWith(fakeDocs.id);
+  });
+
+  it('initialize sets root navigation state without triggering a load', () => {
+    nav.initialize(fakeRoot.id);
+
+    expect(nav.currentFolderId()).toBe(fakeRoot.id);
+    expect(nav.history()).toEqual([fakeRoot.id]);
+    expect(nav.expandedTreeIds().has(fakeRoot.id)).toBe(true);
+    expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
   });
 
   it('navigateTo reloads when the target already has cached children', () => {

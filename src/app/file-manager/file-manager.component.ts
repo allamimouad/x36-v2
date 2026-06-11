@@ -4,6 +4,8 @@ import {
   computed,
   HostListener,
   inject,
+  input,
+  OnInit,
 } from '@angular/core';
 import type { TreeNode } from 'primeng/api';
 import {
@@ -38,7 +40,9 @@ import { NavToolbarComponent } from './components/nav-toolbar/nav-toolbar.compon
   templateUrl: './file-manager.component.html',
   styleUrl: './file-manager.component.scss',
 })
-export class FileManagerComponent {
+export class FileManagerComponent implements OnInit {
+  readonly projectId = input.required<string>();
+
   protected readonly fileSystem = inject(FileSystemStore);
   protected readonly navigation = inject(NavigationStore);
   protected readonly config = inject(FILE_MANAGER_CONFIG);
@@ -85,15 +89,14 @@ export class FileManagerComponent {
     return `${folders.length} folder${folders.length === 1 ? '' : 's'}, ${files.length} file${files.length === 1 ? '' : 's'} (${total} total)`;
   });
 
-  constructor() {
-    void this.bootstrap();
+  ngOnInit(): void {
+    void this.bootstrap(this.projectId());
   }
 
-  private async bootstrap(): Promise<void> {
+  private async bootstrap(projectId: string): Promise<void> {
     try {
-      const root = await this.fileSystem.loadRoot();
-      this.navigation.expand(root.id);
-      this.navigation.navigateTo(root.id);
+      const root = await this.fileSystem.initialize(projectId);
+      this.navigation.initialize(root.id);
     } catch (e) {
       console.error('[file-manager] bootstrap failed', e);
     }

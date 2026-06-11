@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import type { DocumentListing } from '../models/document-listing.model';
 import { FileSystemError } from '../models/file-system-error.model';
 import {
   isFolder,
@@ -19,21 +20,9 @@ export class MockFileSystemApi extends FileSystemApi {
   private readonly nodes: Map<string, FileSystemNode> = this.seed.nodes;
   private readonly rootId: string = this.seed.rootId;
 
-  override async getRoot(): Promise<FolderNode> {
+  override async listDocuments(_projectId: string, parentId?: string): Promise<DocumentListing> {
     await this.delay('read');
-    const root = this.nodes.get(this.rootId);
-    if (!root || !isFolder(root)) {
-      throw new FileSystemError('not-found', 'Root folder is missing');
-    }
-    return clone(root);
-  }
-
-  override async listChildren(folder: FolderNode): Promise<{
-    folders: FolderNode[];
-    files: FileNode[];
-  }> {
-    await this.delay('read');
-    const parent = this.requireFolder(folder.id);
+    const parent = this.requireFolder(parentId ?? this.rootId);
     const folders: FolderNode[] = [];
     const files: FileNode[] = [];
     for (const node of this.nodes.values()) {
@@ -43,10 +32,14 @@ export class MockFileSystemApi extends FileSystemApi {
     }
     folders.sort((a, b) => a.name.localeCompare(b.name));
     files.sort((a, b) => a.name.localeCompare(b.name));
-    return { folders, files };
+    return { currentFolder: clone(parent), folders, files };
   }
 
-  override async createFolder(parent: FolderNode, name: string): Promise<FolderNode> {
+  override async createFolder(
+    _projectId: string,
+    parent: FolderNode,
+    name: string,
+  ): Promise<FolderNode> {
     await this.delay('write');
     this.maybeFail();
     const parentNode = this.requireFolder(parent.id);
@@ -69,7 +62,11 @@ export class MockFileSystemApi extends FileSystemApi {
     return clone(folder);
   }
 
-  override async rename(node: FileSystemNode, newName: string): Promise<FileSystemNode> {
+  override async rename(
+    _projectId: string,
+    node: FileSystemNode,
+    newName: string,
+  ): Promise<FileSystemNode> {
     await this.delay('write');
     this.maybeFail();
     const current = this.requireNode(node.id);
@@ -87,7 +84,11 @@ export class MockFileSystemApi extends FileSystemApi {
     );
   }
 
-  override async move(node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode> {
+  override async move(
+    _projectId: string,
+    node: FileSystemNode,
+    newParent: FolderNode,
+  ): Promise<FileSystemNode> {
     await this.delay('write');
     this.maybeFail();
     const current = this.requireNode(node.id);
@@ -115,7 +116,11 @@ export class MockFileSystemApi extends FileSystemApi {
     return moved;
   }
 
-  override async copy(node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode> {
+  override async copy(
+    _projectId: string,
+    node: FileSystemNode,
+    newParent: FolderNode,
+  ): Promise<FileSystemNode> {
     await this.delay('write');
     this.maybeFail();
     const source = this.requireNode(node.id);
@@ -126,7 +131,7 @@ export class MockFileSystemApi extends FileSystemApi {
     return clone(copied);
   }
 
-  override async delete(node: FileSystemNode): Promise<void> {
+  override async delete(_projectId: string, node: FileSystemNode): Promise<void> {
     await this.delay('write');
     this.maybeFail();
     const current = this.requireNode(node.id);
@@ -142,6 +147,7 @@ export class MockFileSystemApi extends FileSystemApi {
   }
 
   override upload(
+    _projectId: string,
     _parent: FolderNode,
     _file: File,
     _onProgress: (percent: number) => void,

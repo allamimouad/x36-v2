@@ -35,16 +35,16 @@
  *   `node.path` = `ServerRelativeUrl` (mutable; used as the URL fragment for
  *   write operations).
  *
- *   Since every method here takes the full `FolderNode` / `FileSystemNode`, the
- *   adapter reads whatever the generated client needs (`node.id`, `node.path`,
- *   `node.name`, `parent.path`, `parent.id`, etc.) directly from the arguments.
- *   No id↔url cache, no mapping service, no extra HTTP lookups.
+ *   Every operation is scoped by `projectId`. The adapter/backend resolves that
+ *   project to its SharePoint document library and verifies supplied node ids
+ *   belong to it. Full node arguments provide fields needed by write operations.
  *
  * Endpoints per method (logical — actual calls go through the generated client)
- *   getRoot         GET    /_api/web/GetFolderByServerRelativeUrl('<libRoot>')
- *   listChildren    GET    /_api/web/GetFolderById('<folder.id>')
+ *   listDocuments   GET    project library root when parentId is omitted,
+ *                          otherwise /_api/web/GetFolderById('<parentId>')
  *                            ?$expand=Folders,Files
- *                            &$select=Folders/UniqueId,Folders/Name,
+ *                            &$select=UniqueId,Name,ServerRelativeUrl,ItemCount,
+ *                                     Folders/UniqueId,Folders/Name,
  *                                     Folders/ServerRelativeUrl,Folders/ItemCount,
  *                                     Folders/TimeCreated,Folders/TimeLastModified,
  *                                     Files/UniqueId,Files/Name,
@@ -94,6 +94,7 @@
  */
 
 import { Injectable } from '@angular/core';
+import type { DocumentListing } from '../models/document-listing.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { FileSystemApi } from './file-system-api';
 
@@ -101,19 +102,11 @@ const PHASE6 = 'TODO: implement in Phase 6 — see PHASES.md';
 
 @Injectable()
 export class SharePointFileSystemApi extends FileSystemApi {
-  /** GET /_api/web/GetFolderByServerRelativeUrl('<libraryRoot>')?$select=UniqueId,... */
-  override getRoot(): Promise<FolderNode> {
-    throw new Error(PHASE6);
-  }
-
   /**
-   * GET /_api/web/GetFolderById('<folder.id>')?$expand=Folders,Files
-   * Map response into FolderNode[]/FileNode[]; id = UniqueId, path = ServerRelativeUrl.
+   * Resolve the project's library root when `parentId` is absent; otherwise get the folder by id.
+   * Use `$select` + `$expand=Folders,Files` and map the result into a DocumentListing.
    */
-  override listChildren(_folder: FolderNode): Promise<{
-    folders: FolderNode[];
-    files: FileNode[];
-  }> {
+  override listDocuments(_projectId: string, _parentId?: string): Promise<DocumentListing> {
     throw new Error(PHASE6);
   }
 
@@ -121,7 +114,11 @@ export class SharePointFileSystemApi extends FileSystemApi {
    * POST /_api/web/Folders with ServerRelativeUrl=`${parent.path}/${name}`.
    * Extract UniqueId from the response to set the new FolderNode.id.
    */
-  override createFolder(_parent: FolderNode, _name: string): Promise<FolderNode> {
+  override createFolder(
+    _projectId: string,
+    _parent: FolderNode,
+    _name: string,
+  ): Promise<FolderNode> {
     throw new Error(PHASE6);
   }
 
@@ -129,7 +126,11 @@ export class SharePointFileSystemApi extends FileSystemApi {
    * POST .../GetFolderById('<node.id>')/MoveTo (or GetFileById)
    * with newurl = `${parentOf(node.path)}/${newName}`.
    */
-  override rename(_node: FileSystemNode, _newName: string): Promise<FileSystemNode> {
+  override rename(
+    _projectId: string,
+    _node: FileSystemNode,
+    _newName: string,
+  ): Promise<FileSystemNode> {
     throw new Error(PHASE6);
   }
 
@@ -138,7 +139,11 @@ export class SharePointFileSystemApi extends FileSystemApi {
    * Returns the moved node — UniqueId stays the same, only ServerRelativeUrl changes.
    * Set parentId: newParent.id on the returned node.
    */
-  override move(_node: FileSystemNode, _newParent: FolderNode): Promise<FileSystemNode> {
+  override move(
+    _projectId: string,
+    _node: FileSystemNode,
+    _newParent: FolderNode,
+  ): Promise<FileSystemNode> {
     throw new Error(PHASE6);
   }
 
@@ -146,12 +151,16 @@ export class SharePointFileSystemApi extends FileSystemApi {
    * POST .../GetFileById('<node.id>')/CopyTo for files; recursive iteration for folders.
    * Response gives a new UniqueId for the copy.
    */
-  override copy(_node: FileSystemNode, _newParent: FolderNode): Promise<FileSystemNode> {
+  override copy(
+    _projectId: string,
+    _node: FileSystemNode,
+    _newParent: FolderNode,
+  ): Promise<FileSystemNode> {
     throw new Error(PHASE6);
   }
 
   /** POST .../GetFolderById('<node.id>') (or GetFileById) with X-HTTP-Method: DELETE. */
-  override delete(_node: FileSystemNode): Promise<void> {
+  override delete(_projectId: string, _node: FileSystemNode): Promise<void> {
     throw new Error(PHASE6);
   }
 
@@ -162,6 +171,7 @@ export class SharePointFileSystemApi extends FileSystemApi {
    * Honor `signal` (abort the in-flight chunk + StartUpload session).
    */
   override upload(
+    _projectId: string,
     _parent: FolderNode,
     _file: File,
     _onProgress: (percent: number) => void,
