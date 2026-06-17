@@ -18,7 +18,7 @@
 - **PrimeNG** (latest Angular-20-compatible version)
 - **PrimeIcons**
 - **@ngrx/signals** (NgRx Signal Store) for state management
-- **RxJS** only where needed (HTTP, `rxMethod`)
+- **RxJS** for the `FileSystemApi` contract (every method returns `Observable`, matching the HttpClient-native SharePoint adapter), plus HTTP and `rxMethod`. Stores that prefer async/await bridge with `firstValueFrom` at the call site.
 - **Angular Signals** API throughout: `signal()`, `computed()`, `effect()`, `input()`, `output()`, `model()`
 - **New control flow**: `@if`, `@for`, `@switch`, `@let`
 - **`inject()`** everywhere — no constructor injection
@@ -207,28 +207,30 @@ export function isFolder(n: FileSystemNode): n is FolderNode {
 
 ```ts
 // services/file-system-api.ts
+import type { Observable } from 'rxjs';
+
 export abstract class FileSystemApi {
   /** List the project root, or `parentId` folder, with its direct children. */
-  abstract listDocuments(projectId: string, parentId?: string): Promise<{
+  abstract listDocuments(projectId: string, parentId?: string): Observable<{
     currentFolder: FolderNode;
     folders: FolderNode[];
     files: FileNode[];
   }>;
 
   /** Create a new folder under `parent`. Throws on name collision. */
-  abstract createFolder(projectId: string, parent: FolderNode, name: string): Promise<FolderNode>;
+  abstract createFolder(projectId: string, parent: FolderNode, name: string): Observable<FolderNode>;
 
   /** Rename a folder or file. Throws on name collision or invalid name. */
-  abstract rename(projectId: string, node: FileSystemNode, newName: string): Promise<FileSystemNode>;
+  abstract rename(projectId: string, node: FileSystemNode, newName: string): Observable<FileSystemNode>;
 
   /** Move a folder or file to a new parent. Throws on descendant move, name collision. */
-  abstract move(projectId: string, node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode>;
+  abstract move(projectId: string, node: FileSystemNode, newParent: FolderNode): Observable<FileSystemNode>;
 
   /** Copy a folder (recursive) or file to a new parent. */
-  abstract copy(projectId: string, node: FileSystemNode, newParent: FolderNode): Promise<FileSystemNode>;
+  abstract copy(projectId: string, node: FileSystemNode, newParent: FolderNode): Observable<FileSystemNode>;
 
   /** Delete a folder (recursive) or file. */
-  abstract delete(projectId: string, node: FileSystemNode): Promise<void>;
+  abstract delete(projectId: string, node: FileSystemNode): Observable<void>;
 
   /** Upload a file. Emits progress (0-100). Returns the created FileNode. */
   abstract upload(
@@ -237,15 +239,18 @@ export abstract class FileSystemApi {
     file: File,
     onProgress: (percent: number) => void,
     signal?: AbortSignal,
-  ): Promise<FileNode>;
+  ): Observable<FileNode>;
 }
 ```
+
+**Rationale for `Observable` over `Promise`:** the real adapter is built on Angular `HttpClient`, which is Observable-native. An `Observable` can be consumed as a single-shot result via `firstValueFrom` for the current HTTP-style request/response calls, while a `Promise` contract could not later be widened to expose cancellation or multi-emission. Keeping the contract as the superset preserves the option to add read-cancellation (e.g. `switchMap` over `listDocuments` on rapid navigation) and progress-streams without a future API refactor. Stores that prefer linear async/await (e.g. optimistic apply → await → rollback) bridge with `firstValueFrom` at the call site; the store's own public methods may remain Promise-based.
 
 **Rationale for project scope and passing nodes:** `projectId` lets the future backend resolve and authorize the project's document library without exposing SharePoint identifiers to the component. Passing full `FolderNode` / `FileSystemNode` values gives adapters the fields they need for write operations. The mock ignores `projectId` and reads `arg.id` to look up its canonical copy.
 
 **Rules for implementations**:
-- All errors throw typed `FileSystemError` with a `code`:
-  `'not-found' | 'name-collision' | 'invalid-name' | 'descendant-move' | 'permission-denied' | 'network' | 'cancelled' | 'unknown'`
+- All errors are delivered on the Observable's **error channel** as a typed `FileSystemError` carrying a `code`:
+  `'not-found' | 'name-collision' | 'invalid-name' | 'descendant-move' | 'permission-denied' | 'network' | 'cancelled' | 'unknown'`.
+  Emit them via `throwError(() => new FileSystemError(...))`, or by throwing inside a `map`/operator so RxJS converts the throw into an error notification — do **not** `throw` synchronously from the method body (that fails at call time, before any subscriber attaches). The per-method "Throws on …" notes above are shorthand for this error notification. The real `HttpClient` adapter maps transport/SharePoint failures with `catchError` into a `FileSystemError`.
 - All returned objects are deep-copied (caller cannot mutate internal state)
 - `upload` must respect `AbortSignal` for cancellation
 

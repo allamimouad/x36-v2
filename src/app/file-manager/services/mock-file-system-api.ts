@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { type Observable, map, throwError, timer } from 'rxjs';
 import type { DocumentListing } from '../models/document-listing.model';
 import { FileSystemError } from '../models/file-system-error.model';
 import {
@@ -20,130 +21,131 @@ export class MockFileSystemApi extends FileSystemApi {
   private readonly nodes: Map<string, FileSystemNode> = this.seed.nodes;
   private readonly rootId: string = this.seed.rootId;
 
-  override async listDocuments(_projectId: string, parentId?: string): Promise<DocumentListing> {
-    await this.delay('read');
-    const parent = this.requireFolder(parentId ?? this.rootId);
-    const folders: FolderNode[] = [];
-    const files: FileNode[] = [];
-    for (const node of this.nodes.values()) {
-      if (node.parentId !== parent.id) continue;
-      if (isFolder(node)) folders.push(clone(node));
-      else files.push(clone(node));
-    }
-    folders.sort((a, b) => a.name.localeCompare(b.name));
-    files.sort((a, b) => a.name.localeCompare(b.name));
-    return { currentFolder: clone(parent), folders, files };
+  override listDocuments(_projectId: string, parentId?: string): Observable<DocumentListing> {
+    return this.read(() => {
+      const parent = this.requireFolder(parentId ?? this.rootId);
+      const folders: FolderNode[] = [];
+      const files: FileNode[] = [];
+      for (const node of this.nodes.values()) {
+        if (node.parentId !== parent.id) continue;
+        if (isFolder(node)) folders.push(clone(node));
+        else files.push(clone(node));
+      }
+      folders.sort((a, b) => a.name.localeCompare(b.name));
+      files.sort((a, b) => a.name.localeCompare(b.name));
+      return { currentFolder: clone(parent), folders, files };
+    });
   }
 
-  override async createFolder(
+  override createFolder(
     _projectId: string,
     parent: FolderNode,
     name: string,
-  ): Promise<FolderNode> {
-    await this.delay('write');
-    this.maybeFail();
-    const parentNode = this.requireFolder(parent.id);
-    this.assertValidName(name);
-    this.assertNameAvailable(parentNode.id, name);
+  ): Observable<FolderNode> {
+    return this.write(() => {
+      const parentNode = this.requireFolder(parent.id);
+      this.assertValidName(name);
+      this.assertNameAvailable(parentNode.id, name);
 
-    const now = nowIso();
-    const folder: FolderNode = {
-      kind: 'folder',
-      id: crypto.randomUUID(),
-      path: joinPath(parentNode.path, name.trim()),
-      name: name.trim(),
-      parentId: parentNode.id,
-      itemCount: 0,
-      createdAt: now,
-      modifiedAt: now,
-    };
-    this.nodes.set(folder.id, folder);
-    this.touchParentCounts(parentNode.id);
-    return clone(folder);
+      const now = nowIso();
+      const folder: FolderNode = {
+        kind: 'folder',
+        id: crypto.randomUUID(),
+        path: joinPath(parentNode.path, name.trim()),
+        name: name.trim(),
+        parentId: parentNode.id,
+        itemCount: 0,
+        createdAt: now,
+        modifiedAt: now,
+      };
+      this.nodes.set(folder.id, folder);
+      this.touchParentCounts(parentNode.id);
+      return clone(folder);
+    });
   }
 
-  override async rename(
+  override rename(
     _projectId: string,
     node: FileSystemNode,
     newName: string,
-  ): Promise<FileSystemNode> {
-    await this.delay('write');
-    this.maybeFail();
-    const current = this.requireNode(node.id);
-    if (current.parentId === null) {
-      throw new FileSystemError('invalid-name', 'Root folder cannot be renamed');
-    }
-    this.assertValidName(newName);
-    this.assertNameAvailable(current.parentId, newName, current.id);
-    const parent = this.requireFolder(current.parentId);
-    return this.repathNode(
-      current.id,
-      current.parentId,
-      joinPath(parent.path, newName.trim()),
-      newName.trim(),
-    );
-  }
-
-  override async move(
-    _projectId: string,
-    node: FileSystemNode,
-    newParent: FolderNode,
-  ): Promise<FileSystemNode> {
-    await this.delay('write');
-    this.maybeFail();
-    const current = this.requireNode(node.id);
-    const target = this.requireFolder(newParent.id);
-    if (current.parentId === null) {
-      throw new FileSystemError('invalid-name', 'Root folder cannot be moved');
-    }
-    if (current.parentId === target.id) return clone(current);
-    if (isFolder(current) && this.isAncestorOrSelf(current.id, target.id)) {
-      throw new FileSystemError(
-        'descendant-move',
-        'Cannot move a folder into itself or a descendant',
+  ): Observable<FileSystemNode> {
+    return this.write(() => {
+      const current = this.requireNode(node.id);
+      if (current.parentId === null) {
+        throw new FileSystemError('invalid-name', 'Root folder cannot be renamed');
+      }
+      this.assertValidName(newName);
+      this.assertNameAvailable(current.parentId, newName, current.id);
+      const parent = this.requireFolder(current.parentId);
+      return this.repathNode(
+        current.id,
+        current.parentId,
+        joinPath(parent.path, newName.trim()),
+        newName.trim(),
       );
-    }
-    this.assertNameAvailable(target.id, current.name, current.id);
-    const oldParentId = current.parentId;
-    const moved = this.repathNode(
-      current.id,
-      target.id,
-      joinPath(target.path, current.name),
-      current.name,
-    );
-    this.touchParentCounts(oldParentId);
-    this.touchParentCounts(target.id);
-    return moved;
+    });
   }
 
-  override async copy(
+  override move(
     _projectId: string,
     node: FileSystemNode,
     newParent: FolderNode,
-  ): Promise<FileSystemNode> {
-    await this.delay('write');
-    this.maybeFail();
-    const source = this.requireNode(node.id);
-    const target = this.requireFolder(newParent.id);
-    this.assertNameAvailable(target.id, source.name);
-    const copied = this.copyRecursive(source, target.id, target.path, source.name);
-    this.touchParentCounts(target.id);
-    return clone(copied);
+  ): Observable<FileSystemNode> {
+    return this.write(() => {
+      const current = this.requireNode(node.id);
+      const target = this.requireFolder(newParent.id);
+      if (current.parentId === null) {
+        throw new FileSystemError('invalid-name', 'Root folder cannot be moved');
+      }
+      if (current.parentId === target.id) return clone(current);
+      if (isFolder(current) && this.isAncestorOrSelf(current.id, target.id)) {
+        throw new FileSystemError(
+          'descendant-move',
+          'Cannot move a folder into itself or a descendant',
+        );
+      }
+      this.assertNameAvailable(target.id, current.name, current.id);
+      const oldParentId = current.parentId;
+      const moved = this.repathNode(
+        current.id,
+        target.id,
+        joinPath(target.path, current.name),
+        current.name,
+      );
+      this.touchParentCounts(oldParentId);
+      this.touchParentCounts(target.id);
+      return moved;
+    });
   }
 
-  override async delete(_projectId: string, node: FileSystemNode): Promise<void> {
-    await this.delay('write');
-    this.maybeFail();
-    const current = this.requireNode(node.id);
-    if (current.parentId === null) {
-      throw new FileSystemError('permission-denied', 'Root folder cannot be deleted');
-    }
-    const parentId = current.parentId;
-    const ids = isFolder(current) ? this.collectDescendantIds(current.id) : [current.id];
-    for (const nodeId of ids) {
-      this.nodes.delete(nodeId);
-    }
-    this.touchParentCounts(parentId);
+  override copy(
+    _projectId: string,
+    node: FileSystemNode,
+    newParent: FolderNode,
+  ): Observable<FileSystemNode> {
+    return this.write(() => {
+      const source = this.requireNode(node.id);
+      const target = this.requireFolder(newParent.id);
+      this.assertNameAvailable(target.id, source.name);
+      const copied = this.copyRecursive(source, target.id, target.path, source.name);
+      this.touchParentCounts(target.id);
+      return clone(copied);
+    });
+  }
+
+  override delete(_projectId: string, node: FileSystemNode): Observable<void> {
+    return this.write(() => {
+      const current = this.requireNode(node.id);
+      if (current.parentId === null) {
+        throw new FileSystemError('permission-denied', 'Root folder cannot be deleted');
+      }
+      const parentId = current.parentId;
+      const ids = isFolder(current) ? this.collectDescendantIds(current.id) : [current.id];
+      for (const nodeId of ids) {
+        this.nodes.delete(nodeId);
+      }
+      this.touchParentCounts(parentId);
+    });
   }
 
   override upload(
@@ -152,15 +154,33 @@ export class MockFileSystemApi extends FileSystemApi {
     _file: File,
     _onProgress: (percent: number) => void,
     _signal?: AbortSignal,
-  ): Promise<FileNode> {
+  ): Observable<FileNode> {
     return notImplemented('upload');
   }
 
-  private delay(kind: 'read' | 'write'): Promise<void> {
+  /** Simulated read: emits the factory result after randomized read latency. */
+  private read<T>(factory: () => T): Observable<T> {
+    return timer(this.latencyMs('read')).pipe(map(factory));
+  }
+
+  /**
+   * Simulated write: after randomized write latency, runs the configured failure
+   * check then the factory. A throw from either surfaces as an Observable error
+   * notification — same outcome as the previous `await delay; throw` flow.
+   */
+  private write<T>(factory: () => T): Observable<T> {
+    return timer(this.latencyMs('write')).pipe(
+      map(() => {
+        this.maybeFail();
+        return factory();
+      }),
+    );
+  }
+
+  private latencyMs(kind: 'read' | 'write'): number {
     const min = this.config.minLatencyMs;
     const max = kind === 'read' ? this.config.maxLatencyMs : this.config.maxLatencyMs + 200;
-    const ms = min + Math.random() * Math.max(0, max - min);
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return min + Math.random() * Math.max(0, max - min);
   }
 
   private maybeFail(): void {
@@ -341,8 +361,8 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function notImplemented(method: string): Promise<never> {
-  return Promise.reject(
-    new FileSystemError('unknown', `MockFileSystemApi.${method} is not implemented in Phase 1`),
+function notImplemented(method: string): Observable<never> {
+  return throwError(
+    () => new FileSystemError('unknown', `MockFileSystemApi.${method} is not implemented in Phase 1`),
   );
 }

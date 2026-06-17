@@ -1,5 +1,6 @@
 import { inject } from '@angular/core';
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
+import { firstValueFrom } from 'rxjs';
 import {
   removeEntities,
   removeEntity,
@@ -78,7 +79,7 @@ export const FileSystemStore = signalStore(
     };
 
     const initialize = async (projectId: string): Promise<FolderNode> => {
-      const { currentFolder, folders, files } = await api.listDocuments(projectId);
+      const { currentFolder, folders, files } = await firstValueFrom(api.listDocuments(projectId));
       const nodes: FileSystemNode[] = [currentFolder, ...folders, ...files];
       patchState(store, setEntities(nodes), {
         projectId,
@@ -97,9 +98,8 @@ export const FileSystemStore = signalStore(
         if (!parent || !isFolder(parent)) {
           throw new FileSystemError('not-found', `Folder not found in cache: ${parentId}`);
         }
-        const { currentFolder, folders, files } = await api.listDocuments(
-          requireProjectId(),
-          parent.id,
+        const { currentFolder, folders, files } = await firstValueFrom(
+          api.listDocuments(requireProjectId(), parent.id),
         );
         const nodes: FileSystemNode[] = [currentFolder, ...folders, ...files];
         const incomingIds = new Set(nodes.map((node) => node.id));
@@ -218,7 +218,7 @@ export const FileSystemStore = signalStore(
       patchState(store, setEntity<FileSystemNode>(temp));
       adjustParentCount(parentId, 1);
       try {
-        const created = await api.createFolder(requireProjectId(), parent, trimmed);
+        const created = await firstValueFrom(api.createFolder(requireProjectId(), parent, trimmed));
         patchState(store, removeEntity(temp.id), setEntity<FileSystemNode>(created));
         return created;
       } catch (e) {
@@ -249,7 +249,7 @@ export const FileSystemStore = signalStore(
       );
       patchState(store, setEntities(updated));
       try {
-        const renamed = await api.rename(requireProjectId(), node, newName);
+        const renamed = await firstValueFrom(api.rename(requireProjectId(), node, newName));
         patchState(store, setEntity<FileSystemNode>(renamed));
         unmarkLoaded(id);
         return renamed;
@@ -268,7 +268,7 @@ export const FileSystemStore = signalStore(
       patchState(store, removeEntities(removedIds));
       adjustParentCount(node.parentId, -1);
       try {
-        await api.delete(requireProjectId(), node);
+        await firstValueFrom(api.delete(requireProjectId(), node));
         unmarkLoaded(id);
       } catch (e) {
         patchState(store, setEntities(snapshot));
@@ -309,7 +309,7 @@ export const FileSystemStore = signalStore(
       adjustParentCount(oldParentId, -1);
       adjustParentCount(targetParentId, 1);
       try {
-        const moved = await api.move(requireProjectId(), node, targetParent);
+        const moved = await firstValueFrom(api.move(requireProjectId(), node, targetParent));
         patchState(store, setEntity<FileSystemNode>(moved));
         unmarkLoaded(id, oldParentId, targetParentId);
       } catch (e) {
@@ -333,7 +333,7 @@ export const FileSystemStore = signalStore(
           `Target folder not found in cache: ${targetParentId}`,
         );
       }
-      const copied = await api.copy(requireProjectId(), source, targetParent);
+      const copied = await firstValueFrom(api.copy(requireProjectId(), source, targetParent));
       patchState(store, setEntity<FileSystemNode>(copied));
       adjustParentCount(targetParentId, 1);
       unmarkLoaded(targetParentId);

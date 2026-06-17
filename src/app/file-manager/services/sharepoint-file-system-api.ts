@@ -94,6 +94,7 @@
  */
 
 import { Injectable } from '@angular/core';
+import { type Observable, throwError } from 'rxjs';
 import type { DocumentListing } from '../models/document-listing.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { FileSystemApi } from './file-system-api';
@@ -106,8 +107,8 @@ export class SharePointFileSystemApi extends FileSystemApi {
    * Resolve the project's library root when `parentId` is absent; otherwise get the folder by id.
    * Use `$select` + `$expand=Folders,Files` and map the result into a DocumentListing.
    */
-  override listDocuments(_projectId: string, _parentId?: string): Promise<DocumentListing> {
-    throw new Error(PHASE6);
+  override listDocuments(_projectId: string, _parentId?: string): Observable<DocumentListing> {
+    return throwError(() => new Error(PHASE6));
   }
 
   /**
@@ -118,8 +119,8 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _projectId: string,
     _parent: FolderNode,
     _name: string,
-  ): Promise<FolderNode> {
-    throw new Error(PHASE6);
+  ): Observable<FolderNode> {
+    return throwError(() => new Error(PHASE6));
   }
 
   /**
@@ -130,8 +131,8 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _projectId: string,
     _node: FileSystemNode,
     _newName: string,
-  ): Promise<FileSystemNode> {
-    throw new Error(PHASE6);
+  ): Observable<FileSystemNode> {
+    return throwError(() => new Error(PHASE6));
   }
 
   /**
@@ -143,8 +144,8 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _projectId: string,
     _node: FileSystemNode,
     _newParent: FolderNode,
-  ): Promise<FileSystemNode> {
-    throw new Error(PHASE6);
+  ): Observable<FileSystemNode> {
+    return throwError(() => new Error(PHASE6));
   }
 
   /**
@@ -155,13 +156,13 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _projectId: string,
     _node: FileSystemNode,
     _newParent: FolderNode,
-  ): Promise<FileSystemNode> {
-    throw new Error(PHASE6);
+  ): Observable<FileSystemNode> {
+    return throwError(() => new Error(PHASE6));
   }
 
   /** POST .../GetFolderById('<node.id>') (or GetFileById) with X-HTTP-Method: DELETE. */
-  override delete(_projectId: string, _node: FileSystemNode): Promise<void> {
-    throw new Error(PHASE6);
+  override delete(_projectId: string, _node: FileSystemNode): Observable<void> {
+    return throwError(() => new Error(PHASE6));
   }
 
   /**
@@ -176,7 +177,7 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _file: File,
     _onProgress: (percent: number) => void,
     _signal?: AbortSignal,
-  ): Promise<FileNode> {
-    throw new Error(PHASE6);
+  ): Observable<FileNode> {
+    return throwError(() => new Error(PHASE6));
   }
 }
