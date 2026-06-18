@@ -109,15 +109,18 @@ export const NavigationStore = signalStore(
     /**
      * Kick off loadChildren(id) unless the same folder is already loading.
      * Fire-and-forget — errors land in fileSystemStore's per-folder error map.
+     *
+     * `_`-prefixed: a private local closure (internal helper), NOT an NgRx private
+     * store member — it is not returned from `withMethods`.
      */
-    const loadChildrenUnlessAlreadyLoading = (id: string): void => {
+    const _loadChildrenUnlessAlreadyLoading = (id: string): void => {
       if (fsReader.folderIdsWithLoadingChildren().includes(id)) return;
       void fsReader.loadChildren(id);
     };
 
     const navigateTo = (id: string): void => {
       if (store.currentFolderId() === id) {
-        loadChildrenUnlessAlreadyLoading(id);
+        _loadChildrenUnlessAlreadyLoading(id);
         return;
       }
       const idx = store.currentHistoryIndex();
@@ -128,7 +131,7 @@ export const NavigationStore = signalStore(
         history: newHistory,
         currentHistoryIndex: newHistory.length - 1,
       });
-      loadChildrenUnlessAlreadyLoading(id);
+      _loadChildrenUnlessAlreadyLoading(id);
     };
 
     const initialize = (rootId: string): void => {
@@ -150,7 +153,7 @@ export const NavigationStore = signalStore(
         currentHistoryIndex: newIdx,
         currentFolderId: newId,
       });
-      loadChildrenUnlessAlreadyLoading(newId);
+      _loadChildrenUnlessAlreadyLoading(newId);
     };
 
     const forward = (): void => {
@@ -164,7 +167,7 @@ export const NavigationStore = signalStore(
         currentHistoryIndex: newIdx,
         currentFolderId: newId,
       });
-      loadChildrenUnlessAlreadyLoading(newId);
+      _loadChildrenUnlessAlreadyLoading(newId);
     };
 
     const up = (): void => {
@@ -188,7 +191,7 @@ export const NavigationStore = signalStore(
         next.add(id);
         patchState(store, { expandedTreeIds: next });
       }
-      loadChildrenUnlessAlreadyLoading(id);
+      _loadChildrenUnlessAlreadyLoading(id);
     };
 
     const collapse = (id: string): void => {
