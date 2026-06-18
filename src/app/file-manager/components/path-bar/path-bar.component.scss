@@ -1,37 +1,57 @@
+// Boxed "address bar" look: the breadcrumb sits inside a bordered, rounded
+// rectangle, matching the search field to its right.
 :host {
-  display: block;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--p-content-border-color, #e5e7eb);
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 2.25rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--p-content-border-color, #d1d5db);
+  border-radius: 6px;
+  background: var(--p-content-background, #fff);
+  overflow: hidden;
 }
 
 .fm-breadcrumb {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  flex-wrap: wrap;
+  gap: 0.1rem;
+  flex-wrap: nowrap;
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  font-size: 0.8125rem;
+
+  // keep the address bar a single, non-wrapping line
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
 }
 
 .fm-segment {
   background: transparent;
   border: 0;
-  padding: 0.25rem 0.5rem;
+  padding: 0.2rem 0.4rem;
   cursor: pointer;
-  color: var(--p-primary-color, #3b82f6);
+  color: var(--p-text-muted-color, #6b7280); // gray for parent segments
   font: inherit;
+  white-space: nowrap;
   border-radius: 4px;
 }
 
 .fm-segment:hover {
   background: var(--p-content-hover-background, rgba(0, 0, 0, 0.04));
+  color: var(--p-text-color, #111827);
 }
 
 .fm-current {
-  color: var(--p-text-color, #111);
-  font-weight: 500;
+  color: var(--p-text-color, #111827); // current/opened folder: black
+  font-weight: 600;
   cursor: default;
 }
 
 .fm-sep {
-  color: var(--p-text-muted-color, #888);
-  font-size: 0.75rem;
+  color: var(--p-text-muted-color, #9aa1ac);
+  font-size: 0.7rem;
+  flex: 0 0 auto;
 }

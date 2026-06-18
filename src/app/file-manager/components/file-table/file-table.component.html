@@ -3,12 +3,24 @@
     <p-progressSpinner styleClass="fm-spinner" strokeWidth="3" />
   </div>
 } @else {
-  <p-table [value]="rows()" dataKey="id" styleClass="fm-table">
+  <p-table [value]="rows()" dataKey="id" styleClass="fm-table" [scrollable]="true" scrollHeight="flex">
     <ng-template pTemplate="header">
       <tr>
-        <th style="width: 50%">Name</th>
-        <th style="width: 15%">Size</th>
-        <th style="width: 35%">Modified</th>
+        <th pSortableColumn="name" style="width: 34%">
+          File Name <p-sortIcon field="name" />
+        </th>
+        <th pSortableColumn="typeLabel" style="width: 14%">
+          Type <p-sortIcon field="typeLabel" />
+        </th>
+        <th pSortableColumn="modifiedAt" style="width: 18%">
+          Last Modified <p-sortIcon field="modifiedAt" />
+        </th>
+        <th pSortableColumn="modifiedBy" style="width: 20%">
+          Last Modified By <p-sortIcon field="modifiedBy" />
+        </th>
+        <th pSortableColumn="sortSize" style="width: 14%" class="fm-col-size">
+          Size <p-sortIcon field="sortSize" />
+        </th>
       </tr>
     </ng-template>
     <ng-template pTemplate="body" let-row>
@@ -20,17 +32,19 @@
       >
         <td>
           <span class="fm-name">
-            <i [class]="row.icon"></i>
-            <span>{{ row.name }}</span>
+            <i class="fm-icon" [class]="row.icon" [class.fm-icon-folder]="row.kind === 'folder'"></i>
+            <span class="fm-name-text">{{ row.name }}</span>
           </span>
         </td>
-        <td>{{ row.sizeLabel }}</td>
-        <td>{{ row.modifiedAt | date: 'medium' }}</td>
+        <td class="fm-muted">{{ row.typeLabel }}</td>
+        <td class="fm-muted">{{ row.modifiedAt | date: 'dd-MM-yyyy HH:mm' }}</td>
+        <td class="fm-muted">{{ row.modifiedBy }}</td>
+        <td class="fm-col-size fm-muted">{{ row.sizeLabel }}</td>
       </tr>
     </ng-template>
     <ng-template pTemplate="emptymessage">
       <tr>
-        <td colspan="3" class="fm-empty">This folder is empty.</td>
+        <td colspan="5" class="fm-empty">This folder is empty.</td>
       </tr>
     </ng-template>
   </p-table>

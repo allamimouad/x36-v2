@@ -11,27 +11,116 @@
   color: var(--p-text-color, #111);
 }
 
+/* Header ───────────────────────────────────────────── */
+.fm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--p-content-border-color, #e5e7eb);
+}
+
+.fm-title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Toolbar row ──────────────────────────────────────── */
+.fm-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1.1rem;
+  border-bottom: 1px solid var(--p-content-border-color, #e5e7eb);
+}
+
+.fm-breadcrumb {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+// Shared control height so the search box and action buttons line up with
+// the address bar (path-bar) to their left.
+$fm-control-height: 2.25rem;
+
+.fm-search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+
+  i {
+    position: absolute;
+    left: 0.6rem;
+    color: var(--p-text-muted-color, #9aa1ac);
+    font-size: 0.85rem;
+    pointer-events: none;
+  }
+
+  input {
+    width: 16rem;
+    max-width: 28vw;
+    height: $fm-control-height;
+    padding-left: 1.9rem;
+    font-size: 0.8125rem;
+  }
+}
+
+.fm-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+
+  // Match the address bar / search height, with a smaller label
+  ::ng-deep .p-button {
+    height: $fm-control-height;
+    font-size: 0.8125rem;
+  }
+}
+
+/* Body ─────────────────────────────────────────────── */
 .fm-body {
-  display: grid;
-  grid-template-columns: 280px 1fr;
   min-height: 0;
-  border-top: 1px solid var(--p-content-border-color, #e5e7eb);
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
 }
 
 .fm-tree-pane {
-  border-right: 1px solid var(--p-content-border-color, #e5e7eb);
-  overflow: hidden;
-  min-height: 0;
+  height: 100%;
+  overflow: auto;
+  background: var(--p-content-background, #fff);
 }
 
 .fm-table-pane {
+  height: 100%;
   overflow: hidden;
-  min-height: 0;
+}
+
+/* Splitter chrome: subtle gutter that reads as the pane divider */
+:host ::ng-deep .fm-body {
+  .p-splitterpanel {
+    overflow: hidden;
+  }
+
+  .p-splitter-gutter {
+    background: var(--p-content-border-color, #e5e7eb);
+    transition: background 0.15s ease;
+  }
+
+  .p-splitter-gutter:hover,
+  .p-splitter-gutter-resizing {
+    background: var(--p-primary-color, #3b82f6);
+  }
 }
 
 .fm-status {
-  padding: 0.4rem 0.75rem;
+  padding: 0.4rem 1.1rem;
   border-top: 1px solid var(--p-content-border-color, #e5e7eb);
-  font-size: 0.85rem;
-  color: var(--p-text-muted-color, #888);
+  font-size: 0.8125rem;
+  color: var(--p-text-muted-color, #6b7280);
 }

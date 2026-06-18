@@ -8,6 +8,10 @@ import {
   OnInit,
 } from '@angular/core';
 import type { TreeNode } from 'primeng/api';
+import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
+import { SplitterModule } from 'primeng/splitter';
+import { TooltipModule } from 'primeng/tooltip';
 import {
   isFolder,
   type FileSystemNode,
@@ -29,7 +33,16 @@ import { NavToolbarComponent } from './components/nav-toolbar/nav-toolbar.compon
   selector: 'app-file-manager',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FolderTreeComponent, FileTableComponent, PathBarComponent, NavToolbarComponent],
+  imports: [
+    FolderTreeComponent,
+    FileTableComponent,
+    PathBarComponent,
+    NavToolbarComponent,
+    ButtonModule,
+    InputTextModule,
+    SplitterModule,
+    TooltipModule,
+  ],
   providers: [
     FileSystemStore,
     { provide: FileSystemReader, useExisting: FileSystemStore },

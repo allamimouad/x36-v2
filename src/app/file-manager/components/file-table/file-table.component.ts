@@ -14,8 +14,11 @@ interface RowVm {
   name: string;
   kind: 'folder' | 'file';
   icon: string;
+  typeLabel: string;
   sizeLabel: string;
+  sortSize: number;
   modifiedAt: string;
+  modifiedBy: string;
   node: FileSystemNode;
 }
 
@@ -42,19 +45,26 @@ export class FileTableComponent {
         name: f.name,
         kind: 'folder',
         icon: 'pi pi-folder',
-        sizeLabel: itemCountLabel(f),
+        typeLabel: 'Folder',
+        sizeLabel: '',
+        sortSize: -1,
         modifiedAt: f.modifiedAt,
+        modifiedBy: f.modifiedBy ?? '—',
         node: f,
       });
     }
     for (const f of this.files()) {
+      const { base, ext } = fileNameParts(f.name);
       out.push({
         id: f.id,
-        name: f.name,
+        name: base,
         kind: 'file',
         icon: iconForFile(f),
+        typeLabel: ext ? ext.toUpperCase() : 'FILE',
         sizeLabel: formatSize(f.sizeBytes),
+        sortSize: f.sizeBytes,
         modifiedAt: f.modifiedAt,
+        modifiedBy: f.modifiedBy ?? '—',
         node: f,
       });
     }
@@ -64,11 +74,6 @@ export class FileTableComponent {
   protected onRowDblClick(row: RowVm): void {
     this.itemDoubleClicked.emit(row.node);
   }
-}
-
-function itemCountLabel(f: FolderNode): string {
-  if (f.itemCount === 0) return 'Empty';
-  return `${f.itemCount} item${f.itemCount === 1 ? '' : 's'}`;
 }
 
 function formatSize(bytes: number): string {
@@ -102,6 +107,13 @@ function iconForFile(f: FileNode): string {
     default:
       return 'pi pi-file';
   }
+}
+
+/** Split a file name into its display base and extension (no leading-dot files). */
+function fileNameParts(name: string): { base: string; ext: string } {
+  const dot = name.lastIndexOf('.');
+  if (dot <= 0) return { base: name, ext: '' };
+  return { base: name.slice(0, dot), ext: name.slice(dot + 1) };
 }
 
 // Make isFolder available to template via export indirection if needed later.

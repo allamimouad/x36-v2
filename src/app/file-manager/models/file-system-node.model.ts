@@ -9,6 +9,7 @@ export interface FolderNode {
   itemCount: number;
   createdAt: string;
   modifiedAt: string;
+  modifiedBy?: string;
 }
 
 export interface FileNode {
@@ -20,6 +21,7 @@ export interface FileNode {
   sizeBytes: number;
   createdAt: string;
   modifiedAt: string;
+  modifiedBy?: string;
   contentType?: string;
   downloadUrl?: string;
 }

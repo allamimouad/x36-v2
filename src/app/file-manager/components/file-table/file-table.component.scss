@@ -18,12 +18,61 @@
 
 :host ::ng-deep .fm-table {
   height: 100%;
+
+  .p-datatable-table {
+    font-size: 0.875rem;
+  }
+
+  // Header: light, compact, uppercase-ish enterprise look
+  .p-datatable-thead > tr > th {
+    background: var(--p-content-background, #fff);
+    border-bottom: 1px solid var(--p-content-border-color, #e5e7eb);
+    color: var(--p-text-muted-color, #6b7280);
+    font-weight: 600;
+    font-size: 0.8125rem;
+    padding: 0.6rem 0.85rem;
+    white-space: nowrap;
+  }
+
+  .p-datatable-tbody > tr > td {
+    padding: 0.5rem 0.85rem;
+    border-bottom: 1px solid var(--p-content-border-color, #f1f2f4);
+  }
+
+  .p-datatable-tbody > tr:hover {
+    background: var(--p-highlight-background, #f3f7ff);
+  }
 }
 
 .fm-name {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.fm-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fm-icon {
+  font-size: 1rem;
+  color: var(--p-text-muted-color, #9aa1ac);
+}
+
+.fm-icon-folder {
+  color: #f0b429; // warm folder tone
+}
+
+.fm-muted {
+  color: var(--p-text-muted-color, #6b7280);
+  white-space: nowrap;
+}
+
+.fm-col-size {
+  text-align: right;
 }
 
 .fm-row {

@@ -1,39 +1,98 @@
 <div class="fm-root">
-  <app-nav-toolbar
-    [canGoBack]="navigation.canGoBack()"
-    [canGoForward]="navigation.canGoForward()"
-    [canGoUp]="navigation.canGoUp()"
-    (back)="navigation.back()"
-    (forward)="navigation.forward()"
-    (up)="navigation.up()"
-    (refresh)="onRefresh()"
-  />
-  <app-path-bar
-    [segments]="navigation.pathSegments()"
-    [rootLabel]="config.libraryRootName"
-    (segmentClicked)="onSegmentClicked($event)"
-  />
+  <header class="fm-header">
+    <h1 class="fm-title">{{ config.libraryRootName }}</h1>
+  </header>
 
-  <div class="fm-body">
-    <aside class="fm-tree-pane" aria-label="Folder tree">
-      <app-folder-tree
-        [nodes]="treeNodes()"
-        [currentFolderId]="navigation.currentFolderId()"
-        [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
-        (nodeSelected)="onTreeNodeSelected($event)"
-        (nodeExpanded)="onTreeNodeExpanded($event)"
-        (nodeCollapsed)="onTreeNodeCollapsed($event)"
+  <div class="fm-toolbar-row">
+    <app-nav-toolbar
+      [canGoBack]="navigation.canGoBack()"
+      [canGoForward]="navigation.canGoForward()"
+      [canGoUp]="navigation.canGoUp()"
+      (back)="navigation.back()"
+      (forward)="navigation.forward()"
+      (up)="navigation.up()"
+      (refresh)="onRefresh()"
+    />
+
+    <app-path-bar
+      class="fm-breadcrumb"
+      [segments]="navigation.pathSegments()"
+      [rootLabel]="config.libraryRootName"
+      (segmentClicked)="onSegmentClicked($event)"
+    />
+
+    <span class="fm-search">
+      <i class="pi pi-search"></i>
+      <input
+        pInputText
+        type="text"
+        placeholder="Search File"
+        [disabled]="true"
+        pTooltip="Search coming soon"
+        tooltipPosition="bottom"
+        aria-label="Search files"
+        data-testid="fm-search"
       />
-    </aside>
-    <main class="fm-table-pane" aria-label="Folder contents">
-      <app-file-table
-        [folders]="navigation.currentFolderChildren().folders"
-        [files]="navigation.currentFolderChildren().files"
-        [loading]="isCurrentLoading()"
-        (itemDoubleClicked)="onItemDoubleClicked($event)"
-      />
-    </main>
+    </span>
+
+    <div class="fm-actions">
+      <button
+        pButton
+        type="button"
+        icon="pi pi-folder-plus"
+        label="New folder"
+        [disabled]="true"
+        pTooltip="Coming in Phase 2"
+        tooltipPosition="bottom"
+        severity="secondary"
+        [text]="true"
+        data-testid="fm-btn-new-folder"
+      ></button>
+      <button
+        pButton
+        type="button"
+        icon="pi pi-upload"
+        label="Upload file"
+        [disabled]="true"
+        pTooltip="Coming in Phase 5"
+        tooltipPosition="bottom"
+        severity="secondary"
+        [text]="true"
+        data-testid="fm-btn-upload"
+      ></button>
+    </div>
   </div>
+
+  <p-splitter
+    class="fm-body"
+    [panelSizes]="[24, 76]"
+    [minSizes]="[12, 30]"
+    [gutterSize]="6"
+    [style]="{ height: '100%' }"
+  >
+    <ng-template #panel>
+      <aside class="fm-tree-pane" aria-label="Folder tree">
+        <app-folder-tree
+          [nodes]="treeNodes()"
+          [currentFolderId]="navigation.currentFolderId()"
+          [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
+          (nodeSelected)="onTreeNodeSelected($event)"
+          (nodeExpanded)="onTreeNodeExpanded($event)"
+          (nodeCollapsed)="onTreeNodeCollapsed($event)"
+        />
+      </aside>
+    </ng-template>
+    <ng-template #panel>
+      <main class="fm-table-pane" aria-label="Folder contents">
+        <app-file-table
+          [folders]="navigation.currentFolderChildren().folders"
+          [files]="navigation.currentFolderChildren().files"
+          [loading]="isCurrentLoading()"
+          (itemDoubleClicked)="onItemDoubleClicked($event)"
+        />
+      </main>
+    </ng-template>
+  </p-splitter>
 
   <footer class="fm-status" aria-live="polite">
     <span>{{ statusText() }}</span>
