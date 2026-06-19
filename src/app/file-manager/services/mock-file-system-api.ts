@@ -20,6 +20,8 @@ export class MockFileSystemApi extends FileSystemApi {
   private readonly seed = buildSeed();
   private readonly nodes: Map<string, FileSystemNode> = this.seed.nodes;
   private readonly rootId: string = this.seed.rootId;
+  /** Stand-in for the signed-in user; stamped as `modifiedBy` on every mutation. */
+  private readonly currentUser = 'You';
 
   override listDocuments(_projectId: string, parentId?: string): Observable<DocumentListing> {
     return this.read(() => {
@@ -57,6 +59,7 @@ export class MockFileSystemApi extends FileSystemApi {
         itemCount: 0,
         createdAt: now,
         modifiedAt: now,
+        modifiedBy: this.currentUser,
       };
       this.nodes.set(folder.id, folder);
       this.touchParentCounts(parentNode.id);
@@ -263,6 +266,7 @@ export class MockFileSystemApi extends FileSystemApi {
             name: isRoot ? newName : current.name,
             parentId: isRoot ? newParentId : current.parentId,
             modifiedAt: isRoot ? now : current.modifiedAt,
+            modifiedBy: isRoot ? this.currentUser : current.modifiedBy,
           }
         : {
             ...current,
@@ -270,6 +274,7 @@ export class MockFileSystemApi extends FileSystemApi {
             name: isRoot ? newName : current.name,
             parentId: isRoot ? newParentId : current.parentId,
             modifiedAt: isRoot ? now : current.modifiedAt,
+            modifiedBy: isRoot ? this.currentUser : current.modifiedBy,
           };
       this.nodes.set(updated.id, updated);
       if (isRoot) updatedRoot = updated;
@@ -303,6 +308,7 @@ export class MockFileSystemApi extends FileSystemApi {
         parentId: targetParentId,
         createdAt: now,
         modifiedAt: now,
+        modifiedBy: this.currentUser,
       };
       this.nodes.set(file.id, file);
       return file;
@@ -316,6 +322,7 @@ export class MockFileSystemApi extends FileSystemApi {
       parentId: targetParentId,
       createdAt: now,
       modifiedAt: now,
+      modifiedBy: this.currentUser,
     };
     this.nodes.set(folder.id, folder);
 
