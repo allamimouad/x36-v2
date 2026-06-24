@@ -84,12 +84,19 @@
     </ng-template>
     <ng-template #panel>
       <main class="fm-table-pane" aria-label="Folder contents">
-        <app-file-table
-          [folders]="navigation.currentFolderChildren().folders"
-          [files]="navigation.currentFolderChildren().files"
-          [loading]="isCurrentLoading()"
-          (itemDoubleClicked)="onItemDoubleClicked($event)"
-        />
+        @if (navigation.navigationError(); as navError) {
+          <div class="fm-unavailable" role="status">
+            <i class="pi pi-exclamation-triangle"></i>
+            <p>{{ navError }}</p>
+          </div>
+        } @else {
+          <app-file-table
+            [folders]="navigation.currentFolderChildren().folders"
+            [files]="navigation.currentFolderChildren().files"
+            [loading]="isCurrentLoading()"
+            (itemDoubleClicked)="onItemDoubleClicked($event)"
+          />
+        }
       </main>
     </ng-template>
   </p-splitter>

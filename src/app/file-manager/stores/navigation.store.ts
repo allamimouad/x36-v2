@@ -26,6 +26,8 @@ interface NavigationState {
   selectedIds: Set<string>;
   focusedId: string | null;
   renamingId: string | null;
+  /** Set when Back/Forward lands on a history id that is no longer cached. */
+  navigationError: string | null;
 }
 
 const initialState: NavigationState = {
@@ -36,7 +38,10 @@ const initialState: NavigationState = {
   selectedIds: new Set<string>(),
   focusedId: null,
   renamingId: null,
+  navigationError: null,
 };
+
+export const NAVIGATION_UNAVAILABLE = 'This folder is no longer available from this location.';
 
 export const NavigationStore = signalStore(
   withState(initialState),
@@ -120,6 +125,13 @@ export const NavigationStore = signalStore(
 
     const navigateTo = (id: string): void => {
       if (store.currentFolderId() === id) {
+        // Re-navigating to the current id: if it's a tombstone (no longer cached),
+        // keep it unavailable — don't clear the message or attempt a load.
+        if (!fsReader.entityMap()[id]) {
+          patchState(store, { navigationError: NAVIGATION_UNAVAILABLE });
+          return;
+        }
+        if (store.navigationError()) patchState(store, { navigationError: null });
         _loadChildrenUnlessAlreadyLoading(id);
         return;
       }
@@ -130,8 +142,24 @@ export const NavigationStore = signalStore(
         currentFolderId: id,
         history: newHistory,
         currentHistoryIndex: newHistory.length - 1,
+        navigationError: null,
       });
       _loadChildrenUnlessAlreadyLoading(id);
+    };
+
+    /**
+     * Move the history cursor to (newIdx, newId). If the target id is no longer
+     * cached (its subtree was removed by a move), do not hit the backend — set the
+     * unavailable tombstone state instead. Otherwise clear it and load normally.
+     */
+    const _goToHistory = (newIdx: number, newId: string): void => {
+      patchState(store, { currentHistoryIndex: newIdx, currentFolderId: newId });
+      if (fsReader.entityMap()[newId]) {
+        patchState(store, { navigationError: null });
+        _loadChildrenUnlessAlreadyLoading(newId);
+      } else {
+        patchState(store, { navigationError: NAVIGATION_UNAVAILABLE });
+      }
     };
 
     const initialize = (rootId: string): void => {
@@ -140,6 +168,7 @@ export const NavigationStore = signalStore(
         history: [rootId],
         currentHistoryIndex: 0,
         expandedTreeIds: new Set([rootId]),
+        navigationError: null,
       });
     };
 
@@ -149,11 +178,7 @@ export const NavigationStore = signalStore(
       const newIdx = idx - 1;
       const newId = store.history()[newIdx];
       if (!newId) return;
-      patchState(store, {
-        currentHistoryIndex: newIdx,
-        currentFolderId: newId,
-      });
-      _loadChildrenUnlessAlreadyLoading(newId);
+      _goToHistory(newIdx, newId);
     };
 
     const forward = (): void => {
@@ -163,11 +188,7 @@ export const NavigationStore = signalStore(
       const newIdx = idx + 1;
       const newId = hist[newIdx];
       if (!newId) return;
-      patchState(store, {
-        currentHistoryIndex: newIdx,
-        currentFolderId: newId,
-      });
-      _loadChildrenUnlessAlreadyLoading(newId);
+      _goToHistory(newIdx, newId);
     };
 
     const up = (): void => {
@@ -179,9 +200,29 @@ export const NavigationStore = signalStore(
     const refresh = (): void => {
       const id = store.currentFolderId();
       if (!id) return;
+      // On a tombstone (unavailable history entry / id no longer cached) there is
+      // nothing to refresh — don't attempt a load.
+      if (store.navigationError() || !fsReader.entityMap()[id]) return;
       if (fsReader.folderIdsWithLoadingChildren().includes(id)) return;
       fsReader.invalidate(id);
       void fsReader.loadChildren(id);
+    };
+
+    /**
+     * Drop references to ids that were removed from the cache (e.g. a moved subtree),
+     * so expansion/selection/focus/rename state can't point at deleted nodes.
+     */
+    const pruneReferences = (ids: Iterable<string>): void => {
+      const removed = new Set(ids);
+      if (removed.size === 0) return;
+      const focusedId = store.focusedId();
+      const renamingId = store.renamingId();
+      patchState(store, {
+        expandedTreeIds: new Set([...store.expandedTreeIds()].filter((x) => !removed.has(x))),
+        selectedIds: new Set([...store.selectedIds()].filter((x) => !removed.has(x))),
+        focusedId: focusedId !== null && removed.has(focusedId) ? null : focusedId,
+        renamingId: renamingId !== null && removed.has(renamingId) ? null : renamingId,
+      });
     };
 
     const expand = (id: string): void => {
@@ -224,6 +265,7 @@ export const NavigationStore = signalStore(
       expand,
       collapse,
       setExpanded,
+      pruneReferences,
       // Phase 3 stubs (kept here so containers can reference them already)
       select(_id: string, _mode: 'single' | 'toggle' | 'range'): void {
         /* Phase 3 */

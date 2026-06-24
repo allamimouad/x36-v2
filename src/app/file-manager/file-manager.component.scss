@@ -101,6 +101,28 @@ $fm-control-height: 2.25rem;
   overflow: hidden;
 }
 
+.fm-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  height: 100%;
+  padding: 2rem;
+  text-align: center;
+  color: var(--p-text-muted-color, #6b7280);
+
+  i {
+    font-size: 1.6rem;
+    color: var(--p-text-muted-color, #9aa1ac);
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+}
+
 /* Splitter chrome: subtle gutter that reads as the pane divider */
 :host ::ng-deep .fm-body {
   .p-splitterpanel {

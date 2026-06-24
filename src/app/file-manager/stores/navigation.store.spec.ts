@@ -6,7 +6,7 @@ import { MockFileSystemApi } from '../services/mock-file-system-api';
 import { MOCK_CONFIG } from '../tokens/mock-config.token';
 import { FileSystemReader } from './file-system-reader';
 import { FileSystemStore } from './file-system.store';
-import { NavigationStore } from './navigation.store';
+import { NAVIGATION_UNAVAILABLE, NavigationStore } from './navigation.store';
 
 describe('NavigationStore', () => {
   let fs: InstanceType<typeof FileSystemStore>;
@@ -310,5 +310,87 @@ describe('NavigationStore load triggering', () => {
 
     expect(reader.invalidateSpy).not.toHaveBeenCalled();
     expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
+  });
+
+  /** Remove an id from the fake cache to simulate a moved-away (tombstone) node. */
+  function evict(id: string): void {
+    const map = { ...reader.entityMap() };
+    delete map[id];
+    reader.entityMap.set(map);
+  }
+
+  it('Back/Forward to a removed id shows the unavailable state without loading', () => {
+    nav.navigateTo(fakeRoot.id);
+    nav.navigateTo(fakeDocs.id);
+    evict(fakeDocs.id);
+    nav.back(); // to root (still cached)
+    reader.loadChildrenSpy.calls.reset();
+
+    nav.forward(); // to docs, now a tombstone
+
+    expect(nav.currentFolderId()).toBe(fakeDocs.id);
+    expect(nav.currentHistoryIndex()).toBe(1);
+    expect(nav.navigationError()).toBe(NAVIGATION_UNAVAILABLE);
+    expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
+  });
+
+  it('navigating Back to a valid cached folder clears navigationError and loads', () => {
+    nav.navigateTo(fakeRoot.id);
+    nav.navigateTo(fakeDocs.id);
+    evict(fakeDocs.id);
+    nav.back();
+    nav.forward(); // tombstone
+    expect(nav.navigationError()).toBe(NAVIGATION_UNAVAILABLE);
+    reader.loadChildrenSpy.calls.reset();
+
+    nav.back(); // back to root (cached)
+
+    expect(nav.currentFolderId()).toBe(fakeRoot.id);
+    expect(nav.navigationError()).toBeNull();
+    expect(reader.loadChildrenSpy).toHaveBeenCalledOnceWith(fakeRoot.id);
+  });
+
+  it('navigateTo to the current tombstone id keeps the unavailable state and does not load', () => {
+    nav.navigateTo(fakeRoot.id);
+    nav.navigateTo(fakeDocs.id);
+    evict(fakeDocs.id);
+    nav.back();
+    nav.forward(); // tombstone: currentFolderId === docs, navigationError set
+    expect(nav.navigationError()).toBe(NAVIGATION_UNAVAILABLE);
+    reader.loadChildrenSpy.calls.reset();
+
+    nav.navigateTo(fakeDocs.id); // same id, still missing from cache
+
+    expect(nav.navigationError()).toBe(NAVIGATION_UNAVAILABLE);
+    expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
+  });
+
+  it('refresh on a tombstone does not invalidate or load', () => {
+    nav.navigateTo(fakeRoot.id);
+    nav.navigateTo(fakeDocs.id);
+    evict(fakeDocs.id);
+    nav.back();
+    nav.forward(); // tombstone
+    reader.loadChildrenSpy.calls.reset();
+    reader.invalidateSpy.calls.reset();
+
+    nav.refresh();
+
+    expect(reader.invalidateSpy).not.toHaveBeenCalled();
+    expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
+  });
+
+  it('pruneReferences drops expanded/focused/renaming ids in the removed set', () => {
+    nav.expand(fakeDocs.id);
+    nav.startRename(fakeDocs.id); // focused + renaming = docs
+    expect(nav.expandedTreeIds().has(fakeDocs.id)).toBe(true);
+    expect(nav.focusedId()).toBe(fakeDocs.id);
+    expect(nav.renamingId()).toBe(fakeDocs.id);
+
+    nav.pruneReferences([fakeDocs.id]);
+
+    expect(nav.expandedTreeIds().has(fakeDocs.id)).toBe(false);
+    expect(nav.focusedId()).toBeNull();
+    expect(nav.renamingId()).toBeNull();
   });
 });

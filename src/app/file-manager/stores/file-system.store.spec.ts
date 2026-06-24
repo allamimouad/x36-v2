@@ -78,4 +78,33 @@ describe('FileSystemStore project-scoped API contract', () => {
     expect(store.entities().length).toBe(countBefore);
     expect((store.entityMap()[root.id] as FolderNode).itemCount).toBe(itemCountBefore);
   });
+
+  it('move replaces the cached subtree with the returned node and returns removed ids', async () => {
+    const root = await store.initialize('project-123');
+    const tops = store
+      .entities()
+      .filter((node): node is FolderNode => isFolder(node) && node.parentId === root.id);
+    const source = tops[0];
+    const target = tops[1];
+    await store.loadChildren(source.id);
+    const directChildren = store.entities().filter((node) => node.parentId === source.id);
+    expect(directChildren.length).toBeGreaterThan(0);
+
+    const removed = await store.move(source.id, target.id);
+
+    // The moved node is present and reparented under the target...
+    const moved = store.entityMap()[source.id] as FolderNode;
+    expect(moved).toBeTruthy();
+    expect(moved.parentId).toBe(target.id);
+    // ...its cached descendants are dropped (replace, not repath)...
+    expect(store.entities().some((node) => node.parentId === source.id)).toBe(false);
+    for (const child of directChildren) {
+      expect(store.entityMap()[child.id]).toBeUndefined();
+    }
+    // ...it is left collapsed/unloaded at the destination...
+    expect(store.folderIdsWithLoadedChildren()).not.toContain(source.id);
+    // ...and the removed subtree ids (source + its cached descendants) are returned.
+    expect(removed).toContain(source.id);
+    expect(removed.length).toBe(directChildren.length + 1);
+  });
 });

@@ -58,6 +58,7 @@ export class FileManagerComponent implements OnInit {
 
   protected readonly fileSystem = inject(FileSystemStore);
   protected readonly navigation = inject(NavigationStore);
+  protected readonly clipboard = inject(ClipboardService);
   protected readonly config = inject(FILE_MANAGER_CONFIG);
 
   protected readonly treeNodes = computed<TreeNode<FolderNode>[]>(() => {
@@ -95,8 +96,10 @@ export class FileManagerComponent implements OnInit {
   });
 
   protected readonly statusText = computed(() => {
+    const navError = this.navigation.navigationError();
+    if (navError) return navError;
     const folder = this.navigation.currentFolder();
-    if (!folder) return 'Loading…';
+    if (!folder || this.isCurrentLoading()) return 'Loading…';
     const { folders, files } = this.navigation.currentFolderChildren();
     const total = folders.length + files.length;
     return `${folders.length} folder${folders.length === 1 ? '' : 's'}, ${files.length} file${files.length === 1 ? '' : 's'} (${total} total)`;
@@ -139,6 +142,33 @@ export class FileManagerComponent implements OnInit {
 
   protected onRefresh(): void {
     this.navigation.refresh();
+  }
+
+  /**
+   * Coordination point for a move (cut-paste / drag wiring lands in later phases).
+   * Guards against moving a folder whose subtree contains the current view — that
+   * would orphan `currentFolderId` in a removed subtree. On success, prunes
+   * navigation/clipboard references that pointed into the removed subtree.
+   */
+  protected async moveNode(sourceId: string, targetParentId: string): Promise<void> {
+    const currentId = this.navigation.currentFolderId();
+    if (currentId && this.isAncestorOrSelf(sourceId, currentId)) {
+      return; // blocked: would remove the folder we're currently viewing
+    }
+    const removed = await this.fileSystem.move(sourceId, targetParentId);
+    this.navigation.pruneReferences(removed);
+    this.clipboard.pruneReferences(removed);
+  }
+
+  /** Walk up from `candidateId` via parentId; true if `ancestorId` is hit (or is it). */
+  private isAncestorOrSelf(ancestorId: string, candidateId: string): boolean {
+    const map = this.fileSystem.entityMap();
+    let cursor: string | null = candidateId;
+    while (cursor) {
+      if (cursor === ancestorId) return true;
+      cursor = map[cursor]?.parentId ?? null;
+    }
+    return false;
   }
 
   @HostListener('document:keydown.F5', ['$event'])

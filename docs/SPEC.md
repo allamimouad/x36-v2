@@ -52,8 +52,11 @@ We **apply exactly what the server returns for the affected node**, and never fa
 server-resolved name. Two things the store *does* maintain locally — not as guesses, but as
 **confirmed cache maintenance** (deterministic consequences of a write the server already
 acknowledged): the direct parent's `itemCount` (±1 per confirmed create/delete/move), and the
-repathing of already-cached descendants after a folder rename/move (their paths derive
-deterministically from `parentPath + name`). We do **not** touch a parent's timestamps when
+repathing of already-cached descendants after a folder **rename** (their paths derive
+deterministically from `parentPath + name`). **Move** does *not* repath — it is
+replace-on-success: it drops the moved node's cached subtree and inserts only the
+server-returned node (collapsed/unloaded), so stale descendants are refetched on expand
+rather than carried forward (see §10). We do **not** touch a parent's timestamps when
 adjusting its count; stale parent `modifiedAt`/`modifiedBy` self-heal on the next revalidating
 load.
 - Single create/rename/move/delete/copy: await the API call, then apply the result.
@@ -215,7 +218,7 @@ export function isFolder(n: FileSystemNode): n is FolderNode {
 }
 ```
 
-**Why `id` AND `path`**: `id` is a stable, opaque UUID used everywhere for store lookups, drag targets, selection, clipboard, and navigation. It does not change for the lifetime of the entity. `path` is the mutable, human-readable backend path used for display and (in the SharePoint adapter) for constructing URLs on write operations. Rename and move update `path` for the item and any loaded descendants but leave `id` untouched, so navigation history, expansion state, selection, clipboard, and drag references all survive mutations without any remapping logic.
+**Why `id` AND `path`**: `id` is a stable, opaque UUID used everywhere for store lookups, drag targets, selection, clipboard, and navigation. It does not change for the lifetime of the entity. `path` is the mutable, human-readable backend path used for display and (in the SharePoint adapter) for constructing URLs on write operations. **Rename** updates `path` for the item and any loaded descendants but leaves `id` untouched, so references survive without remapping. **Move** is replace-on-success: it drops the moved node's cached subtree and re-inserts only the server-returned node (still the same `id`), so references to the moved item itself survive, but stale *descendant* references are pruned rather than preserved (navigation/expansion/selection/clipboard are pruned, and stale Back/Forward history entries become "unavailable" tombstones — see §10).
 
 ---
 
@@ -454,7 +457,7 @@ canDropOn(targetId: string): boolean {
 | Create folder | Pessimistic | Await server, insert the returned node, bump parent `itemCount` |
 | Rename | Pessimistic | Await server, apply the returned node, repath cached descendants |
 | Single delete | Pessimistic | Await server, then remove the cached subtree |
-| Single move | Pessimistic | Await server, apply the returned node, repath cached descendants, adjust both parent counts |
+| Single move | Pessimistic | Await server; drop the moved subtree and insert only the returned node (collapsed/unloaded), adjust both parent counts, prune dangling refs (replace-on-success) |
 | Single copy | Pessimistic | Await server (copy creates a new entity, need real id) |
 | Bulk delete/move/copy | Pessimistic + progress | Run through ConcurrencyQueue, apply each on success, summarize errors |
 | Upload | Pessimistic + progress | Always |

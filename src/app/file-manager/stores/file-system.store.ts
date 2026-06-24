@@ -247,7 +247,13 @@ export const FileSystemStore = signalStore(
       _unmarkLoaded(...subtree.filter(isFolder).map((folder) => folder.id));
     };
 
-    const move = async (ids: string | string[], targetParentId: string): Promise<void> => {
+    /**
+     * Replace-on-success: drop the moved node's cached subtree and insert only the
+     * server-returned `moved` node (collapsed/unloaded), rather than repathing and
+     * preserving possibly-stale descendants. Returns the removed subtree ids so a
+     * coordinator can prune navigation/clipboard references that pointed into it.
+     */
+    const move = async (ids: string | string[], targetParentId: string): Promise<string[]> => {
       const id = onlySingleId(ids, 'move');
       const node = store.entityMap()[id];
       const targetParent = store.entityMap()[targetParentId];
@@ -260,7 +266,7 @@ export const FileSystemStore = signalStore(
           `Target folder not found in cache: ${targetParentId}`,
         );
       }
-      if (node.parentId === targetParentId) return;
+      if (node.parentId === targetParentId) return [];
       if (isFolder(node) && _cachedSubtreeIds(id).includes(targetParentId)) {
         throw new FileSystemError(
           'descendant-move',
@@ -268,12 +274,24 @@ export const FileSystemStore = signalStore(
         );
       }
       const oldParentId = node.parentId;
+      const removedSubtree = _cachedSubtree(id);
+      const removedIds = removedSubtree.map((candidate) => candidate.id);
       const moved = await firstValueFrom(api.move(_requireProjectId(), node, targetParent));
-      const updated = _updateCachedSubtreePaths(id, targetParentId, moved.path, moved.name);
-      patchState(store, setEntities(updated), setEntity<FileSystemNode>(moved));
+      patchState(store, removeEntities(removedIds), setEntity<FileSystemNode>(moved));
       _adjustParentCount(oldParentId, -1);
       _adjustParentCount(targetParentId, 1);
-      _unmarkLoaded(id, oldParentId, targetParentId);
+      // Clear loaded/loading markers for the removed subtree only (incl. the moved root,
+      // so it shows collapsed/unloaded at the destination). Old/target parents stay
+      // loaded — their child lists are correct via the local remove + insert.
+      const removedFolderIds = removedSubtree.filter(isFolder).map((folder) => folder.id);
+      _unmarkLoaded(...removedFolderIds);
+      const removedSet = new Set(removedFolderIds);
+      patchState(store, {
+        folderIdsWithLoadingChildren: store
+          .folderIdsWithLoadingChildren()
+          .filter((fid) => !removedSet.has(fid)),
+      });
+      return removedIds;
     };
 
     const copy = async (ids: string | string[], targetParentId: string): Promise<void> => {
