@@ -41,11 +41,27 @@ The interface uses generic terminology (`projectId`, `id`, `path`, `name`) — n
 ### 2.3 Signal Store for entities, plain signals for simple state
 `FileSystemStore` uses `withEntities` because folders and files are viewed in multiple places (tree + table) and must stay in sync. `NavigationStore` uses Signal Store because it owns navigation history, expansion, focus, selection, rename state, and file-system-derived computeds. Small command-style state uses plain signal services; `ClipboardService` is a plain injectable service with `signal()` / `computed()`, not a Signal Store. Simple component-local state stays as plain `signal()` inside the component — don't over-store.
 
-### 2.4 Optimistic single, pessimistic bulk
-Single create/rename/move/delete: apply change in store immediately, rollback on error.
-Single copy: wait for the API result because copy creates new entities.
-Bulk ops (multi-select): show progress, apply per-item as each succeeds, summarize errors at end.
-Uploads: always progress-based, update store on completion.
+### 2.4 Pessimistic writes
+All mutations wait for the API result before touching the store — no optimistic apply,
+no rollback. Reason: the SharePoint backend is both slow (form digest + round-trip) and
+fallible (throttling, digest expiry, permission, name collision). Optimistic apply would
+show a state that does not exist yet and flicker the item away on rollback.
+
+We **apply exactly what the server returns for the affected node**, and never fabricate the
+**opaque, server-owned metadata** we cannot derive: `modifiedAt`, `modifiedBy`, and any
+server-resolved name. Two things the store *does* maintain locally — not as guesses, but as
+**confirmed cache maintenance** (deterministic consequences of a write the server already
+acknowledged): the direct parent's `itemCount` (±1 per confirmed create/delete/move), and the
+repathing of already-cached descendants after a folder rename/move (their paths derive
+deterministically from `parentPath + name`). We do **not** touch a parent's timestamps when
+adjusting its count; stale parent `modifiedAt`/`modifiedBy` self-heal on the next revalidating
+load.
+- Single create/rename/move/delete/copy: await the API call, then apply the result.
+- Bulk ops (multi-select): show progress, apply per-item as each succeeds, summarize errors at end.
+- Uploads: always progress-based, update store on completion.
+
+The UI must signal an in-flight write (spinner / disabled affordance) so the wait does not
+feel like a missed click; this is wired into the dialogs/context-menu actions when they land.
 
 ### 2.5 Component-level providers
 All stores and services specific to the file manager are provided on `FileManagerComponent`, not `providedIn: 'root'`. State dies with the component.
@@ -431,17 +447,20 @@ canDropOn(targetId: string): boolean {
 
 ---
 
-## 10. Optimistic vs Pessimistic Rules
+## 10. Write Rules (all pessimistic)
 
 | Operation | Mode | Behavior |
 |---|---|---|
-| Create folder | Optimistic | Insert with temp id `temp-<uuid>`, replace with server id on success, remove on error |
-| Rename | Optimistic | Snapshot, apply, rollback on error |
-| Single delete | Optimistic | Snapshot, remove, restore on error |
-| Single move | Optimistic | Snapshot parentId, apply, rollback on error |
-| Single copy | Pessimistic | Wait for server (copy creates new entity, need real id) |
+| Create folder | Pessimistic | Await server, insert the returned node, bump parent `itemCount` |
+| Rename | Pessimistic | Await server, apply the returned node, repath cached descendants |
+| Single delete | Pessimistic | Await server, then remove the cached subtree |
+| Single move | Pessimistic | Await server, apply the returned node, repath cached descendants, adjust both parent counts |
+| Single copy | Pessimistic | Await server (copy creates a new entity, need real id) |
 | Bulk delete/move/copy | Pessimistic + progress | Run through ConcurrencyQueue, apply each on success, summarize errors |
 | Upload | Pessimistic + progress | Always |
+
+No optimistic apply, snapshots, temp ids, or rollback anywhere — on error nothing was
+applied, so the store is already consistent and the failure surfaces as a toast.
 
 ---
 
@@ -458,7 +477,7 @@ Name collision on create/rename/move/copy/upload:
 
 - All `FileSystemError` codes map to user-friendly messages via `NotificationService`
 - All mutations show toast on error (and success for bulk)
-- Failed optimistic updates rollback AND toast
+- A failed write applied nothing to the store (pessimistic), so the toast is the whole recovery — no rollback
 - Network errors offer Retry action in toast
 - Never swallow errors silently
 

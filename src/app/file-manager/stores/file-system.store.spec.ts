@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
-import { isFolder } from '../models/file-system-node.model';
+import { throwError } from 'rxjs';
+import { isFolder, type FolderNode } from '../models/file-system-node.model';
+import { FileSystemError } from '../models/file-system-error.model';
 import { FileSystemApi } from '../services/file-system-api';
 import { MockFileSystemApi } from '../services/mock-file-system-api';
 import { MOCK_CONFIG } from '../tokens/mock-config.token';
@@ -61,5 +63,19 @@ describe('FileSystemStore project-scoped API contract', () => {
     await store.createFolder(root.id, 'New folder');
 
     expect(createFolder).toHaveBeenCalledOnceWith('project-123', root, 'New folder');
+  });
+
+  it('leaves the store unchanged when a write fails (pessimistic, no rollback needed)', async () => {
+    const root = await store.initialize('project-123');
+    const countBefore = store.entities().length;
+    const itemCountBefore = (store.entityMap()[root.id] as FolderNode).itemCount;
+    spyOn(api, 'createFolder').and.returnValue(
+      throwError(() => new FileSystemError('network', 'simulated failure')),
+    );
+
+    await expectAsync(store.createFolder(root.id, 'New folder')).toBeRejected();
+
+    expect(store.entities().length).toBe(countBefore);
+    expect((store.entityMap()[root.id] as FolderNode).itemCount).toBe(itemCountBefore);
   });
 });

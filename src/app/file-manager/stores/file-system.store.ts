@@ -3,7 +3,6 @@ import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 import { firstValueFrom } from 'rxjs';
 import {
   removeEntities,
-  removeEntity,
   setEntities,
   setEntity,
   withEntities,
@@ -16,7 +15,6 @@ import {
   type FolderNode,
 } from '../models/file-system-node.model';
 import { FileSystemApi } from '../services/file-system-api';
-import { joinPath } from '../utils/path.utils';
 
 interface FileSystemState {
   projectId: string | null;
@@ -150,6 +148,12 @@ export const FileSystemStore = signalStore(
         .filter((node): node is FileSystemNode => node !== undefined);
     };
 
+    // Adjust the cached parent's itemCount by the structural delta of a confirmed
+    // write (±1). itemCount is a deterministic consequence of an op the server
+    // acknowledged, so it is safe to apply locally. We do NOT touch modifiedAt /
+    // modifiedBy here: those are server-owned and we have no truthful value for them
+    // (the mutation response carries them only for the affected node, not its parent).
+    // Stale parent timestamps self-heal on the next revalidating load.
     const _adjustParentCount = (parentId: string | null, delta: number): void => {
       if (!parentId) return;
       const parent = store.entityMap()[parentId];
@@ -159,7 +163,6 @@ export const FileSystemStore = signalStore(
         setEntity<FileSystemNode>({
           ...parent,
           itemCount: Math.max(0, parent.itemCount + delta),
-          modifiedAt: new Date().toISOString(),
         }),
       );
     };
@@ -206,28 +209,10 @@ export const FileSystemStore = signalStore(
         throw new FileSystemError('not-found', `Parent folder not found in cache: ${parentId}`);
       }
       const trimmed = name.trim();
-      const now = new Date().toISOString();
-      const temp: FolderNode = {
-        kind: 'folder',
-        id: `temp-${crypto.randomUUID()}`,
-        path: joinPath(parent.path, trimmed),
-        name: trimmed,
-        parentId,
-        itemCount: 0,
-        createdAt: now,
-        modifiedAt: now,
-      };
-      patchState(store, setEntity<FileSystemNode>(temp));
+      const created = await firstValueFrom(api.createFolder(_requireProjectId(), parent, trimmed));
+      patchState(store, setEntity<FileSystemNode>(created));
       _adjustParentCount(parentId, 1);
-      try {
-        const created = await firstValueFrom(api.createFolder(_requireProjectId(), parent, trimmed));
-        patchState(store, removeEntity(temp.id), setEntity<FileSystemNode>(created));
-        return created;
-      } catch (e) {
-        patchState(store, removeEntity(temp.id));
-        _adjustParentCount(parentId, -1);
-        throw e;
-      }
+      return created;
     };
 
     const rename = async (id: string, newName: string): Promise<FileSystemNode> => {
@@ -242,41 +227,24 @@ export const FileSystemStore = signalStore(
           `Parent folder not found in cache: ${node.parentId}`,
         );
       }
-      const snapshot = _cachedSubtree(id);
-      const updated = _updateCachedSubtreePaths(
-        id,
-        node.parentId,
-        joinPath(parent.path, newName),
-        newName,
-      );
-      patchState(store, setEntities(updated));
-      try {
-        const renamed = await firstValueFrom(api.rename(_requireProjectId(), node, newName));
-        patchState(store, setEntity<FileSystemNode>(renamed));
-        _unmarkLoaded(id);
-        return renamed;
-      } catch (e) {
-        patchState(store, setEntities(snapshot));
-        throw e;
-      }
+      const renamed = await firstValueFrom(api.rename(_requireProjectId(), node, newName));
+      const updated = _updateCachedSubtreePaths(id, node.parentId, renamed.path, renamed.name);
+      patchState(store, setEntities(updated), setEntity<FileSystemNode>(renamed));
+      _unmarkLoaded(id);
+      return renamed;
     };
 
     const deleteNodes = async (ids: string | string[]): Promise<void> => {
       const id = onlySingleId(ids, 'delete');
-      const snapshot = _cachedSubtree(id);
-      const node = snapshot.find((candidate) => candidate.id === id);
+      const subtree = _cachedSubtree(id);
+      const node = subtree.find((candidate) => candidate.id === id);
       if (!node) throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
-      const removedIds = snapshot.map((candidate) => candidate.id);
-      patchState(store, removeEntities(removedIds));
+      await firstValueFrom(api.delete(_requireProjectId(), node));
+      patchState(store, removeEntities(subtree.map((candidate) => candidate.id)));
       _adjustParentCount(node.parentId, -1);
-      try {
-        await firstValueFrom(api.delete(_requireProjectId(), node));
-        _unmarkLoaded(id);
-      } catch (e) {
-        patchState(store, setEntities(snapshot));
-        _adjustParentCount(node.parentId, 1);
-        throw e;
-      }
+      // Clear loaded markers for every removed folder, not just the root — loaded
+      // descendant folders would otherwise leave orphaned ids in the loaded set.
+      _unmarkLoaded(...subtree.filter(isFolder).map((folder) => folder.id));
     };
 
     const move = async (ids: string | string[], targetParentId: string): Promise<void> => {
@@ -300,26 +268,12 @@ export const FileSystemStore = signalStore(
         );
       }
       const oldParentId = node.parentId;
-      const snapshot = _cachedSubtree(id);
-      const updated = _updateCachedSubtreePaths(
-        id,
-        targetParentId,
-        joinPath(targetParent.path, node.name),
-        node.name,
-      );
-      patchState(store, setEntities(updated));
+      const moved = await firstValueFrom(api.move(_requireProjectId(), node, targetParent));
+      const updated = _updateCachedSubtreePaths(id, targetParentId, moved.path, moved.name);
+      patchState(store, setEntities(updated), setEntity<FileSystemNode>(moved));
       _adjustParentCount(oldParentId, -1);
       _adjustParentCount(targetParentId, 1);
-      try {
-        const moved = await firstValueFrom(api.move(_requireProjectId(), node, targetParent));
-        patchState(store, setEntity<FileSystemNode>(moved));
-        _unmarkLoaded(id, oldParentId, targetParentId);
-      } catch (e) {
-        patchState(store, setEntities(snapshot));
-        _adjustParentCount(oldParentId, 1);
-        _adjustParentCount(targetParentId, -1);
-        throw e;
-      }
+      _unmarkLoaded(id, oldParentId, targetParentId);
     };
 
     const copy = async (ids: string | string[], targetParentId: string): Promise<void> => {
