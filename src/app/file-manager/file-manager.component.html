@@ -17,7 +17,7 @@
     <app-path-bar
       class="fm-breadcrumb"
       [segments]="navigation.pathSegments()"
-      [rootLabel]="config.libraryRootName"
+      [rootLabel]="currentListLabel()"
       (segmentClicked)="onSegmentClicked($event)"
     />
 
@@ -71,15 +71,29 @@
     [style]="{ height: '100%' }"
   >
     <ng-template #panel>
-      <aside class="fm-tree-pane" aria-label="Folder tree">
-        <app-folder-tree
-          [nodes]="treeNodes()"
-          [currentFolderId]="navigation.currentFolderId()"
-          [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
-          (nodeSelected)="onTreeNodeSelected($event)"
-          (nodeExpanded)="onTreeNodeExpanded($event)"
-          (nodeCollapsed)="onTreeNodeCollapsed($event)"
-        />
+      <aside class="fm-tree-pane" aria-label="Folder trees">
+        <section class="fm-tree-section">
+          <h2 class="fm-tree-section-title">{{ listLabels.marketing }}</h2>
+          <app-folder-tree
+            [nodes]="marketingTree()"
+            [currentFolderId]="navigation.currentFolderId()"
+            [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
+            (nodeSelected)="onTreeNodeSelected($event)"
+            (nodeExpanded)="onTreeNodeExpanded($event)"
+            (nodeCollapsed)="onTreeNodeCollapsed($event)"
+          />
+        </section>
+        <section class="fm-tree-section">
+          <h2 class="fm-tree-section-title">{{ listLabels.execution }}</h2>
+          <app-folder-tree
+            [nodes]="executionTree()"
+            [currentFolderId]="navigation.currentFolderId()"
+            [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
+            (nodeSelected)="onTreeNodeSelected($event)"
+            (nodeExpanded)="onTreeNodeExpanded($event)"
+            (nodeCollapsed)="onTreeNodeCollapsed($event)"
+          />
+        </section>
       </aside>
     </ng-template>
     <ng-template #panel>

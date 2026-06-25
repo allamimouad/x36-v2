@@ -13,15 +13,15 @@
   move "just works."
 - Mutations return the canonical affected node (Option A); delete returns 204.
 
-## Retrieval
-    GET /projects/{projectId}/document-lists/{listKey}/documents
-    GET /projects/{projectId}/document-lists/{listKey}/documents?parentId={folderId}
+## Retrieval (root by list, children by id)
+    GET /projects/{projectId}/document-lists/{listKey}/documents     # root of the list
+    GET /projects/{projectId}/documents/{folderId}/children          # direct children, by id
 
-- `listKey` = `execution` | `marketing`.
-- No `parentId` → root of that list. With `parentId` → direct children of that folder.
-- Think of `listKey` as the collection scope and `parentId` as a filter within it.
-- **Response** = the `DocumentListing` shape: `{ currentFolder, folders, files }`
-  (includes the folder's own metadata, not just its children). Every node carries `listKey`.
+- `listKey` = `execution` | `marketing`. It appears **only** on the root read — a root
+  has no parent id, so the list must be named. Once you have a folder, its children are
+  fetched **by id**, consistent with the by-id mutations below (no `listKey` needed).
+- **Response** (both) = the `DocumentListing` shape: `{ currentFolder, folders, files }`
+  — includes the folder's own metadata, not just its children.
 
 ## Mutations (by document id, project-level)
     POST   /projects/{projectId}/documents/folders            { parentId, name }   -> FolderNode
@@ -34,7 +34,8 @@
   identify everything; a cross-list move just references a source id + a target in the
   other list.
 - `move`/`copy` are action endpoints (not PATCH) because they do more than set a field
-  (new path, possible cross-list copy+delete, new `listKey` on the returned node).
+  (new path and parent relationship on the returned node, plus a possible cross-list
+  copy+delete).
 
 ## Example bodies
     POST /projects/123/documents/folders
@@ -50,9 +51,11 @@
     { "targetParentId": "folder-guid" }
 
 ## Frontend mapping
-- `FileSystemApi.listDocuments(projectId, listKey, parentId?)` → the GET routes.
+- `FileSystemApi.listDocumentRoot(projectId, listKey)` → the root GET;
+  `FileSystemApi.listDocuments(projectId, parentId)` → the children-by-id GET.
+- `listKey` lives only on the root read and on the two UI tree sections — **not** on the
+  node model (nodes stay generic; a node's list is derived by walking to its root).
 - Mutations stay node-based; the adapter extracts `id` / `parentId` / `targetParentId`
-  from the passed nodes. `listKey` lives on `listDocuments` and on the **node model**
-  (for rendering the two trees and routing child loads) — **not** on write calls.
+  from the passed nodes — no `listKey` on write calls.
 - The adapter maps HTTP status → `FileSystemError` codes (409 → `name-collision`,
   404 → `not-found`, 403 → `permission-denied`, etc.).

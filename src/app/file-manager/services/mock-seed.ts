@@ -1,3 +1,7 @@
+import {
+  DOCUMENT_LIST_KEYS,
+  type DocumentListKey,
+} from '../models/document-list.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { ROOT_PATH } from '../utils/path.utils';
 
@@ -14,7 +18,7 @@ interface SeedFileSpec {
 }
 
 export interface SeedResult {
-  rootId: string;
+  rootIdByList: Record<DocumentListKey, string>;
   nodes: Map<string, FileSystemNode>;
 }
 
@@ -42,323 +46,146 @@ const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const PNG = 'image/png';
 const TXT = 'text/plain';
 
-const SEED: SeedFolderSpec[] = [
+/** Execution-phase documents (contracts, schedules, on-site reporting). */
+const EXECUTION_SEED: SeedFolderSpec[] = [
   {
-    name: 'Documents',
+    name: 'Contracts',
     folders: [
       {
-        name: 'Reports',
-        folders: [
-          {
-            name: '2025 Fiscal Year',
-            folders: [
-              {
-                name: 'Q3 - July to September',
-                files: [
-                  { name: 'q3-summary.pdf', sizeBytes: 482_300, contentType: PDF },
-                  { name: 'q3-data.xlsx', sizeBytes: 132_500, contentType: XLSX },
-                ],
-              },
-              {
-                name: 'Q4 - October to December',
-                folders: [
-                  {
-                    name: 'Drafts',
-                    files: [
-                      { name: 'q4-draft-v1.docx', sizeBytes: 88_120, contentType: DOCX },
-                      { name: 'q4-draft-v2.docx', sizeBytes: 91_540, contentType: DOCX },
-                    ],
-                  },
-                  {
-                    name: 'Final',
-                    files: [
-                      { name: 'q4-final.pdf', sizeBytes: 511_244, contentType: PDF },
-                    ],
-                  },
-                ],
-                files: [{ name: 'q4-notes.txt', sizeBytes: 4_210, contentType: TXT }],
-              },
-            ],
-          },
-          {
-            name: '2026 Fiscal Year',
-            folders: [
-              {
-                name: 'Q1 - January to March',
-                files: [
-                  { name: 'q1-2026.pdf', sizeBytes: 488_900, contentType: PDF },
-                  { name: 'annual-summary.docx', sizeBytes: 124_500, contentType: DOCX },
-                ],
-              },
-            ],
-          },
+        name: 'Vendors',
+        files: [
+          { name: 'vendor-msa.pdf', sizeBytes: 412_000, contentType: PDF },
+          { name: 'vendor-list.xlsx', sizeBytes: 112_300, contentType: XLSX },
         ],
-        files: [{ name: 'reports-index.txt', sizeBytes: 2_300, contentType: TXT }],
       },
       {
-        name: 'Drafts',
+        name: 'Subcontractors',
         files: [
-          { name: 'proposal.docx', sizeBytes: 88_120, contentType: DOCX },
-          { name: 'notes.txt', sizeBytes: 4_210, contentType: TXT },
+          { name: 'sub-agreement.pdf', sizeBytes: 256_400, contentType: PDF },
+          { name: 'insurance-cert.pdf', sizeBytes: 98_700, contentType: PDF },
         ],
       },
     ],
     files: [
-      { name: 'budget.xlsx', sizeBytes: 65_540, contentType: XLSX },
-      { name: 'team-photo.png', sizeBytes: 1_840_220, contentType: PNG },
+      { name: 'main-contract.pdf', sizeBytes: 512_900, contentType: PDF },
+      { name: 'change-order-1.docx', sizeBytes: 48_200, contentType: DOCX },
     ],
   },
   {
-    name: 'Projects',
+    name: 'Schedules',
     folders: [
       {
-        name: 'Apollo',
-        folders: [
-          {
-            name: 'Design',
-            folders: [
-              {
-                name: 'Mockups',
-                files: [
-                  { name: 'home-v1.png', sizeBytes: 642_100, contentType: PNG },
-                  { name: 'home-v2.png', sizeBytes: 651_900, contentType: PNG },
-                ],
-              },
-              {
-                name: 'Specs',
-                files: [{ name: 'design-spec.pdf', sizeBytes: 305_000, contentType: PDF }],
-              },
-            ],
-          },
-          {
-            name: 'Engineering',
-            folders: [
-              {
-                name: 'Backend',
-                folders: [
-                  {
-                    name: 'Services',
-                    folders: [
-                      {
-                        name: 'Authentication Service',
-                        folders: [
-                          {
-                            name: 'Version 2.0 Release',
-                            files: [
-                              { name: 'auth-spec.docx', sizeBytes: 71_200, contentType: DOCX },
-                              { name: 'token-flow.png', sizeBytes: 254_800, contentType: PNG },
-                            ],
-                          },
-                        ],
-                        files: [{ name: 'auth-readme.txt', sizeBytes: 1_900, contentType: TXT }],
-                      },
-                      {
-                        name: 'Billing',
-                        files: [{ name: 'billing-spec.docx', sizeBytes: 64_500, contentType: DOCX }],
-                      },
-                    ],
-                  },
-                ],
-                files: [{ name: 'api-design.docx', sizeBytes: 142_000, contentType: DOCX }],
-              },
-              {
-                name: 'Frontend',
-                files: [{ name: 'ui-guidelines.pdf', sizeBytes: 210_400, contentType: PDF }],
-              },
-            ],
-          },
+        name: 'Phase 1',
+        files: [
+          { name: 'gantt-phase1.xlsx', sizeBytes: 184_500, contentType: XLSX },
+          { name: 'milestones.docx', sizeBytes: 41_200, contentType: DOCX },
         ],
-        files: [{ name: 'charter.pdf', sizeBytes: 98_700, contentType: PDF }],
       },
       {
-        name: 'Zephyr',
-        folders: [
-          {
-            name: 'Research',
-            files: [
-              { name: 'market-study.xlsx', sizeBytes: 221_300, contentType: XLSX },
-              { name: 'findings.docx', sizeBytes: 76_400, contentType: DOCX },
-            ],
-          },
-        ],
-        files: [{ name: 'kickoff.pptx-notes.txt', sizeBytes: 3_100, contentType: TXT }],
+        name: 'Phase 2',
+        files: [{ name: 'gantt-phase2.xlsx', sizeBytes: 176_900, contentType: XLSX }],
       },
     ],
+    files: [{ name: 'master-schedule.xlsx', sizeBytes: 221_300, contentType: XLSX }],
   },
   {
-    name: 'Finance',
+    name: 'Site Reports',
     folders: [
       {
-        name: 'Invoices',
-        folders: [
-          {
-            name: '2025 Fiscal Year',
-            files: [
-              { name: 'inv-2025-001.pdf', sizeBytes: 41_200, contentType: PDF },
-              { name: 'inv-2025-002.pdf', sizeBytes: 39_800, contentType: PDF },
-            ],
-          },
-          {
-            name: '2026 Fiscal Year',
-            folders: [
-              {
-                name: 'Q1 - January to March',
-                folders: [
-                  {
-                    name: 'EMEA Region Invoices',
-                    files: [{ name: 'inv-2026-emea-001.pdf', sizeBytes: 44_100, contentType: PDF }],
-                  },
-                  {
-                    name: 'APAC Region Invoices',
-                    files: [{ name: 'inv-2026-apac-001.pdf', sizeBytes: 43_700, contentType: PDF }],
-                  },
-                ],
-              },
-            ],
-            files: [{ name: 'inv-2026-001.pdf', sizeBytes: 42_900, contentType: PDF }],
-          },
+        name: 'Week 1',
+        files: [
+          { name: 'daily-log-mon.pdf', sizeBytes: 88_400, contentType: PDF },
+          { name: 'site-photo-1.png', sizeBytes: 1_240_000, contentType: PNG },
         ],
       },
       {
-        name: 'Budgets',
-        files: [
-          { name: 'budget-2025.xlsx', sizeBytes: 158_200, contentType: XLSX },
-          { name: 'budget-2026.xlsx', sizeBytes: 161_700, contentType: XLSX },
-        ],
-      },
-      {
-        name: 'ConsolidatedQuarterlyFinancialStatementsAndReconciliationReportsForGlobalSubsidiaries2024Through2026',
-        files: [
-          { name: 'consolidated-q4.xlsx', sizeBytes: 274_500, contentType: XLSX },
-        ],
+        name: 'Week 2',
+        files: [{ name: 'daily-log-mon.pdf', sizeBytes: 90_100, contentType: PDF }],
       },
     ],
-  },
-  {
-    name: 'Legal',
-    folders: [
-      {
-        name: 'Contracts',
-        folders: [
-          {
-            name: 'Vendors',
-            files: [{ name: 'vendor-msa.pdf', sizeBytes: 412_000, contentType: PDF }],
-          },
-          {
-            name: 'Clients',
-            files: [{ name: 'client-sow.pdf', sizeBytes: 298_500, contentType: PDF }],
-          },
-        ],
-      },
-      {
-        name: 'Policies',
-        files: [{ name: 'privacy-policy.pdf', sizeBytes: 120_300, contentType: PDF }],
-      },
-      {
-        name: 'International Regulatory Compliance and Cross-Border Data Transfer Agreements (EMEA, APAC & Americas, 2024-2026)',
-        files: [
-          { name: 'gdpr-cross-border-framework.pdf', sizeBytes: 184_300, contentType: PDF },
-          { name: 'standard-contractual-clauses.docx', sizeBytes: 66_700, contentType: DOCX },
-        ],
-      },
-    ],
-    files: [
-      { name: 'nda-acme.pdf', sizeBytes: 84_200, contentType: PDF },
-      { name: 'nda-globex.pdf', sizeBytes: 81_900, contentType: PDF },
-      { name: 'msa-initech.pdf', sizeBytes: 412_300, contentType: PDF },
-      { name: 'sow-umbrella.docx', sizeBytes: 64_500, contentType: DOCX },
-      { name: 'amendment-1.docx', sizeBytes: 38_120, contentType: DOCX },
-      { name: 'amendment-2.docx', sizeBytes: 41_640, contentType: DOCX },
-      { name: 'termination-notice.pdf', sizeBytes: 52_700, contentType: PDF },
-      { name: 'ip-assignment.pdf', sizeBytes: 133_800, contentType: PDF },
-      { name: 'data-processing-agreement.pdf', sizeBytes: 198_400, contentType: PDF },
-      { name: 'confidentiality-addendum.docx', sizeBytes: 29_900, contentType: DOCX },
-      { name: 'vendor-list.xlsx', sizeBytes: 112_300, contentType: XLSX },
-      { name: 'compliance-checklist.xlsx', sizeBytes: 87_600, contentType: XLSX },
-      { name: 'gdpr-summary.pdf', sizeBytes: 145_200, contentType: PDF },
-      { name: 'litigation-hold.txt', sizeBytes: 6_400, contentType: TXT },
-      { name: 'board-resolution.pdf', sizeBytes: 73_100, contentType: PDF },
-      { name: 'power-of-attorney.pdf', sizeBytes: 91_500, contentType: PDF },
-      { name: 'trademark-filing.pdf', sizeBytes: 256_700, contentType: PDF },
-      { name: 'patent-application.pdf', sizeBytes: 488_900, contentType: PDF },
-      { name: 'license-agreement.docx', sizeBytes: 55_300, contentType: DOCX },
-      { name: 'settlement-draft.docx', sizeBytes: 47_800, contentType: DOCX },
-    ],
-  },
-  {
-    name: 'Shared',
-    folders: [
-      {
-        name: 'Templates',
-        folders: [
-          {
-            name: 'Legal',
-            files: [{ name: 'nda-template.docx', sizeBytes: 28_900, contentType: DOCX }],
-          },
-          {
-            name: 'Marketing',
-            files: [{ name: 'deck-template.pptx-notes.txt', sizeBytes: 2_400, contentType: TXT }],
-          },
-        ],
-        files: [
-          { name: 'invoice.docx', sizeBytes: 23_440, contentType: DOCX },
-          { name: 'contract.pdf', sizeBytes: 312_900, contentType: PDF },
-        ],
-      },
-      {
-        name: 'Public',
-        files: [
-          { name: 'readme.txt', sizeBytes: 1_120, contentType: TXT },
-          { name: 'logo.png', sizeBytes: 92_330, contentType: PNG },
-        ],
-      },
-    ],
-    files: [{ name: 'handover.pdf', sizeBytes: 245_000, contentType: PDF }],
-  },
-  {
-    name: 'Archive',
-    folders: [
-      {
-        name: '2024 Fiscal Year',
-        folders: [
-          {
-            name: 'Reports',
-            files: [{ name: 'old-report.pdf', sizeBytes: 720_100, contentType: PDF }],
-          },
-        ],
-        files: [{ name: 'data.xlsx', sizeBytes: 132_500, contentType: XLSX }],
-      },
-      {
-        name: '2025 Fiscal Year',
-        files: [
-          { name: 'final-report.pdf', sizeBytes: 990_400, contentType: PDF },
-          { name: 'presentation.pdf', sizeBytes: 2_410_000, contentType: PDF },
-        ],
-      },
-    ],
-    files: [{ name: 'archive-index.txt', sizeBytes: 8_900, contentType: TXT }],
+    files: [{ name: 'inspection-summary.pdf', sizeBytes: 142_000, contentType: PDF }],
   },
 ];
 
+/** Marketing-phase documents (brand assets, campaigns, press). */
+const MARKETING_SEED: SeedFolderSpec[] = [
+  {
+    name: 'Brand Assets',
+    folders: [
+      {
+        name: 'Logos',
+        files: [
+          { name: 'logo-primary.png', sizeBytes: 92_330, contentType: PNG },
+          { name: 'logo-mono.png', sizeBytes: 64_120, contentType: PNG },
+        ],
+      },
+      {
+        name: 'Photography',
+        files: [{ name: 'hero-shot.png', sizeBytes: 2_410_000, contentType: PNG }],
+      },
+    ],
+    files: [{ name: 'brand-guidelines.pdf', sizeBytes: 488_900, contentType: PDF }],
+  },
+  {
+    name: 'Campaigns',
+    folders: [
+      {
+        name: 'Launch 2026',
+        folders: [
+          {
+            name: 'Email',
+            files: [{ name: 'announcement.docx', sizeBytes: 54_300, contentType: DOCX }],
+          },
+        ],
+        files: [
+          { name: 'campaign-brief.docx', sizeBytes: 76_400, contentType: DOCX },
+          { name: 'budget.xlsx', sizeBytes: 65_540, contentType: XLSX },
+        ],
+      },
+    ],
+    files: [{ name: 'calendar-2026.xlsx', sizeBytes: 132_500, contentType: XLSX }],
+  },
+  {
+    name: 'Press',
+    files: [
+      { name: 'press-release.pdf', sizeBytes: 120_300, contentType: PDF },
+      { name: 'media-list.xlsx', sizeBytes: 87_600, contentType: XLSX },
+    ],
+  },
+];
+
+const SEED_BY_LIST: Record<DocumentListKey, SeedFolderSpec[]> = {
+  execution: EXECUTION_SEED,
+  marketing: MARKETING_SEED,
+};
+
 export function buildSeed(): SeedResult {
   const nodes = new Map<string, FileSystemNode>();
-  const rootId = crypto.randomUUID();
-  const root: FolderNode = {
-    kind: 'folder',
-    id: rootId,
-    path: ROOT_PATH,
-    name: '',
-    parentId: null,
-    itemCount: SEED.length,
-    createdAt: EARLIER,
-    modifiedAt: NOW,
-    modifiedBy: EDITORS[0],
-  };
-  nodes.set(root.id, root);
-  for (const spec of SEED) {
-    addFolder(nodes, spec, rootId, ROOT_PATH);
+  const rootIdByList = {} as Record<DocumentListKey, string>;
+  // One root per document list, each with its own seed content and path namespace
+  // (e.g. /execution) so node paths stay unique across lists; nodes attach via parentId.
+  for (const listKey of DOCUMENT_LIST_KEYS) {
+    const seed = SEED_BY_LIST[listKey];
+    const rootId = crypto.randomUUID();
+    const rootPath = `${ROOT_PATH}${listKey}`;
+    const root: FolderNode = {
+      kind: 'folder',
+      id: rootId,
+      path: rootPath,
+      name: '',
+      parentId: null,
+      itemCount: seed.length,
+      createdAt: EARLIER,
+      modifiedAt: NOW,
+      modifiedBy: EDITORS[0],
+    };
+    nodes.set(root.id, root);
+    for (const spec of seed) {
+      addFolder(nodes, spec, rootId, rootPath);
+    }
+    rootIdByList[listKey] = rootId;
   }
-  return { rootId, nodes };
+  return { rootIdByList, nodes };
 }
 
 function addFolder(

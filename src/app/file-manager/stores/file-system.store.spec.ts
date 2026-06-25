@@ -31,42 +31,46 @@ describe('FileSystemStore project-scoped API contract', () => {
     store = TestBed.inject(FileSystemStore);
   });
 
-  it('initializes the root and its direct children with one listing request', async () => {
-    const listDocuments = spyOn(api, 'listDocuments').and.callThrough();
+  it('initializes both list roots and their direct children in parallel', async () => {
+    const listDocumentRoot = spyOn(api, 'listDocumentRoot').and.callThrough();
 
-    const root = await store.initialize('project-123');
+    const roots = await store.initialize('project-123');
 
-    expect(listDocuments).toHaveBeenCalledOnceWith('project-123');
+    expect(listDocumentRoot).toHaveBeenCalledTimes(2);
+    expect(listDocumentRoot).toHaveBeenCalledWith('project-123', 'execution');
+    expect(listDocumentRoot).toHaveBeenCalledWith('project-123', 'marketing');
     expect(store.projectId()).toBe('project-123');
-    expect(store.rootId()).toBe(root.id);
-    expect(store.folderIdsWithLoadedChildren()).toContain(root.id);
-    expect(store.entities().filter((node) => node.parentId === root.id).length).toBe(3);
+    expect(store.rootIdByList().execution).toBe(roots.execution.id);
+    expect(store.rootIdByList().marketing).toBe(roots.marketing.id);
+    expect(store.folderIdsWithLoadedChildren()).toContain(roots.execution.id);
+    expect(store.folderIdsWithLoadedChildren()).toContain(roots.marketing.id);
+    expect(store.entities().filter((node) => node.parentId === roots.execution.id).length).toBe(3);
   });
 
-  it('loads nested content using the initialized project and parent ids', async () => {
+  it('loads nested content by parent id using the initialized project', async () => {
     await store.initialize('project-123');
-    const documents = store
+    const contracts = store
       .entities()
-      .find((node) => isFolder(node) && node.path === '/Documents');
-    if (!documents) throw new Error('Expected Documents folder');
+      .find((node) => isFolder(node) && node.path === '/execution/Contracts');
+    if (!contracts) throw new Error('Expected Contracts folder');
     const listDocuments = spyOn(api, 'listDocuments').and.callThrough();
 
-    await store.loadChildren(documents.id);
+    await store.loadChildren(contracts.id);
 
-    expect(listDocuments).toHaveBeenCalledOnceWith('project-123', documents.id);
+    expect(listDocuments).toHaveBeenCalledOnceWith('project-123', contracts.id);
   });
 
   it('passes the initialized project id to mutation operations', async () => {
-    const root = await store.initialize('project-123');
+    const roots = await store.initialize('project-123');
     const createFolder = spyOn(api, 'createFolder').and.callThrough();
 
-    await store.createFolder(root.id, 'New folder');
+    await store.createFolder(roots.execution.id, 'New folder');
 
-    expect(createFolder).toHaveBeenCalledOnceWith('project-123', root, 'New folder');
+    expect(createFolder).toHaveBeenCalledOnceWith('project-123', roots.execution, 'New folder');
   });
 
   it('leaves the store unchanged when a write fails (pessimistic, no rollback needed)', async () => {
-    const root = await store.initialize('project-123');
+    const { execution: root } = await store.initialize('project-123');
     const countBefore = store.entities().length;
     const itemCountBefore = (store.entityMap()[root.id] as FolderNode).itemCount;
     spyOn(api, 'createFolder').and.returnValue(
@@ -80,7 +84,7 @@ describe('FileSystemStore project-scoped API contract', () => {
   });
 
   it('move replaces the cached subtree with the returned node and returns removed ids', async () => {
-    const root = await store.initialize('project-123');
+    const { execution: root } = await store.initialize('project-123');
     const tops = store
       .entities()
       .filter((node): node is FolderNode => isFolder(node) && node.parentId === root.id);

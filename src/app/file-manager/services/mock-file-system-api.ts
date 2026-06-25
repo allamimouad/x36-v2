@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { type Observable, map, throwError, timer } from 'rxjs';
 import type { DocumentListing } from '../models/document-listing.model';
+import type { DocumentListKey } from '../models/document-list.model';
 import { FileSystemError } from '../models/file-system-error.model';
 import {
   isFolder,
@@ -19,24 +20,34 @@ export class MockFileSystemApi extends FileSystemApi {
   private readonly config: MockConfig = inject(MOCK_CONFIG);
   private readonly seed = buildSeed();
   private readonly nodes: Map<string, FileSystemNode> = this.seed.nodes;
-  private readonly rootId: string = this.seed.rootId;
+  private readonly rootIdByList: Record<DocumentListKey, string> = this.seed.rootIdByList;
   /** Stand-in for the signed-in user; stamped as `modifiedBy` on every mutation. */
   private readonly currentUser = 'You';
 
-  override listDocuments(_projectId: string, parentId?: string): Observable<DocumentListing> {
-    return this.read(() => {
-      const parent = this.requireFolder(parentId ?? this.rootId);
-      const folders: FolderNode[] = [];
-      const files: FileNode[] = [];
-      for (const node of this.nodes.values()) {
-        if (node.parentId !== parent.id) continue;
-        if (isFolder(node)) folders.push(clone(node));
-        else files.push(clone(node));
-      }
-      folders.sort((a, b) => a.name.localeCompare(b.name));
-      files.sort((a, b) => a.name.localeCompare(b.name));
-      return { currentFolder: clone(parent), folders, files };
-    });
+  override listDocumentRoot(
+    _projectId: string,
+    listKey: DocumentListKey,
+  ): Observable<DocumentListing> {
+    return this.read(() => this.listing(this.rootIdByList[listKey]));
+  }
+
+  override listDocuments(_projectId: string, parentId: string): Observable<DocumentListing> {
+    return this.read(() => this.listing(parentId));
+  }
+
+  /** Build a DocumentListing for `parentId`'s direct children. */
+  private listing(parentId: string): DocumentListing {
+    const parent = this.requireFolder(parentId);
+    const folders: FolderNode[] = [];
+    const files: FileNode[] = [];
+    for (const node of this.nodes.values()) {
+      if (node.parentId !== parent.id) continue;
+      if (isFolder(node)) folders.push(clone(node));
+      else files.push(clone(node));
+    }
+    folders.sort((a, b) => a.name.localeCompare(b.name));
+    files.sort((a, b) => a.name.localeCompare(b.name));
+    return { currentFolder: clone(parent), folders, files };
   }
 
   override createFolder(

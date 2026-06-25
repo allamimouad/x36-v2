@@ -162,12 +162,12 @@ export const NavigationStore = signalStore(
       }
     };
 
-    const initialize = (rootId: string): void => {
+    const initialize = (args: { currentFolderId: string; expandedRootIds: string[] }): void => {
       patchState(store, {
-        currentFolderId: rootId,
-        history: [rootId],
+        currentFolderId: args.currentFolderId,
+        history: [args.currentFolderId],
         currentHistoryIndex: 0,
-        expandedTreeIds: new Set([rootId]),
+        expandedTreeIds: new Set(args.expandedRootIds),
         navigationError: null,
       });
     };

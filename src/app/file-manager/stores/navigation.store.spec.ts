@@ -35,10 +35,10 @@ describe('NavigationStore', () => {
     });
     fs = TestBed.inject(FileSystemStore);
     nav = TestBed.inject(NavigationStore);
-    const root = await fs.initialize('test-project');
-    rootId = root.id;
-    docsId = byPath('/Documents');
-    sharedId = byPath('/Shared');
+    const roots = await fs.initialize('test-project');
+    rootId = roots.execution.id;
+    docsId = byPath('/execution/Contracts');
+    sharedId = byPath('/execution/Schedules');
   });
 
   function byPath(path: string): string {
@@ -70,7 +70,7 @@ describe('NavigationStore', () => {
   });
 
   it('initialize sets root navigation state without triggering another load', () => {
-    nav.initialize(rootId);
+    nav.initialize({ currentFolderId: rootId, expandedRootIds: [rootId] });
 
     expect(nav.currentFolderId()).toBe(rootId);
     expect(nav.history()).toEqual([rootId]);
@@ -142,7 +142,7 @@ describe('NavigationStore', () => {
   it('exposes pathSegments derived from FileSystemStore entities', () => {
     nav.navigateTo(docsId);
     const segs = nav.pathSegments();
-    expect(segs.map((s) => s.name)).toEqual(['', 'Documents']);
+    expect(segs.map((s) => s.name)).toEqual(['', 'Contracts']);
     expect(segs.map((s) => s.id)).toEqual([rootId, docsId]);
   });
 
@@ -151,7 +151,7 @@ describe('NavigationStore', () => {
     const { folders, files } = nav.currentFolderChildren();
     expect(folders.length).toBe(3);
     expect(files.length).toBe(0);
-    expect(folders.map((f) => f.name)).toEqual(['Archive', 'Documents', 'Shared']);
+    expect(folders.map((f) => f.name)).toEqual(['Contracts', 'Schedules', 'Site Reports']);
   });
 });
 
@@ -233,7 +233,7 @@ describe('NavigationStore load triggering', () => {
   });
 
   it('initialize sets root navigation state without triggering a load', () => {
-    nav.initialize(fakeRoot.id);
+    nav.initialize({ currentFolderId: fakeRoot.id, expandedRootIds: [fakeRoot.id] });
 
     expect(nav.currentFolderId()).toBe(fakeRoot.id);
     expect(nav.history()).toEqual([fakeRoot.id]);

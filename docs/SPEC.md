@@ -36,7 +36,7 @@ Stores **MUST NOT know about SharePoint**. They depend on an abstract `FileSyste
 - `MockFileSystemApi` — in-memory, used for dev and tests (default provider)
 - `SharePointFileSystemApi` — stubbed now, implemented later on another machine
 
-The interface uses generic terminology (`projectId`, `id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. `projectId` scopes every operation to one project's document library. `id` is a stable, opaque UUID for the entity's lifetime. `path` is the mutable, human-readable backend path. In the mock, `id` is a `crypto.randomUUID()` value; in the SharePoint adapter, `id = UniqueId` (the GUID SharePoint exposes per list item) and `path = ServerRelativeUrl`. Retrieval uses one `listDocuments(projectId, parentId?)` operation that returns the current folder and its direct children; omitting `parentId` means the project library root. Mutations take full `FolderNode` / `FileSystemNode` arguments so each implementation can read whatever fields it needs. No internal id↔url mapping cache.
+The interface uses generic terminology (`projectId`, `listKey`, `id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. A project has **two document lists**, selected by the domain `listKey` (`'execution' | 'marketing'`); the backend maps each to one of the project's SharePoint document libraries. `id` is a stable, opaque UUID for the entity's lifetime, unique within the project's SharePoint site. `path` is the mutable, human-readable backend path. In the mock, `id` is a `crypto.randomUUID()` value; in the SharePoint adapter, `id = UniqueId` (the GUID SharePoint exposes per list item) and `path = ServerRelativeUrl`. Retrieval is split: `listDocumentRoot(projectId, listKey)` returns a list's root (the only operation that needs `listKey`, since a root has no parent id), and `listDocuments(projectId, parentId)` returns a folder's direct children addressed by id. Nodes stay generic — they do **not** carry `listKey`; a node's list is derived by walking to its root. Mutations take full `FolderNode` / `FileSystemNode` arguments so each implementation can read whatever fields it needs. No internal id↔url mapping cache.
 
 ### 2.3 Signal Store for entities, plain signals for simple state
 `FileSystemStore` uses `withEntities` because folders and files are viewed in multiple places (tree + table) and must stay in sync. `NavigationStore` uses Signal Store because it owns navigation history, expansion, focus, selection, rename state, and file-system-derived computeds. Small command-style state uses plain signal services; `ClipboardService` is a plain injectable service with `signal()` / `computed()`, not a Signal Store. Simple component-local state stays as plain `signal()` inside the component — don't over-store.
@@ -191,7 +191,7 @@ export type FileSystemNode = FolderNode | FileNode;
 
 export interface FolderNode {
   kind: 'folder';
-  id: string;              // unique primary key; normalized full path
+  id: string;              // stable, opaque UUID (SharePoint UniqueId); never the path
   path: string;            // full path from root, e.g. "/Documents/Reports/2026"
   name: string;
   parentId: string | null; // null for root
@@ -228,9 +228,18 @@ export function isFolder(n: FileSystemNode): n is FolderNode {
 // services/file-system-api.ts
 import type { Observable } from 'rxjs';
 
+export type DocumentListKey = 'execution' | 'marketing';
+
 export abstract class FileSystemApi {
-  /** List the project root, or `parentId` folder, with its direct children. */
-  abstract listDocuments(projectId: string, parentId?: string): Observable<{
+  /** List the root of one document list (`listKey`) with its direct children. */
+  abstract listDocumentRoot(projectId: string, listKey: DocumentListKey): Observable<{
+    currentFolder: FolderNode;
+    folders: FolderNode[];
+    files: FileNode[];
+  }>;
+
+  /** List the direct children of a folder, addressed by its id alone. */
+  abstract listDocuments(projectId: string, parentId: string): Observable<{
     currentFolder: FolderNode;
     folders: FolderNode[];
     files: FileNode[];

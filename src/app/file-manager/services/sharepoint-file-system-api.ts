@@ -40,8 +40,10 @@
  *   belong to it. Full node arguments provide fields needed by write operations.
  *
  * Endpoints per method (logical — actual calls go through the generated client)
- *   listDocuments   GET    project library root when parentId is omitted,
- *                          otherwise /_api/web/GetFolderById('<parentId>')
+ *   listDocumentRoot GET   the `listKey` document library's root folder
+ *                            (resolve listKey → SharePoint list, then its RootFolder)
+ *                            ?$expand=Folders,Files (same $select as below)
+ *   listDocuments   GET    /_api/web/GetFolderById('<parentId>')
  *                            ?$expand=Folders,Files
  *                            &$select=UniqueId,Name,ServerRelativeUrl,ItemCount,
  *                                     Folders/UniqueId,Folders/Name,
@@ -96,6 +98,7 @@
 import { Injectable } from '@angular/core';
 import { type Observable, throwError } from 'rxjs';
 import type { DocumentListing } from '../models/document-listing.model';
+import type { DocumentListKey } from '../models/document-list.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { FileSystemApi } from './file-system-api';
 
@@ -104,10 +107,21 @@ const PHASE6 = 'TODO: implement in Phase 6 — see PHASES.md';
 @Injectable()
 export class SharePointFileSystemApi extends FileSystemApi {
   /**
-   * Resolve the project's library root when `parentId` is absent; otherwise get the folder by id.
-   * Use `$select` + `$expand=Folders,Files` and map the result into a DocumentListing.
+   * Resolve `listKey` → the project's SharePoint document library, then GET its
+   * RootFolder with `$expand=Folders,Files`. Map the result into a DocumentListing.
    */
-  override listDocuments(_projectId: string, _parentId?: string): Observable<DocumentListing> {
+  override listDocumentRoot(
+    _projectId: string,
+    _listKey: DocumentListKey,
+  ): Observable<DocumentListing> {
+    return throwError(() => new Error(PHASE6));
+  }
+
+  /**
+   * GET /_api/web/GetFolderById('<parentId>')?$expand=Folders,Files and map into a
+   * DocumentListing. Addressed by id alone — UniqueId is unique within the site.
+   */
+  override listDocuments(_projectId: string, _parentId: string): Observable<DocumentListing> {
     return throwError(() => new Error(PHASE6));
   }
 

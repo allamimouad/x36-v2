@@ -13,6 +13,11 @@ import { InputTextModule } from 'primeng/inputtext';
 import { SplitterModule } from 'primeng/splitter';
 import { TooltipModule } from 'primeng/tooltip';
 import {
+  DOCUMENT_LIST_LABELS,
+  DOCUMENT_LIST_KEYS,
+  type DocumentListKey,
+} from './models/document-list.model';
+import {
   isFolder,
   type FileSystemNode,
   type FolderNode,
@@ -61,32 +66,51 @@ export class FileManagerComponent implements OnInit {
   protected readonly clipboard = inject(ClipboardService);
   protected readonly config = inject(FILE_MANAGER_CONFIG);
 
-  protected readonly treeNodes = computed<TreeNode<FolderNode>[]>(() => {
-    const rootId = this.fileSystem.rootId();
+  /** Section-header labels for the two tree panes (Marketing rendered first). */
+  protected readonly listLabels = DOCUMENT_LIST_LABELS;
+
+  /** One tree section per document list, each rooted at its list root. */
+  protected readonly executionTree = computed(() => this.buildTreeSection('execution'));
+  protected readonly marketingTree = computed(() => this.buildTreeSection('marketing'));
+
+  /** Build the `p-tree` nodes for one list, traversing from its root id. */
+  private buildTreeSection(listKey: DocumentListKey): TreeNode<FolderNode>[] {
+    const rootId = this.fileSystem.rootIdByList()[listKey];
     if (!rootId) return [];
     const root = this.fileSystem.entityMap()[rootId];
     if (!root || !isFolder(root)) return [];
     const all = this.fileSystem.entities();
     const expanded = this.navigation.expandedTreeIds();
     const loaded = new Set(this.fileSystem.folderIdsWithLoadedChildren());
-    const rootLabel = this.config.libraryRootName;
-    const buildNode = (folder: FolderNode): TreeNode<FolderNode> => {
+    const buildNode = (folder: FolderNode, isRoot: boolean): TreeNode<FolderNode> => {
       const childFolders = all
         .filter((n): n is FolderNode => isFolder(n) && n.parentId === folder.id)
         .sort((a, b) => a.name.localeCompare(b.name));
       const isLoaded = loaded.has(folder.id);
-      const isExpanded = expanded.has(folder.id);
       return {
         key: folder.id,
-        label: folder.name || rootLabel,
+        // Section header already carries the full label; the root node shows the short name.
+        label: isRoot ? `${listKey[0].toUpperCase()}${listKey.slice(1)}` : folder.name,
         icon: 'pi pi-folder',
         data: folder,
         leaf: isLoaded && childFolders.length === 0,
-        expanded: isExpanded,
-        children: isLoaded ? childFolders.map(buildNode) : [],
+        expanded: expanded.has(folder.id),
+        children: isLoaded ? childFolders.map((child) => buildNode(child, false)) : [],
       };
     };
-    return [buildNode(root)];
+    return [buildNode(root, true)];
+  }
+
+  /** Label of the document list the current folder belongs to (for the breadcrumb root). */
+  protected readonly currentListLabel = computed<string>(() => {
+    const id = this.navigation.currentFolderId();
+    const map = this.fileSystem.entityMap();
+    let cursor: FolderNode | FileSystemNode | undefined = id ? map[id] : undefined;
+    while (cursor && cursor.parentId) cursor = map[cursor.parentId];
+    const rootId = cursor?.id;
+    const roots = this.fileSystem.rootIdByList();
+    const key = DOCUMENT_LIST_KEYS.find((k) => roots[k] === rootId);
+    return key ? DOCUMENT_LIST_LABELS[key] : this.config.libraryRootName;
   });
 
   protected readonly isCurrentLoading = computed(() => {
@@ -111,8 +135,11 @@ export class FileManagerComponent implements OnInit {
 
   private async bootstrap(projectId: string): Promise<void> {
     try {
-      const root = await this.fileSystem.initialize(projectId);
-      this.navigation.initialize(root.id);
+      const roots = await this.fileSystem.initialize(projectId);
+      this.navigation.initialize({
+        currentFolderId: roots.marketing.id,
+        expandedRootIds: [roots.marketing.id, roots.execution.id],
+      });
     } catch (e) {
       console.error('[file-manager] bootstrap failed', e);
     }

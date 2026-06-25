@@ -1,5 +1,6 @@
 import type { Observable } from 'rxjs';
 import type { DocumentListing } from '../models/document-listing.model';
+import type { DocumentListKey } from '../models/document-list.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
 
 /**
@@ -17,8 +18,17 @@ import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system
  * prefer async/await bridge with `firstValueFrom` at the call site.
  */
 export abstract class FileSystemApi {
-  /** List the project root, or a folder identified by `parentId`, with its direct children. */
-  abstract listDocuments(projectId: string, parentId?: string): Observable<DocumentListing>;
+  /**
+   * List the root of one document list (`listKey`) with its direct children.
+   * `listKey` is the only place a list key is needed — a root has no parent id.
+   */
+  abstract listDocumentRoot(
+    projectId: string,
+    listKey: DocumentListKey,
+  ): Observable<DocumentListing>;
+
+  /** List the direct children of a folder, addressed by its id alone. */
+  abstract listDocuments(projectId: string, parentId: string): Observable<DocumentListing>;
 
   /** Create a new folder under `parent`. Throws on name collision. */
   abstract createFolder(projectId: string, parent: FolderNode, name: string): Observable<FolderNode>;

@@ -7,6 +7,8 @@ import {
   setEntity,
   withEntities,
 } from '@ngrx/signals/entities';
+import type { DocumentListRoots } from '../models/document-list.model';
+import { DOCUMENT_LIST_KEYS, type DocumentListKey } from '../models/document-list.model';
 import { FileSystemError } from '../models/file-system-error.model';
 import {
   isFolder,
@@ -21,7 +23,7 @@ interface FileSystemState {
   folderIdsWithLoadingChildren: string[];
   errorByParentId: Record<string, string | undefined>;
   folderIdsWithLoadedChildren: string[];
-  rootId: string | null;
+  rootIdByList: Record<DocumentListKey, string | null>;
 }
 
 const initialState: FileSystemState = {
@@ -29,7 +31,7 @@ const initialState: FileSystemState = {
   folderIdsWithLoadingChildren: [],
   errorByParentId: {},
   folderIdsWithLoadedChildren: [],
-  rootId: null,
+  rootIdByList: { execution: null, marketing: null },
 };
 
 export const FileSystemStore = signalStore(
@@ -78,15 +80,29 @@ export const FileSystemStore = signalStore(
       return projectId;
     };
 
-    const initialize = async (projectId: string): Promise<FolderNode> => {
-      const { currentFolder, folders, files } = await firstValueFrom(api.listDocuments(projectId));
-      const nodes: FileSystemNode[] = [currentFolder, ...folders, ...files];
+    const initialize = async (projectId: string): Promise<DocumentListRoots> => {
+      const [execution, marketing] = await Promise.all(
+        DOCUMENT_LIST_KEYS.map((listKey) =>
+          firstValueFrom(api.listDocumentRoot(projectId, listKey)),
+        ),
+      );
+      const nodes: FileSystemNode[] = [
+        execution.currentFolder,
+        ...execution.folders,
+        ...execution.files,
+        marketing.currentFolder,
+        ...marketing.folders,
+        ...marketing.files,
+      ];
       patchState(store, setEntities(nodes), {
         projectId,
-        rootId: currentFolder.id,
-        folderIdsWithLoadedChildren: [currentFolder.id],
+        rootIdByList: {
+          execution: execution.currentFolder.id,
+          marketing: marketing.currentFolder.id,
+        },
+        folderIdsWithLoadedChildren: [execution.currentFolder.id, marketing.currentFolder.id],
       });
-      return currentFolder;
+      return { execution: execution.currentFolder, marketing: marketing.currentFolder };
     };
 
     const loadChildren = async (parentId: string): Promise<void> => {
@@ -168,8 +184,9 @@ export const FileSystemStore = signalStore(
     };
 
     /**
-     * Compute the new cached subtree after a rename or move. IDs are stable —
-     * only path, plus name/parentId/modifiedAt on the root, change.
+     * Compute the new cached subtree after a rename. IDs are stable — only path, plus
+     * name/parentId/modifiedAt on the root, change. (Move no longer uses this; it is
+     * replace-on-success — it drops the moved subtree and inserts the returned node.)
      */
     const _updateCachedSubtreePaths = (
       id: string,
