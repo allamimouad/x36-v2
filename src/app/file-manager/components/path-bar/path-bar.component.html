@@ -1,16 +1,47 @@
-<nav class="fm-breadcrumb" aria-label="Folder path">
-  @for (seg of segments(); track seg.id; let last = $last; let idx = $index) {
-    <button
-      type="button"
-      class="fm-segment"
-      [class.fm-current]="last"
-      [attr.data-testid]="'fm-breadcrumb-' + idx"
-      (click)="segmentClicked.emit(seg.id)"
-    >
-      {{ seg.name || rootLabel() }}
-    </button>
-    @if (!last) {
-      <i class="pi pi-angle-right fm-sep" aria-hidden="true"></i>
-    }
+<span class="fm-project-prefix" aria-hidden="false">/{{ projectLabel() }}/</span>
+
+@if (editing()) {
+  <input
+    class="fm-path-input"
+    type="text"
+    autofocus
+    spellcheck="false"
+    autocomplete="off"
+    [value]="draft()"
+    [disabled]="resolving()"
+    [attr.aria-invalid]="pathError() ? 'true' : null"
+    [class.fm-path-input--error]="!!pathError()"
+    (input)="onDraftInput($any($event.target).value)"
+    (keydown.enter)="onSubmit()"
+    (keydown.escape)="onCancel()"
+    (blur)="onBlur()"
+    aria-label="Document path"
+    data-testid="fm-path-input"
+  />
+  @if (pathError(); as err) {
+    <span class="fm-path-error" role="alert">{{ err }}</span>
   }
-</nav>
+} @else {
+  <nav class="fm-breadcrumb" aria-label="Folder path">
+    @for (seg of segments(); track $index; let last = $last; let idx = $index) {
+      <button
+        type="button"
+        class="fm-segment"
+        [class.fm-current]="last"
+        [attr.data-testid]="'fm-breadcrumb-' + idx"
+        (click)="segmentClicked.emit(seg)"
+      >
+        {{ seg.label }}
+      </button>
+      @if (!last) {
+        <i class="pi pi-angle-right fm-sep" aria-hidden="true"></i>
+      }
+    }
+  </nav>
+  <span
+    class="fm-edit-zone"
+    (click)="onEnterEdit()"
+    title="Edit path"
+    data-testid="fm-path-edit-zone"
+  ></span>
+}

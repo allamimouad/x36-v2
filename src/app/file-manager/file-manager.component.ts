@@ -6,6 +6,7 @@ import {
   inject,
   input,
   OnInit,
+  signal,
 } from '@angular/core';
 import type { TreeNode } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
@@ -27,7 +28,7 @@ import { MockFileSystemApi } from './services/mock-file-system-api';
 import { ClipboardService } from './services/clipboard.service';
 import { FileSystemReader } from './stores/file-system-reader';
 import { FileSystemStore } from './stores/file-system.store';
-import { NavigationStore } from './stores/navigation.store';
+import { NavigationStore, type PathSegment } from './stores/navigation.store';
 import { FILE_MANAGER_CONFIG } from './tokens/file-manager-config.token';
 import { FolderTreeComponent } from './components/folder-tree/folder-tree.component';
 import { FileTableComponent } from './components/file-table/file-table.component';
@@ -60,6 +61,7 @@ import { NavToolbarComponent } from './components/nav-toolbar/nav-toolbar.compon
 })
 export class FileManagerComponent implements OnInit {
   readonly projectId = input.required<string>();
+  readonly projectLabel = input.required<string>();
 
   protected readonly fileSystem = inject(FileSystemStore);
   protected readonly navigation = inject(NavigationStore);
@@ -68,6 +70,10 @@ export class FileManagerComponent implements OnInit {
 
   /** Section-header labels for the two tree panes (Marketing rendered first). */
   protected readonly listLabels = DOCUMENT_LIST_LABELS;
+
+  /** Address-bar edit state (owned here; PathBarComponent is a controlled child). */
+  protected readonly pathEditing = signal(false);
+  protected readonly pathError = signal<string | null>(null);
 
   /** One tree section per document list, each rooted at its list root. */
   protected readonly executionTree = computed(() => this.buildTreeSection('execution'));
@@ -101,16 +107,29 @@ export class FileManagerComponent implements OnInit {
     return [buildNode(root, true)];
   }
 
-  /** Label of the document list the current folder belongs to (for the breadcrumb root). */
-  protected readonly currentListLabel = computed<string>(() => {
+  /** The editable path for the current folder, seeded into the address-bar input. */
+  protected readonly currentEditablePath = computed<string>(() => {
+    const ctx = this.navigation.currentBreadcrumb();
+    if (ctx) return ctx.path ? `${ctx.listKey}/${ctx.path}` : ctx.listKey;
+    // Cached navigation: derive listKey from the root walk + ancestor folder names.
     const id = this.navigation.currentFolderId();
     const map = this.fileSystem.entityMap();
-    let cursor: FolderNode | FileSystemNode | undefined = id ? map[id] : undefined;
-    while (cursor && cursor.parentId) cursor = map[cursor.parentId];
-    const rootId = cursor?.id;
+    if (!id) return '';
+    const names: string[] = [];
+    let cursor: FileSystemNode | undefined = map[id];
+    let rootId: string | undefined;
+    while (cursor) {
+      if (!isFolder(cursor)) break;
+      if (cursor.parentId === null) {
+        rootId = cursor.id;
+        break;
+      }
+      names.unshift(cursor.name);
+      cursor = map[cursor.parentId];
+    }
     const roots = this.fileSystem.rootIdByList();
-    const key = DOCUMENT_LIST_KEYS.find((k) => roots[k] === rootId);
-    return key ? DOCUMENT_LIST_LABELS[key] : this.config.libraryRootName;
+    const listKey = DOCUMENT_LIST_KEYS.find((key) => roots[key] === rootId);
+    return listKey ? [listKey, ...names].join('/') : '';
   });
 
   protected readonly isCurrentLoading = computed(() => {
@@ -158,13 +177,86 @@ export class FileManagerComponent implements OnInit {
   }
 
   protected onItemDoubleClicked(node: FileSystemNode): void {
-    if (isFolder(node)) {
-      this.navigation.navigateTo(node.id);
+    if (!isFolder(node)) return;
+    const ctx = this.navigation.currentBreadcrumb();
+    const currentId = this.navigation.currentFolderId();
+    // In a resolved (typed-path) context, navigating into a direct child stays
+    // resolved — ancestors aren't cached, so an id-based entry would break the
+    // breadcrumb. Extend the path instead, and load the child's listing by id.
+    if (ctx && node.parentId === currentId) {
+      const childPath = ctx.path ? `${ctx.path}/${node.name}` : node.name;
+      this.navigation.openResolvedFolder(node.id, { listKey: ctx.listKey, path: childPath });
+      void this.fileSystem.loadChildren(node.id);
+      return;
+    }
+    this.navigation.navigateTo(node.id);
+  }
+
+  protected async onSegmentClicked(seg: PathSegment): Promise<void> {
+    if (seg.id) {
+      this.navigation.navigateTo(seg.id);
+      return;
+    }
+    if (seg.listKey !== undefined && seg.path !== undefined) {
+      try {
+        await this.resolveAndOpen(seg.listKey, seg.path);
+      } catch (e) {
+        console.error('[file-manager] breadcrumb resolve failed', e);
+      }
     }
   }
 
-  protected onSegmentClicked(id: string): void {
-    this.navigation.navigateTo(id);
+  /** Address-bar submit: validate the list key, resolve the path, open the target. */
+  protected async onPathSubmitted(raw: string): Promise<void> {
+    const segments = raw
+      .trim()
+      .replace(/^\/+|\/+$/g, '')
+      .split('/')
+      .filter((segment) => segment.length > 0);
+    const first = segments[0]?.toLowerCase();
+    const listKey = DOCUMENT_LIST_KEYS.find((key) => key === first);
+    if (!listKey) {
+      this.pathError.set(`Path must start with ${DOCUMENT_LIST_KEYS.join(' or ')}.`);
+      return;
+    }
+    try {
+      await this.resolveAndOpen(listKey, segments.slice(1).join('/'));
+      this.pathError.set(null);
+      this.pathEditing.set(false);
+    } catch {
+      this.pathError.set('No folder matches that path.');
+    }
+  }
+
+  /** Up: re-resolve the parent path for typed-path folders; otherwise normal up. */
+  protected async onUp(): Promise<void> {
+    const ctx = this.navigation.currentBreadcrumb();
+    if (ctx) {
+      if (ctx.path === '') return; // already at the list root
+      const parentPath = ctx.path.split('/').slice(0, -1).join('/');
+      try {
+        await this.resolveAndOpen(ctx.listKey, parentPath);
+      } catch (e) {
+        console.error('[file-manager] up resolve failed', e);
+      }
+      return;
+    }
+    this.navigation.up();
+  }
+
+  private async resolveAndOpen(listKey: DocumentListKey, path: string): Promise<void> {
+    const { folder, canonicalPath } = await this.fileSystem.loadPathListing(listKey, path);
+    this.navigation.openResolvedFolder(folder.id, { listKey, path: canonicalPath });
+  }
+
+  protected onEditRequested(): void {
+    this.pathError.set(null);
+    this.pathEditing.set(true);
+  }
+
+  protected onEditCancelled(): void {
+    this.pathError.set(null);
+    this.pathEditing.set(false);
   }
 
   protected onRefresh(): void {

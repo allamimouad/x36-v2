@@ -111,4 +111,33 @@ describe('FileSystemStore project-scoped API contract', () => {
     expect(removed).toContain(source.id);
     expect(removed.length).toBe(directChildren.length + 1);
   });
+
+  it('loadPathListing resolves a typed path, caches the target, and returns canonical casing', async () => {
+    await store.initialize('project-123');
+
+    const { folder, canonicalPath } = await store.loadPathListing('execution', 'contracts/VENDORS');
+
+    expect(canonicalPath).toBe('Contracts/Vendors');
+    expect(folder.path).toBe('/execution/Contracts/Vendors');
+    expect(store.entityMap()[folder.id]).toBeTruthy();
+    expect(store.folderIdsWithLoadedChildren()).toContain(folder.id);
+    expect(store.entities().some((node) => node.parentId === folder.id)).toBe(true);
+    expect(store.isResolvingPath()).toBeFalse();
+  });
+
+  it('loadPathListing with an empty path returns the list root', async () => {
+    const roots = await store.initialize('project-123');
+
+    const { folder, canonicalPath } = await store.loadPathListing('marketing', '');
+
+    expect(canonicalPath).toBe('');
+    expect(folder.id).toBe(roots.marketing.id);
+  });
+
+  it('loadPathListing rejects an unknown path and clears the resolving flag', async () => {
+    await store.initialize('project-123');
+
+    await expectAsync(store.loadPathListing('execution', 'Nope/Missing')).toBeRejected();
+    expect(store.isResolvingPath()).toBeFalse();
+  });
 });

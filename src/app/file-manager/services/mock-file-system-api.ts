@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { type Observable, map, throwError, timer } from 'rxjs';
-import type { DocumentListing } from '../models/document-listing.model';
+import type { DocumentListing, ResolvedDocumentPath } from '../models/document-listing.model';
 import type { DocumentListKey } from '../models/document-list.model';
 import { FileSystemError } from '../models/file-system-error.model';
 import {
@@ -33,6 +33,36 @@ export class MockFileSystemApi extends FileSystemApi {
 
   override listDocuments(_projectId: string, parentId: string): Observable<DocumentListing> {
     return this.read(() => this.listing(parentId));
+  }
+
+  override resolveDocumentPath(
+    _projectId: string,
+    listKey: DocumentListKey,
+    path: string,
+  ): Observable<ResolvedDocumentPath> {
+    return this.read(() => {
+      let folderId = this.rootIdByList[listKey];
+      const segments = path
+        .split('/')
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0);
+      const canonicalNames: string[] = [];
+      for (const segment of segments) {
+        const target = segment.toLocaleLowerCase();
+        const child = [...this.nodes.values()].find(
+          (node) =>
+            node.parentId === folderId &&
+            isFolder(node) &&
+            node.name.toLocaleLowerCase() === target,
+        );
+        if (!child) {
+          throw new FileSystemError('not-found', `Folder not found on path: "${segment}"`);
+        }
+        folderId = child.id;
+        canonicalNames.push(child.name);
+      }
+      return { canonicalPath: canonicalNames.join('/'), listing: this.listing(folderId) };
+    });
   }
 
   /** Build a DocumentListing for `parentId`'s direct children. */

@@ -1,5 +1,6 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import type { DocumentListKey } from '../models/document-list.model';
 import type { FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { FileSystemApi } from '../services/file-system-api';
 import { MockFileSystemApi } from '../services/mock-file-system-api';
@@ -65,7 +66,7 @@ describe('NavigationStore', () => {
   it('navigateTo records history and sets current', () => {
     nav.navigateTo(rootId);
     expect(nav.currentFolderId()).toBe(rootId);
-    expect(nav.history()).toEqual([rootId]);
+    expect(nav.history()).toEqual([{ folderId: rootId }]);
     expect(nav.currentHistoryIndex()).toBe(0);
   });
 
@@ -73,7 +74,7 @@ describe('NavigationStore', () => {
     nav.initialize({ currentFolderId: rootId, expandedRootIds: [rootId] });
 
     expect(nav.currentFolderId()).toBe(rootId);
-    expect(nav.history()).toEqual([rootId]);
+    expect(nav.history()).toEqual([{ folderId: rootId }]);
     expect(nav.currentHistoryIndex()).toBe(0);
     expect(nav.expandedTreeIds().has(rootId)).toBe(true);
   });
@@ -81,7 +82,7 @@ describe('NavigationStore', () => {
   it('navigateTo to the same id is a no-op', () => {
     nav.navigateTo(rootId);
     nav.navigateTo(rootId);
-    expect(nav.history()).toEqual([rootId]);
+    expect(nav.history()).toEqual([{ folderId: rootId }]);
     expect(nav.currentHistoryIndex()).toBe(0);
   });
 
@@ -109,7 +110,7 @@ describe('NavigationStore', () => {
     nav.navigateTo(docsId);
     nav.back();
     nav.navigateTo(sharedId);
-    expect(nav.history()).toEqual([rootId, sharedId]);
+    expect(nav.history()).toEqual([{ folderId: rootId }, { folderId: sharedId }]);
     expect(nav.canGoForward()).toBe(false);
   });
 
@@ -139,10 +140,10 @@ describe('NavigationStore', () => {
     expect(nav.renamingId()).toBeNull();
   });
 
-  it('exposes pathSegments derived from FileSystemStore entities', () => {
+  it('exposes pathSegments derived from FileSystemStore entities (cached: id-based)', () => {
     nav.navigateTo(docsId);
     const segs = nav.pathSegments();
-    expect(segs.map((s) => s.name)).toEqual(['', 'Contracts']);
+    expect(segs.map((s) => s.label)).toEqual(['execution', 'Contracts']);
     expect(segs.map((s) => s.id)).toEqual([rootId, docsId]);
   });
 
@@ -198,6 +199,10 @@ class FakeFileSystemReader extends FileSystemReader {
   readonly entities = signal<FileSystemNode[]>(this.nodes);
   readonly folderIdsWithLoadedChildren = signal<string[]>([]);
   readonly folderIdsWithLoadingChildren = signal<string[]>([]);
+  readonly rootIdByList = signal<Record<DocumentListKey, string | null>>({
+    execution: fakeRoot.id,
+    marketing: null,
+  });
   readonly loadChildrenSpy = jasmine.createSpy('loadChildren');
   readonly invalidateSpy = jasmine.createSpy('invalidate');
 
@@ -236,7 +241,7 @@ describe('NavigationStore load triggering', () => {
     nav.initialize({ currentFolderId: fakeRoot.id, expandedRootIds: [fakeRoot.id] });
 
     expect(nav.currentFolderId()).toBe(fakeRoot.id);
-    expect(nav.history()).toEqual([fakeRoot.id]);
+    expect(nav.history()).toEqual([{ folderId: fakeRoot.id }]);
     expect(nav.expandedTreeIds().has(fakeRoot.id)).toBe(true);
     expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
   });
@@ -392,5 +397,64 @@ describe('NavigationStore load triggering', () => {
     expect(nav.expandedTreeIds().has(fakeDocs.id)).toBe(false);
     expect(nav.focusedId()).toBeNull();
     expect(nav.renamingId()).toBeNull();
+  });
+
+  it('openResolvedFolder records breadcrumb context and does not call loadChildren', () => {
+    nav.navigateTo(fakeRoot.id);
+    reader.loadChildrenSpy.calls.reset();
+
+    nav.openResolvedFolder(fakeDocs.id, { listKey: 'execution', path: 'Documents' });
+
+    expect(nav.currentFolderId()).toBe(fakeDocs.id);
+    expect(nav.currentBreadcrumb()).toEqual({ listKey: 'execution', path: 'Documents' });
+    expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
+  });
+
+  it('openResolvedFolder truncates forward history', () => {
+    nav.navigateTo(fakeRoot.id);
+    nav.navigateTo(fakeDocs.id);
+    nav.back(); // forward to docs is now available
+
+    nav.openResolvedFolder(fakeShared.id, { listKey: 'execution', path: 'Shared' });
+
+    expect(nav.canGoForward()).toBe(false);
+    expect(nav.history().length).toBe(2);
+  });
+
+  it('Back/Forward restores resolved breadcrumb context without reloading it', () => {
+    nav.navigateTo(fakeRoot.id);
+    nav.openResolvedFolder(fakeDocs.id, { listKey: 'execution', path: 'Documents' });
+
+    nav.back();
+    expect(nav.currentFolderId()).toBe(fakeRoot.id);
+    expect(nav.currentBreadcrumb()).toBeNull();
+    reader.loadChildrenSpy.calls.reset();
+
+    nav.forward();
+    expect(nav.currentFolderId()).toBe(fakeDocs.id);
+    expect(nav.currentBreadcrumb()).toEqual({ listKey: 'execution', path: 'Documents' });
+    expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
+  });
+
+  it('pathSegments builds path-based segments for a resolved entry', () => {
+    nav.openResolvedFolder(fakeDocs.id, { listKey: 'execution', path: 'Documents' });
+
+    const segs = nav.pathSegments();
+    expect(segs.map((s) => s.label)).toEqual(['execution', 'Documents']);
+    expect(segs[0].path).toBe('');
+    expect(segs[1].path).toBe('Documents');
+    expect(segs[1].id).toBe(fakeDocs.id);
+  });
+
+  it('builds the full path-based breadcrumb even when ancestors are not cached', () => {
+    // Only the target id (fakeDocs) is in the fake cache; 'Contracts'/'2026' are not.
+    nav.openResolvedFolder(fakeDocs.id, { listKey: 'execution', path: 'Contracts/2026' });
+
+    const segs = nav.pathSegments();
+    expect(segs.map((s) => s.label)).toEqual(['execution', 'Contracts', '2026']);
+    expect(segs.map((s) => s.path)).toEqual(['', 'Contracts', 'Contracts/2026']);
+    expect(segs[segs.length - 1].id).toBe(fakeDocs.id);
+    // Ancestor segments are path-based (no id) so clicking re-resolves them.
+    expect(segs[1].id).toBeUndefined();
   });
 });

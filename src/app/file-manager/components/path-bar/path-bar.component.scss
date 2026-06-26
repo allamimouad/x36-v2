@@ -12,12 +12,23 @@
   overflow: hidden;
 }
 
+.fm-project-prefix {
+  flex: 0 0 auto;
+  color: var(--p-text-muted-color, #6b7280);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  user-select: none;
+  cursor: default;
+  padding-right: 0.1rem;
+}
+
 .fm-breadcrumb {
   display: flex;
   align-items: center;
   gap: 0.1rem;
   flex-wrap: nowrap;
-  width: 100%;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow-x: auto;
   scrollbar-width: thin;
   font-size: 0.8125rem;
@@ -26,6 +37,38 @@
   &::-webkit-scrollbar {
     height: 6px;
   }
+}
+
+// Clickable empty area that fills the rest of the bar → enters edit mode.
+.fm-edit-zone {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 1.5rem;
+  cursor: text;
+}
+
+.fm-path-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--p-text-color, #111827);
+  padding: 0.2rem 0.3rem;
+}
+
+.fm-path-input--error {
+  color: var(--p-red-600, #dc2626);
+}
+
+.fm-path-error {
+  flex: 0 0 auto;
+  margin-left: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--p-red-600, #dc2626);
+  white-space: nowrap;
 }
 
 .fm-segment {

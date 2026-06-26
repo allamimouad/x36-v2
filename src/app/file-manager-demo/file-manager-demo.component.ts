@@ -6,7 +6,7 @@ import { FileManagerComponent } from '../file-manager/file-manager.component';
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FileManagerComponent],
-  template: '<app-file-manager [projectId]="projectId" />',
+  template: '<app-file-manager [projectId]="projectId" [projectLabel]="projectLabel" />',
   styles: `
     :host {
       display: block;
@@ -16,4 +16,5 @@ import { FileManagerComponent } from '../file-manager/file-manager.component';
 })
 export class FileManagerDemoComponent {
   protected readonly projectId = 'demo-project';
+  protected readonly projectLabel = 'Demo Project';
 }

@@ -1,5 +1,6 @@
 import { computed, inject } from '@angular/core';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
+import { DOCUMENT_LIST_KEYS, type DocumentListKey } from '../models/document-list.model';
 import {
   isFolder,
   type FileNode,
@@ -8,9 +9,26 @@ import {
 } from '../models/file-system-node.model';
 import { FileSystemReader } from './file-system-reader';
 
+/**
+ * A breadcrumb segment. Either id-based (cached navigation) or path-based (a folder
+ * reached/derived from a typed path, whose ancestors may be uncached).
+ */
 export interface PathSegment {
-  id: string;
-  name: string;
+  label: string;
+  id?: string;
+  listKey?: DocumentListKey;
+  path?: string;
+}
+
+/** Context recorded for a folder opened by resolving a typed path. */
+export interface ResolvedBreadcrumbContext {
+  listKey: DocumentListKey;
+  path: string; // canonical, '' = list root
+}
+
+export interface NavigationHistoryEntry {
+  folderId: string;
+  breadcrumb?: ResolvedBreadcrumbContext;
 }
 
 export interface FolderChildren {
@@ -20,7 +38,7 @@ export interface FolderChildren {
 
 interface NavigationState {
   currentFolderId: string | null;
-  history: string[];
+  history: NavigationHistoryEntry[];
   currentHistoryIndex: number;
   expandedTreeIds: Set<string>;
   selectedIds: Set<string>;
@@ -59,16 +77,55 @@ export const NavigationStore = signalStore(
 
     const parentId = computed<string | null>(() => currentFolder()?.parentId ?? null);
 
+    /** The resolved-path context of the active history entry, if any. */
+    const currentBreadcrumb = computed<ResolvedBreadcrumbContext | null>(() => {
+      const idx = store.currentHistoryIndex();
+      const entry = idx >= 0 ? store.history()[idx] : undefined;
+      return entry?.breadcrumb ?? null;
+    });
+
+    const _listKeyOfRoot = (rootId: string): DocumentListKey | null => {
+      const roots = fsReader.rootIdByList();
+      return DOCUMENT_LIST_KEYS.find((key) => roots[key] === rootId) ?? null;
+    };
+
     const pathSegments = computed<PathSegment[]>(() => {
       const id = store.currentFolderId();
       if (!id) return [];
+      const ctx = currentBreadcrumb();
+      if (ctx) {
+        // Path-based segments from listKey + canonical path (ancestors may be uncached).
+        if (!ctx.path) {
+          return [{ label: ctx.listKey, listKey: ctx.listKey, path: '', id }];
+        }
+        const segs: PathSegment[] = [{ label: ctx.listKey, listKey: ctx.listKey, path: '' }];
+        const names = ctx.path.split('/');
+        let prefix = '';
+        names.forEach((name, i) => {
+          prefix = prefix ? `${prefix}/${name}` : name;
+          const isLast = i === names.length - 1;
+          segs.push(
+            isLast
+              ? { label: name, listKey: ctx.listKey, path: prefix, id }
+              : { label: name, listKey: ctx.listKey, path: prefix },
+          );
+        });
+        return segs;
+      }
+      // Cached parent chain (id-based); the root segment's label is its list key.
       const segs: PathSegment[] = [];
       const map = entityMap();
       let n: FileSystemNode | undefined = map[id];
       while (n) {
         if (!isFolder(n)) break;
-        segs.unshift({ id: n.id, name: n.name });
-        if (n.parentId === null) break;
+        if (n.parentId === null) {
+          const listKey = _listKeyOfRoot(n.id);
+          segs.unshift(
+            listKey ? { label: listKey, id: n.id, listKey, path: '' } : { label: n.name, id: n.id },
+          );
+          break;
+        }
+        segs.unshift({ label: n.name, id: n.id });
         n = map[n.parentId];
       }
       return segs;
@@ -101,6 +158,7 @@ export const NavigationStore = signalStore(
     return {
       currentFolder,
       parentId,
+      currentBreadcrumb,
       pathSegments,
       currentFolderChildren,
       canGoBack,
@@ -137,7 +195,7 @@ export const NavigationStore = signalStore(
       }
       const idx = store.currentHistoryIndex();
       const truncated = store.history().slice(0, idx + 1);
-      const newHistory = [...truncated, id];
+      const newHistory: NavigationHistoryEntry[] = [...truncated, { folderId: id }];
       patchState(store, {
         currentFolderId: id,
         history: newHistory,
@@ -148,24 +206,46 @@ export const NavigationStore = signalStore(
     };
 
     /**
-     * Move the history cursor to (newIdx, newId). If the target id is no longer
-     * cached (its subtree was removed by a move), do not hit the backend — set the
-     * unavailable tombstone state instead. Otherwise clear it and load normally.
+     * Open a folder reached by resolving a typed path. The listing is already loaded by
+     * `FileSystemStore.loadPathListing`, so this records history with breadcrumb context
+     * and switches the current folder WITHOUT calling loadChildren.
      */
-    const _goToHistory = (newIdx: number, newId: string): void => {
-      patchState(store, { currentHistoryIndex: newIdx, currentFolderId: newId });
-      if (fsReader.entityMap()[newId]) {
-        patchState(store, { navigationError: null });
-        _loadChildrenUnlessAlreadyLoading(newId);
-      } else {
+    const openResolvedFolder = (
+      folderId: string,
+      breadcrumb: ResolvedBreadcrumbContext,
+    ): void => {
+      const idx = store.currentHistoryIndex();
+      const truncated = store.history().slice(0, idx + 1);
+      const newHistory: NavigationHistoryEntry[] = [...truncated, { folderId, breadcrumb }];
+      patchState(store, {
+        currentFolderId: folderId,
+        history: newHistory,
+        currentHistoryIndex: newHistory.length - 1,
+        navigationError: null,
+      });
+    };
+
+    /**
+     * Move the history cursor to `entry`. If its folder is no longer cached, set the
+     * unavailable tombstone. Otherwise clear it; revalidate only for normal entries —
+     * resolved entries already loaded their listing when first opened.
+     */
+    const _goToHistory = (newIdx: number, entry: NavigationHistoryEntry): void => {
+      patchState(store, { currentHistoryIndex: newIdx, currentFolderId: entry.folderId });
+      if (!fsReader.entityMap()[entry.folderId]) {
         patchState(store, { navigationError: NAVIGATION_UNAVAILABLE });
+        return;
+      }
+      patchState(store, { navigationError: null });
+      if (!entry.breadcrumb) {
+        _loadChildrenUnlessAlreadyLoading(entry.folderId);
       }
     };
 
     const initialize = (args: { currentFolderId: string; expandedRootIds: string[] }): void => {
       patchState(store, {
         currentFolderId: args.currentFolderId,
-        history: [args.currentFolderId],
+        history: [{ folderId: args.currentFolderId }],
         currentHistoryIndex: 0,
         expandedTreeIds: new Set(args.expandedRootIds),
         navigationError: null,
@@ -176,9 +256,9 @@ export const NavigationStore = signalStore(
       const idx = store.currentHistoryIndex();
       if (idx <= 0) return;
       const newIdx = idx - 1;
-      const newId = store.history()[newIdx];
-      if (!newId) return;
-      _goToHistory(newIdx, newId);
+      const entry = store.history()[newIdx];
+      if (!entry) return;
+      _goToHistory(newIdx, entry);
     };
 
     const forward = (): void => {
@@ -186,9 +266,9 @@ export const NavigationStore = signalStore(
       const hist = store.history();
       if (idx < 0 || idx >= hist.length - 1) return;
       const newIdx = idx + 1;
-      const newId = hist[newIdx];
-      if (!newId) return;
-      _goToHistory(newIdx, newId);
+      const entry = hist[newIdx];
+      if (!entry) return;
+      _goToHistory(newIdx, entry);
     };
 
     const up = (): void => {
@@ -257,6 +337,7 @@ export const NavigationStore = signalStore(
 
     return {
       navigateTo,
+      openResolvedFolder,
       initialize,
       back,
       forward,

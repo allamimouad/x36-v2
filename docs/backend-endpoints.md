@@ -13,15 +13,21 @@
   move "just works."
 - Mutations return the canonical affected node (Option A); delete returns 204.
 
-## Retrieval (root by list, children by id)
-    GET /projects/{projectId}/document-lists/{listKey}/documents     # root of the list
-    GET /projects/{projectId}/documents/{folderId}/children          # direct children, by id
+## Retrieval (root by list, children by id, path resolve by list)
+    GET /projects/{projectId}/document-lists/{listKey}/documents                   # root of the list
+    GET /projects/{projectId}/documents/{folderId}/children                        # direct children, by id
+    GET /projects/{projectId}/document-lists/{listKey}/documents/resolve-path?path=Contracts/2026
 
-- `listKey` = `execution` | `marketing`. It appears **only** on the root read — a root
-  has no parent id, so the list must be named. Once you have a folder, its children are
-  fetched **by id**, consistent with the by-id mutations below (no `listKey` needed).
-- **Response** (both) = the `DocumentListing` shape: `{ currentFolder, folders, files }`
-  — includes the folder's own metadata, not just its children.
+- `listKey` = `execution` | `marketing`. It appears **only** on the root / resolve-path
+  reads — those have no folder id. Once you have a folder, its children are fetched
+  **by id**, consistent with the by-id mutations below (no `listKey` needed).
+- **Response** of the first two = the `DocumentListing` shape: `{ currentFolder, folders,
+  files }` — includes the folder's own metadata, not just its children.
+- **resolve-path** maps a list-relative path of **real folder names** (case-insensitive;
+  spaces kept, URL-encoded into `ServerRelativeUrl`) to its target. `path=` empty ⇒ list
+  root. Response = `{ canonicalPath, listing }` where `canonicalPath` is the actual folder
+  casing (`""` for root) and `listing` is the target's `DocumentListing` (**no ancestors**).
+  404 ⇒ `not-found`.
 
 ## Mutations (by document id, project-level)
     POST   /projects/{projectId}/documents/folders            { parentId, name }   -> FolderNode

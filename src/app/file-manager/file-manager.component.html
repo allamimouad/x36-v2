@@ -10,15 +10,22 @@
       [canGoUp]="navigation.canGoUp()"
       (back)="navigation.back()"
       (forward)="navigation.forward()"
-      (up)="navigation.up()"
+      (up)="onUp()"
       (refresh)="onRefresh()"
     />
 
     <app-path-bar
       class="fm-breadcrumb"
       [segments]="navigation.pathSegments()"
-      [rootLabel]="currentListLabel()"
+      [projectLabel]="projectLabel()"
+      [editablePath]="currentEditablePath()"
+      [editing]="pathEditing()"
+      [resolving]="fileSystem.isResolvingPath()"
+      [pathError]="pathError()"
       (segmentClicked)="onSegmentClicked($event)"
+      (pathSubmitted)="onPathSubmitted($event)"
+      (editRequested)="onEditRequested()"
+      (editCancelled)="onEditCancelled()"
     />
 
     <span class="fm-search">
@@ -107,7 +114,7 @@
           <app-file-table
             [folders]="navigation.currentFolderChildren().folders"
             [files]="navigation.currentFolderChildren().files"
-            [loading]="isCurrentLoading()"
+            [loading]="isCurrentLoading() || fileSystem.isResolvingPath()"
             (itemDoubleClicked)="onItemDoubleClicked($event)"
           />
         }

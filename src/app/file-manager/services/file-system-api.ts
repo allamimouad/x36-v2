@@ -1,5 +1,5 @@
 import type { Observable } from 'rxjs';
-import type { DocumentListing } from '../models/document-listing.model';
+import type { DocumentListing, ResolvedDocumentPath } from '../models/document-listing.model';
 import type { DocumentListKey } from '../models/document-list.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
 
@@ -29,6 +29,17 @@ export abstract class FileSystemApi {
 
   /** List the direct children of a folder, addressed by its id alone. */
   abstract listDocuments(projectId: string, parentId: string): Observable<DocumentListing>;
+
+  /**
+   * Resolve a list-relative path (real folder names, case-insensitive) to its target
+   * folder. `path === ''` is the list root. Returns the target listing plus the
+   * canonical path casing; does NOT return ancestors. Throws `not-found` on a miss.
+   */
+  abstract resolveDocumentPath(
+    projectId: string,
+    listKey: DocumentListKey,
+    path: string,
+  ): Observable<ResolvedDocumentPath>;
 
   /** Create a new folder under `parent`. Throws on name collision. */
   abstract createFolder(projectId: string, parent: FolderNode, name: string): Observable<FolderNode>;

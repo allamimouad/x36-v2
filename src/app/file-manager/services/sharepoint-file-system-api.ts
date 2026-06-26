@@ -97,7 +97,7 @@
 
 import { Injectable } from '@angular/core';
 import { type Observable, throwError } from 'rxjs';
-import type { DocumentListing } from '../models/document-listing.model';
+import type { DocumentListing, ResolvedDocumentPath } from '../models/document-listing.model';
 import type { DocumentListKey } from '../models/document-list.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { FileSystemApi } from './file-system-api';
@@ -122,6 +122,21 @@ export class SharePointFileSystemApi extends FileSystemApi {
    * DocumentListing. Addressed by id alone — UniqueId is unique within the site.
    */
   override listDocuments(_projectId: string, _parentId: string): Observable<DocumentListing> {
+    return throwError(() => new Error(PHASE6));
+  }
+
+  /**
+   * Resolve a list-relative path to its target folder. Walk `path` from the list root,
+   * URL-encoding each real folder name into the `ServerRelativeUrl`
+   * (`GetFolderByServerRelativeUrl('<basePath>/<encoded(path)>')?$expand=Folders,Files`).
+   * Return the target listing plus the canonical path casing; no ancestors. Map a
+   * SharePoint not-found into `FileSystemError('not-found')`.
+   */
+  override resolveDocumentPath(
+    _projectId: string,
+    _listKey: DocumentListKey,
+    _path: string,
+  ): Observable<ResolvedDocumentPath> {
     return throwError(() => new Error(PHASE6));
   }
 

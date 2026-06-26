@@ -245,6 +245,14 @@ export abstract class FileSystemApi {
     files: FileNode[];
   }>;
 
+  /**
+   * Resolve a list-relative path (real folder names, case-insensitive; `''` = list root)
+   * to its target folder. Returns the canonical path casing plus the target listing
+   * only — no ancestors. Throws `not-found` on a missing segment.
+   */
+  abstract resolveDocumentPath(projectId: string, listKey: DocumentListKey, path: string):
+    Observable<{ canonicalPath: string; listing: { currentFolder: FolderNode; folders: FolderNode[]; files: FileNode[] } }>;
+
   /** Create a new folder under `parent`. Throws on name collision. */
   abstract createFolder(projectId: string, parent: FolderNode, name: string): Observable<FolderNode>;
 

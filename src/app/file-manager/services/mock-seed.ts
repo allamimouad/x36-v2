@@ -53,6 +53,45 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
     folders: [
       {
         name: 'Vendors',
+        folders: [
+          {
+            name: '2026',
+            folders: [
+              {
+                name: 'Q1',
+                folders: [
+                  {
+                    name: 'Signed',
+                    files: [
+                      { name: 'acme-msa-signed.pdf', sizeBytes: 318_400, contentType: PDF },
+                      { name: 'globex-msa-signed.pdf', sizeBytes: 291_700, contentType: PDF },
+                    ],
+                  },
+                  {
+                    name: 'Pending Signature',
+                    files: [{ name: 'initech-msa-draft.pdf', sizeBytes: 264_900, contentType: PDF }],
+                  },
+                ],
+                files: [{ name: 'q1-vendor-summary.xlsx', sizeBytes: 74_200, contentType: XLSX }],
+              },
+              {
+                name: 'Q2',
+                files: [{ name: 'q2-vendor-summary.xlsx', sizeBytes: 71_800, contentType: XLSX }],
+              },
+            ],
+            files: [{ name: 'vendor-index-2026.txt', sizeBytes: 2_100, contentType: TXT }],
+          },
+          {
+            name: 'Archive',
+            folders: [
+              {
+                name: '2025',
+                files: [{ name: 'vendor-msa-2025.pdf', sizeBytes: 402_500, contentType: PDF }],
+              },
+            ],
+            files: [{ name: 'archive-notes.txt', sizeBytes: 1_400, contentType: TXT }],
+          },
+        ],
         files: [
           { name: 'vendor-msa.pdf', sizeBytes: 412_000, contentType: PDF },
           { name: 'vendor-list.xlsx', sizeBytes: 112_300, contentType: XLSX },
@@ -60,6 +99,22 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
       },
       {
         name: 'Subcontractors',
+        folders: [
+          {
+            name: 'Electrical',
+            folders: [
+              {
+                name: 'Inspections',
+                files: [{ name: 'electrical-inspection.pdf', sizeBytes: 142_800, contentType: PDF }],
+              },
+            ],
+            files: [{ name: 'electrical-agreement.pdf', sizeBytes: 188_300, contentType: PDF }],
+          },
+          {
+            name: 'Plumbing',
+            files: [{ name: 'plumbing-agreement.pdf', sizeBytes: 176_100, contentType: PDF }],
+          },
+        ],
         files: [
           { name: 'sub-agreement.pdf', sizeBytes: 256_400, contentType: PDF },
           { name: 'insurance-cert.pdf', sizeBytes: 98_700, contentType: PDF },
@@ -76,6 +131,21 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
     folders: [
       {
         name: 'Phase 1',
+        folders: [
+          {
+            name: 'Weekly',
+            folders: [
+              {
+                name: 'Week 01',
+                files: [{ name: 'week-01-plan.xlsx', sizeBytes: 64_200, contentType: XLSX }],
+              },
+              {
+                name: 'Week 02',
+                files: [{ name: 'week-02-plan.xlsx', sizeBytes: 65_900, contentType: XLSX }],
+              },
+            ],
+          },
+        ],
         files: [
           { name: 'gantt-phase1.xlsx', sizeBytes: 184_500, contentType: XLSX },
           { name: 'milestones.docx', sizeBytes: 41_200, contentType: DOCX },
@@ -93,10 +163,16 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
     folders: [
       {
         name: 'Week 1',
-        files: [
-          { name: 'daily-log-mon.pdf', sizeBytes: 88_400, contentType: PDF },
-          { name: 'site-photo-1.png', sizeBytes: 1_240_000, contentType: PNG },
+        folders: [
+          {
+            name: 'Photos',
+            files: [
+              { name: 'site-photo-1.png', sizeBytes: 1_240_000, contentType: PNG },
+              { name: 'site-photo-2.png', sizeBytes: 1_310_500, contentType: PNG },
+            ],
+          },
         ],
+        files: [{ name: 'daily-log-mon.pdf', sizeBytes: 88_400, contentType: PDF }],
       },
       {
         name: 'Week 2',
@@ -114,14 +190,35 @@ const MARKETING_SEED: SeedFolderSpec[] = [
     folders: [
       {
         name: 'Logos',
-        files: [
-          { name: 'logo-primary.png', sizeBytes: 92_330, contentType: PNG },
-          { name: 'logo-mono.png', sizeBytes: 64_120, contentType: PNG },
+        folders: [
+          {
+            name: 'Primary',
+            files: [{ name: 'logo-primary.png', sizeBytes: 92_330, contentType: PNG }],
+          },
+          {
+            name: 'Variations',
+            files: [
+              { name: 'logo-mono.png', sizeBytes: 64_120, contentType: PNG },
+              { name: 'logo-inverse.png', sizeBytes: 67_540, contentType: PNG },
+            ],
+          },
         ],
+        files: [{ name: 'logo-usage.pdf', sizeBytes: 142_900, contentType: PDF }],
       },
       {
         name: 'Photography',
-        files: [{ name: 'hero-shot.png', sizeBytes: 2_410_000, contentType: PNG }],
+        folders: [
+          {
+            name: '2026',
+            folders: [
+              {
+                name: 'Campaign Shoots',
+                files: [{ name: 'hero-shot.png', sizeBytes: 2_410_000, contentType: PNG }],
+              },
+            ],
+          },
+        ],
+        files: [{ name: 'photo-index.txt', sizeBytes: 1_900, contentType: TXT }],
       },
     ],
     files: [{ name: 'brand-guidelines.pdf', sizeBytes: 488_900, contentType: PDF }],
@@ -134,7 +231,25 @@ const MARKETING_SEED: SeedFolderSpec[] = [
         folders: [
           {
             name: 'Email',
-            files: [{ name: 'announcement.docx', sizeBytes: 54_300, contentType: DOCX }],
+            folders: [
+              {
+                name: 'Drafts',
+                files: [{ name: 'announcement-draft.docx', sizeBytes: 52_100, contentType: DOCX }],
+              },
+              {
+                name: 'Sent',
+                files: [{ name: 'announcement.docx', sizeBytes: 54_300, contentType: DOCX }],
+              },
+            ],
+          },
+          {
+            name: 'Social',
+            folders: [
+              {
+                name: 'Instagram',
+                files: [{ name: 'ig-post-plan.xlsx', sizeBytes: 48_700, contentType: XLSX }],
+              },
+            ],
           },
         ],
         files: [
@@ -147,10 +262,13 @@ const MARKETING_SEED: SeedFolderSpec[] = [
   },
   {
     name: 'Press',
-    files: [
-      { name: 'press-release.pdf', sizeBytes: 120_300, contentType: PDF },
-      { name: 'media-list.xlsx', sizeBytes: 87_600, contentType: XLSX },
+    folders: [
+      {
+        name: 'Releases',
+        files: [{ name: 'press-release.pdf', sizeBytes: 120_300, contentType: PDF }],
+      },
     ],
+    files: [{ name: 'media-list.xlsx', sizeBytes: 87_600, contentType: XLSX }],
   },
 ];
 

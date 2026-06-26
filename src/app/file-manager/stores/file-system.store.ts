@@ -7,6 +7,7 @@ import {
   setEntity,
   withEntities,
 } from '@ngrx/signals/entities';
+import type { DocumentListing } from '../models/document-listing.model';
 import type { DocumentListRoots } from '../models/document-list.model';
 import { DOCUMENT_LIST_KEYS, type DocumentListKey } from '../models/document-list.model';
 import { FileSystemError } from '../models/file-system-error.model';
@@ -24,6 +25,8 @@ interface FileSystemState {
   errorByParentId: Record<string, string | undefined>;
   folderIdsWithLoadedChildren: string[];
   rootIdByList: Record<DocumentListKey, string | null>;
+  /** True while a typed-path / breadcrumb-path resolve is in flight. */
+  isResolvingPath: boolean;
 }
 
 const initialState: FileSystemState = {
@@ -32,6 +35,7 @@ const initialState: FileSystemState = {
   errorByParentId: {},
   folderIdsWithLoadedChildren: [],
   rootIdByList: { execution: null, marketing: null },
+  isResolvingPath: false,
 };
 
 export const FileSystemStore = signalStore(
@@ -105,6 +109,29 @@ export const FileSystemStore = signalStore(
       return { execution: execution.currentFolder, marketing: marketing.currentFolder };
     };
 
+    /**
+     * Apply a folder listing: prune cached direct children no longer present, upsert the
+     * folder + its direct children, and mark the folder loaded. Shared by `loadChildren`
+     * and `loadPathListing`.
+     */
+    const _applyListing = (listing: DocumentListing): void => {
+      const nodes: FileSystemNode[] = [
+        listing.currentFolder,
+        ...listing.folders,
+        ...listing.files,
+      ];
+      const incomingIds = new Set(nodes.map((node) => node.id));
+      const staleIds = store
+        .entities()
+        .filter((node) => node.parentId === listing.currentFolder.id && !incomingIds.has(node.id))
+        .flatMap((node) => _cachedSubtreeIds(node.id));
+      if (staleIds.length > 0) {
+        patchState(store, removeEntities(staleIds));
+      }
+      patchState(store, setEntities(nodes));
+      _markLoaded(listing.currentFolder.id);
+    };
+
     const loadChildren = async (parentId: string): Promise<void> => {
       if (store.folderIdsWithLoadingChildren().includes(parentId)) return;
       _markLoading(parentId);
@@ -114,24 +141,33 @@ export const FileSystemStore = signalStore(
         if (!parent || !isFolder(parent)) {
           throw new FileSystemError('not-found', `Folder not found in cache: ${parentId}`);
         }
-        const { currentFolder, folders, files } = await firstValueFrom(
-          api.listDocuments(_requireProjectId(), parent.id),
-        );
-        const nodes: FileSystemNode[] = [currentFolder, ...folders, ...files];
-        const incomingIds = new Set(nodes.map((node) => node.id));
-        const staleIds = store
-          .entities()
-          .filter((node) => node.parentId === parentId && !incomingIds.has(node.id))
-          .flatMap((node) => _cachedSubtreeIds(node.id));
-        if (staleIds.length > 0) {
-          patchState(store, removeEntities(staleIds));
-        }
-        patchState(store, setEntities(nodes));
-        _markLoaded(parentId);
+        const listing = await firstValueFrom(api.listDocuments(_requireProjectId(), parent.id));
+        _applyListing(listing);
       } catch (e) {
         _setError(parentId, errorMessage(e));
       } finally {
         _unmarkLoading(parentId);
+      }
+    };
+
+    /**
+     * Resolve a typed list-relative path to its target and load only that folder's
+     * listing (no ancestors). Errors propagate — the caller surfaces them. Returns the
+     * target folder and its canonical path.
+     */
+    const loadPathListing = async (
+      listKey: DocumentListKey,
+      path: string,
+    ): Promise<{ folder: FolderNode; canonicalPath: string }> => {
+      patchState(store, { isResolvingPath: true });
+      try {
+        const { canonicalPath, listing } = await firstValueFrom(
+          api.resolveDocumentPath(_requireProjectId(), listKey, path),
+        );
+        _applyListing(listing);
+        return { folder: listing.currentFolder, canonicalPath };
+      } finally {
+        patchState(store, { isResolvingPath: false });
       }
     };
 
@@ -333,6 +369,7 @@ export const FileSystemStore = signalStore(
     return {
       initialize,
       loadChildren,
+      loadPathListing,
       invalidate,
       createFolder,
       rename,
