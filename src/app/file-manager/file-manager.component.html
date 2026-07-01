@@ -80,7 +80,7 @@
     <ng-template #panel>
       <aside class="fm-tree-pane" aria-label="Folder trees">
         <section class="fm-tree-section">
-          <h2 class="fm-tree-section-title">{{ listLabels.marketing }}</h2>
+          <h2 class="fm-tree-section-title">{{ projectLabel() }} - {{ listLabels.marketing }}</h2>
           <app-folder-tree
             [nodes]="marketingTree()"
             [currentFolderId]="navigation.currentFolderId()"
@@ -91,7 +91,7 @@
           />
         </section>
         <section class="fm-tree-section">
-          <h2 class="fm-tree-section-title">{{ listLabels.execution }}</h2>
+          <h2 class="fm-tree-section-title">{{ projectLabel() }} - {{ listLabels.execution }}</h2>
           <app-folder-tree
             [nodes]="executionTree()"
             [currentFolderId]="navigation.currentFolderId()"

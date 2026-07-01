@@ -101,6 +101,7 @@ $fm-control-height: 2.25rem;
 /* Each stacked tree sizes to its content; the pane scrolls as a whole. */
 .fm-tree-section {
   flex: 0 0 auto;
+  min-width: max-content;
 }
 
 .fm-tree-section-title {
@@ -109,7 +110,6 @@ $fm-control-height: 2.25rem;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
   color: var(--p-text-muted-color, #6b7280);
 }
 
@@ -127,6 +127,7 @@ $fm-control-height: 2.25rem;
 .fm-tree-pane app-folder-tree ::ng-deep .fm-tree,
 .fm-tree-pane app-folder-tree ::ng-deep .p-tree-root {
   height: auto;
+  overflow: visible;
 }
 
 .fm-table-pane {
