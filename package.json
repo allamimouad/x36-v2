@@ -22,6 +22,7 @@
   },
   "private": true,
   "dependencies": {
+    "@angular-architects/ngrx-toolkit": "^20.7.0",
     "@angular/common": "^20.3.0",
     "@angular/compiler": "^20.3.0",
     "@angular/core": "^20.3.0",
@@ -29,6 +30,7 @@
     "@angular/platform-browser": "^20.3.0",
     "@angular/router": "^20.3.0",
     "@ngrx/signals": "^20.1.0",
+    "@ngrx/store": "^20.1.0",
     "@primeng/themes": "^20.4.0",
     "primeicons": "^7.0.0",
     "primeng": "^20.4.0",

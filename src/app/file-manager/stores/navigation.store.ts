@@ -1,4 +1,5 @@
-import { computed, inject } from '@angular/core';
+import { computed, inject, isDevMode } from '@angular/core';
+import { withDevToolsStub, withDevtools, withMapper } from '@angular-architects/ngrx-toolkit';
 import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
 import { DOCUMENT_LIST_KEYS, type DocumentListKey } from '../models/document-list.model';
 import {
@@ -63,6 +64,7 @@ export const NAVIGATION_UNAVAILABLE = 'This folder is no longer available from t
 
 export const NavigationStore = signalStore(
   withState(initialState),
+  navigationDevtoolsFeature(),
   withComputed((store) => {
     const fsReader = inject(FileSystemReader);
     const entityMap = fsReader.entityMap;
@@ -362,5 +364,23 @@ export const NavigationStore = signalStore(
     };
   }),
 );
+
+function navigationDevtoolsFeature() {
+  return isDevMode()
+    ? withDevtools(
+        'NavigationStore',
+        withMapper<NavigationState>((state) => ({
+          currentFolderId: state.currentFolderId,
+          history: state.history,
+          currentHistoryIndex: state.currentHistoryIndex,
+          expandedTreeIds: [...state.expandedTreeIds],
+          selectedIds: [...state.selectedIds],
+          focusedId: state.focusedId,
+          renamingId: state.renamingId,
+          navigationError: state.navigationError,
+        })),
+      )
+    : withDevToolsStub('NavigationStore');
+}
 
 export type NavigationStoreInstance = InstanceType<typeof NavigationStore>;

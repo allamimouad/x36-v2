@@ -1,4 +1,5 @@
-import { inject } from '@angular/core';
+import { inject, isDevMode } from '@angular/core';
+import { withDevToolsStub, withDevtools, withMapper } from '@angular-architects/ngrx-toolkit';
 import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
 import { firstValueFrom } from 'rxjs';
 import {
@@ -29,6 +30,10 @@ interface FileSystemState {
   isResolvingPath: boolean;
 }
 
+type FileSystemDevtoolsState = FileSystemState & {
+  entityMap: Record<string, FileSystemNode>;
+};
+
 const initialState: FileSystemState = {
   projectId: null,
   folderIdsWithLoadingChildren: [],
@@ -41,6 +46,7 @@ const initialState: FileSystemState = {
 export const FileSystemStore = signalStore(
   withEntities<FileSystemNode>(),
   withState(initialState),
+  fileSystemDevtoolsFeature(),
   withMethods((store, api = inject(FileSystemApi)) => {
     // The `_`-prefixed functions below are private local closures (internal helpers),
     // NOT NgRx private store members — they are not returned from `withMethods`.
@@ -382,7 +388,37 @@ export const FileSystemStore = signalStore(
   }),
 );
 
+function fileSystemDevtoolsFeature() {
+  return isDevMode()
+    ? withDevtools(
+        'FileSystemStore',
+        withMapper<FileSystemDevtoolsState>((state) => {
+          const entities = Object.values(state.entityMap).sort((a, b) =>
+            a.path.localeCompare(b.path),
+          );
+          return {
+            projectId: state.projectId,
+            rootIdByList: state.rootIdByList,
+            entityCount: entities.length,
+            entities,
+            folderIdsWithLoadingChildren: state.folderIdsWithLoadingChildren,
+            folderIdsWithLoadedChildren: state.folderIdsWithLoadedChildren,
+            errorByParentId: compactErrors(state.errorByParentId),
+            isResolvingPath: state.isResolvingPath,
+          };
+        }),
+      )
+    : withDevToolsStub('FileSystemStore');
+}
+
 export type FileSystemStoreInstance = InstanceType<typeof FileSystemStore>;
+
+function compactErrors(errors: Record<string, string | undefined>): Record<string, string> {
+  return Object.entries(errors).reduce<Record<string, string>>((acc, [id, message]) => {
+    if (message !== undefined) acc[id] = message;
+    return acc;
+  }, {});
+}
 
 function errorMessage(e: unknown): string {
   if (e instanceof FileSystemError) return e.message;
