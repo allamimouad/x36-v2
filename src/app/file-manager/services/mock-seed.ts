@@ -58,7 +58,7 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
             name: '2026',
             folders: [
               {
-                name: 'Q1',
+                name: 'Q111111111111111111111111111111',
                 folders: [
                   {
                     name: 'Signed',
@@ -269,6 +269,38 @@ const MARKETING_SEED: SeedFolderSpec[] = [
       },
     ],
     files: [{ name: 'media-list.xlsx', sizeBytes: 87_600, contentType: XLSX }],
+  },
+  // Layout-stress folder: very long, space-free names nested 5 levels deep,
+  // for testing tree indentation / breadcrumb / horizontal-overflow behavior.
+  {
+    name: 'SuperLongMarketingCampaignAssetsFolderNameWithoutAnySpacesForLayoutAndOverflowTesting',
+    folders: [
+      {
+        name: 'NestedLevelOneExtremelyLongUnbrokenFolderNameWithoutSpacesToStressTreeIndentation',
+        folders: [
+          {
+            name: 'NestedLevelTwoAnotherVeryLongContinuousFolderNameWithoutSpacesForBreadcrumbTesting',
+            folders: [
+              {
+                name: 'NestedLevelThreeYetAnotherReallyLongFolderNameWithoutSpacesToCheckWrappingBehavior',
+                folders: [
+                  {
+                    name: 'NestedLevelFourDeepestLongFolderNameWithoutSpacesAtTheBottomOfTheFiveLevelTree',
+                    files: [
+                      {
+                        name: 'deeply-nested-asset-report.pdf',
+                        sizeBytes: 156_700,
+                        contentType: PDF,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
   },
 ];
 

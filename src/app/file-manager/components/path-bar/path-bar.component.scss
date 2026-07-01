@@ -1,6 +1,7 @@
 // Boxed "address bar" look: the breadcrumb sits inside a bordered, rounded
 // rectangle, matching the search field to its right.
 :host {
+  position: relative; // anchors the off-screen measurement/sizer elements
   display: flex;
   align-items: center;
   min-width: 0;
@@ -14,12 +15,22 @@
 
 .fm-project-prefix {
   flex: 0 0 auto;
+  min-width: 0;
+  max-width: min(16rem, 40%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
   color: var(--p-text-muted-color, #6b7280);
   font-size: 0.8125rem;
   font-weight: 600;
   user-select: none;
   cursor: default;
-  padding-right: 0.1rem;
+}
+
+.fm-project-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .fm-breadcrumb {
@@ -27,23 +38,23 @@
   align-items: center;
   gap: 0.1rem;
   flex-wrap: nowrap;
+  // Size to content (already collapsed to fit by the component); the edit zone takes the
+  // rest of the bar. The fitter computes the collapse count from cached widths and the
+  // available width, so this nav only needs to size to content — not grow.
   flex: 0 1 auto;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
+  // Never scroll: overflow is resolved by collapsing leading segments into `…`.
+  overflow: hidden;
   font-size: 0.8125rem;
-
-  // keep the address bar a single, non-wrapping line
-  &::-webkit-scrollbar {
-    height: 6px;
-  }
 }
 
 // Clickable empty area that fills the rest of the bar → enters edit mode.
+// Grows to absorb leftover space (so the whole empty bar is clickable) but keeps
+// a minimum strip even when the breadcrumb is wide.
 .fm-edit-zone {
   flex: 1 1 auto;
   align-self: stretch;
-  min-width: 1.5rem;
+  min-width: 1.25rem;
   cursor: text;
 }
 
@@ -72,6 +83,10 @@
 }
 
 .fm-segment {
+  // Parents are shown full-width or collapsed into `…` — never truncated. So they don't
+  // shrink: the row then genuinely overflows when too many are shown, which is what the
+  // scrollWidth-based fitter detects.
+  flex: 0 0 auto;
   background: transparent;
   border: 0;
   padding: 0.2rem 0.4rem;
@@ -93,8 +108,72 @@
   cursor: default;
 }
 
+// Only the current folder may ellipsis-truncate, and only as a last resort when it is
+// the sole visible segment (all ancestors collapsed into `…`).
+.fm-current-solo {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// The `…` button that opens the hidden-segments menu.
+.fm-overflow {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  padding: 0.2rem 0.35rem;
+  cursor: pointer;
+  color: var(--p-text-muted-color, #6b7280);
+  border-radius: 4px;
+}
+
+.fm-overflow:hover {
+  background: var(--p-content-hover-background, rgba(0, 0, 0, 0.04));
+  color: var(--p-text-color, #111827);
+}
+
+.fm-menu-overlay {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
 .fm-sep {
   color: var(--p-text-muted-color, #9aa1ac);
   font-size: 0.7rem;
   flex: 0 0 auto;
+}
+
+// Out-of-flow measurement row: every segment at natural width, no truncation, and clipped
+// by the host so it cannot affect toolbar sizing or page scroll.
+.fm-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  overflow: visible;
+
+  .fm-segment {
+    flex: 0 0 auto;
+  }
+}
+
+// Off-screen sizer for the `…` button: laid out (so offsetWidth is real) but never painted
+// and removed from flow so it can't affect the bar.
+.fm-offscreen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
 }

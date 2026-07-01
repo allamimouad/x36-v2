@@ -1,10 +1,13 @@
-<span class="fm-project-prefix" aria-hidden="false">/{{ projectLabel() }}/</span>
+<span #prefix class="fm-project-prefix">
+  <span class="fm-project-name">{{ projectLabel() }}</span>
+  <i class="pi pi-angle-right fm-sep" aria-hidden="true"></i>
+</span>
 
 @if (editing()) {
   <input
+    #pathInput
     class="fm-path-input"
     type="text"
-    autofocus
     spellcheck="false"
     autocomplete="off"
     [value]="draft()"
@@ -22,13 +25,39 @@
     <span class="fm-path-error" role="alert">{{ err }}</span>
   }
 } @else {
-  <nav class="fm-breadcrumb" aria-label="Folder path">
-    @for (seg of segments(); track $index; let last = $last; let idx = $index) {
+  <nav
+    #breadcrumb
+    class="fm-breadcrumb"
+    aria-label="Folder path"
+  >
+    @if (overflowSegments().length > 0) {
+      <button
+        type="button"
+        class="fm-overflow"
+        (click)="overflowMenu.toggle($event)"
+        aria-label="Show hidden folders"
+        title="Show hidden folders"
+        data-testid="fm-breadcrumb-overflow"
+      >
+        <i class="pi pi-ellipsis-h" aria-hidden="true"></i>
+      </button>
+      <i class="pi pi-angle-right fm-sep" aria-hidden="true"></i>
+      <p-menu
+        #overflowMenu
+        class="fm-menu-overlay"
+        [model]="overflowMenuItems()"
+        [popup]="true"
+        appendTo="body"
+      />
+    }
+    @for (seg of visibleSegments(); track $index; let last = $last; let idx = $index) {
       <button
         type="button"
         class="fm-segment"
         [class.fm-current]="last"
-        [attr.data-testid]="'fm-breadcrumb-' + idx"
+        [class.fm-current-solo]="last && visibleSegments().length === 1"
+        [attr.data-testid]="'fm-breadcrumb-' + (visibleStartIndex() + idx)"
+        [title]="seg.label"
         (click)="segmentClicked.emit(seg)"
       >
         {{ seg.label }}
@@ -39,9 +68,29 @@
     }
   </nav>
   <span
+    #editZone
     class="fm-edit-zone"
     (click)="onEnterEdit()"
     title="Edit path"
     data-testid="fm-path-edit-zone"
   ></span>
 }
+
+<!--
+  Out-of-flow measurement row: renders every segment at natural width so the fitter can
+  decide how many full parent names fit. Never painted; excluded from layout and a11y.
+-->
+<div #measure class="fm-measure" aria-hidden="true">
+  <i #measureSep class="pi pi-angle-right fm-sep" aria-hidden="true"></i>
+  @for (seg of segments(); track $index; let last = $last) {
+    <span class="fm-segment fm-measure-seg" [class.fm-current]="last">{{ seg.label }}</span>
+  }
+</div>
+
+<!--
+  Off-screen sizer: a copy of the `…` button so its real width can be measured and cached
+  (the live button only exists while segments are collapsed). Never painted; out of flow.
+-->
+<span #overflowSizer class="fm-overflow fm-offscreen" aria-hidden="true">
+  <i class="pi pi-ellipsis-h" aria-hidden="true"></i>
+</span>
