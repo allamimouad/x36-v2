@@ -105,116 +105,116 @@ const IMPLEMENTATION_PENDING = 'SharePointFileSystemApi is not implemented yet';
 
 @Injectable()
 export class SharePointFileSystemApi extends FileSystemApi {
-  /**
+    /**
    * Resolve `listKey` → the project's SharePoint document library, then GET its
    * RootFolder with `$expand=Folders,Files`. Map the result into a DocumentListing.
    */
-  override listDocumentRoot(
-    _projectId: string,
-    _listKey: DocumentListKey,
-  ): Observable<DocumentListing> {
+    override listDocumentRoot(
+        _projectId: string,
+        _listKey: DocumentListKey
+    ): Observable<DocumentListing> {
     // TODO: implement with the SharePoint integration US.
-    return throwError(() => new Error(IMPLEMENTATION_PENDING));
-  }
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
 
-  /**
+    /**
    * GET /_api/web/GetFolderById('<parentId>')?$expand=Folders,Files and map into a
    * DocumentListing. Addressed by id alone — UniqueId is unique within the site.
    */
-  override listDocuments(_projectId: string, _parentId: string): Observable<DocumentListing> {
+    override listDocuments(_projectId: string, _parentId: string): Observable<DocumentListing> {
     // TODO: implement with the SharePoint integration US.
-    return throwError(() => new Error(IMPLEMENTATION_PENDING));
-  }
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
 
-  /**
+    /**
    * Resolve a list-relative path to its target folder. Walk `path` from the list root,
    * URL-encoding each real folder name into the `ServerRelativeUrl`
    * (`GetFolderByServerRelativeUrl('<basePath>/<encoded(path)>')?$expand=Folders,Files`).
    * Return the target listing plus the canonical path casing; no ancestors. Map a
    * SharePoint not-found into `FileSystemError('not-found')`.
    */
-  override resolveDocumentPath(
-    _projectId: string,
-    _listKey: DocumentListKey,
-    _path: string,
-  ): Observable<ResolvedDocumentPath> {
+    override resolveDocumentPath(
+        _projectId: string,
+        _listKey: DocumentListKey,
+        _path: string
+    ): Observable<ResolvedDocumentPath> {
     // TODO: implement with the SharePoint integration US.
-    return throwError(() => new Error(IMPLEMENTATION_PENDING));
-  }
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
 
-  /**
+    /**
    * POST /_api/web/Folders with ServerRelativeUrl=`${parent.path}/${name}`.
    * Extract UniqueId from the response to set the new FolderNode.id.
    */
-  override createFolder(
-    _projectId: string,
-    _parent: FolderNode,
-    _name: string,
-  ): Observable<FolderNode> {
+    override createFolder(
+        _projectId: string,
+        _parent: FolderNode,
+        _name: string
+    ): Observable<FolderNode> {
     // TODO: implement with the SharePoint integration US.
-    return throwError(() => new Error(IMPLEMENTATION_PENDING));
-  }
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
 
-  /**
+    /**
    * POST .../GetFolderById('<node.id>')/MoveTo (or GetFileById)
    * with newurl = `${parentOf(node.path)}/${newName}`.
    */
-  override rename(
-    _projectId: string,
-    _node: FileSystemNode,
-    _newName: string,
-  ): Observable<FileSystemNode> {
+    override rename(
+        _projectId: string,
+        _node: FileSystemNode,
+        _newName: string
+    ): Observable<FileSystemNode> {
     // TODO: implement with the SharePoint integration US.
-    return throwError(() => new Error(IMPLEMENTATION_PENDING));
-  }
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
 
-  /**
+    /**
    * POST .../GetFolderById('<node.id>')/MoveTo with newurl = `${newParent.path}/${node.name}`.
    * Returns the moved node — UniqueId stays the same, only ServerRelativeUrl changes.
    * Set parentId: newParent.id on the returned node.
    */
-  override move(
-    _projectId: string,
-    _node: FileSystemNode,
-    _newParent: FolderNode,
-  ): Observable<FileSystemNode> {
+    override move(
+        _projectId: string,
+        _node: FileSystemNode,
+        _newParent: FolderNode
+    ): Observable<FileSystemNode> {
     // TODO: implement with the SharePoint integration US.
-    return throwError(() => new Error(IMPLEMENTATION_PENDING));
-  }
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
 
-  /**
+    /**
    * POST .../GetFileById('<node.id>')/CopyTo for files; recursive iteration for folders.
    * Response gives a new UniqueId for the copy.
    */
-  override copy(
-    _projectId: string,
-    _node: FileSystemNode,
-    _newParent: FolderNode,
-  ): Observable<FileSystemNode> {
+    override copy(
+        _projectId: string,
+        _node: FileSystemNode,
+        _newParent: FolderNode
+    ): Observable<FileSystemNode> {
     // TODO: implement with the SharePoint integration US.
-    return throwError(() => new Error(IMPLEMENTATION_PENDING));
-  }
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
 
-  /** POST .../GetFolderById('<node.id>') (or GetFileById) with X-HTTP-Method: DELETE. */
-  override delete(_projectId: string, _node: FileSystemNode): Observable<void> {
+    /** POST .../GetFolderById('<node.id>') (or GetFileById) with X-HTTP-Method: DELETE. */
+    override delete(_projectId: string, _node: FileSystemNode): Observable<void> {
     // TODO: implement with the SharePoint integration US.
-    return throwError(() => new Error(IMPLEMENTATION_PENDING));
-  }
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
 
-  /**
+    /**
    * Files ≤ chunkSize: POST .../GetFolderByServerRelativeUrl('<parent.path>')
    *                         /Files/add(url='<file.name>',overwrite=false)
    * Files > chunkSize: StartUpload → ContinueUpload chunks → FinishUpload
    * Honor `signal` (abort the in-flight chunk + StartUpload session).
    */
-  override upload(
-    _projectId: string,
-    _parent: FolderNode,
-    _file: File,
-    _onProgress: (percent: number) => void,
-    _signal?: AbortSignal,
-  ): Observable<FileNode> {
+    override upload(
+        _projectId: string,
+        _parent: FolderNode,
+        _file: File,
+        _onProgress: (percent: number) => void,
+        _signal?: AbortSignal
+    ): Observable<FileNode> {
     // TODO: implement with the SharePoint integration US.
-    return throwError(() => new Error(IMPLEMENTATION_PENDING));
-  }
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
 }

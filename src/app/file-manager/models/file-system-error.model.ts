@@ -9,12 +9,12 @@ export type FileSystemErrorCode =
   | 'unknown';
 
 export class FileSystemError extends Error {
-  constructor(
-    public readonly code: FileSystemErrorCode,
-    message: string,
-    public override readonly cause?: unknown,
-  ) {
-    super(message);
-    this.name = 'FileSystemError';
-  }
+    constructor(
+        public readonly code: FileSystemErrorCode,
+        message: string,
+        public override readonly cause?: unknown
+    ) {
+        super(message);
+        this.name = 'FileSystemError';
+    }
 }

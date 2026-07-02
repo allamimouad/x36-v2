@@ -4,79 +4,79 @@ import { Tree, type TreeNodeExpandEvent, type TreeNodeSelectEvent } from 'primen
 import type { FolderNode } from '../../models/file-system-node.model';
 
 @Component({
-  selector: 'app-folder-tree',
-  standalone: true,
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Tree],
-  templateUrl: './folder-tree.component.html',
-  styleUrl: './folder-tree.component.scss',
+    selector: 'app-folder-tree',
+    standalone: true,
+    changeDetection: ChangeDetectionStrategy.OnPush,
+    imports: [Tree],
+    templateUrl: './folder-tree.component.html',
+    styleUrl: './folder-tree.component.scss'
 })
 export class FolderTreeComponent {
-  readonly nodes = input.required<TreeNode<FolderNode>[]>();
-  readonly currentFolderId = input<string | null>(null);
-  readonly folderIdsWithLoadingChildren = input<string[]>([]);
+    readonly nodes = input.required<TreeNode<FolderNode>[]>();
+    readonly currentFolderId = input<string | null>(null);
+    readonly folderIdsWithLoadingChildren = input<string[]>([]);
 
-  readonly nodeSelected = output<string>();
-  readonly nodeExpanded = output<string>();
-  readonly nodeCollapsed = output<string>();
+    readonly nodeSelected = output<string>();
+    readonly nodeExpanded = output<string>();
+    readonly nodeCollapsed = output<string>();
 
-  protected readonly selectedTreeNode = computed<TreeNode<FolderNode> | null>(() => {
-    const id = this.currentFolderId();
-    if (!id) return null;
-    return findNodeByKey(this.visibleNodes(), id);
-  });
+    protected readonly selectedTreeNode = computed<TreeNode<FolderNode> | null>(() => {
+        const id = this.currentFolderId();
+        if (!id) return null;
+        return findNodeByKey(this.visibleNodes(), id);
+    });
 
-  protected readonly visibleNodes = computed<TreeNode<FolderNode>[]>(() =>
-    applyLoading(this.nodes(), this.folderIdsWithLoadingChildren()),
-  );
+    protected readonly visibleNodes = computed<TreeNode<FolderNode>[]>(() =>
+        applyLoading(this.nodes(), this.folderIdsWithLoadingChildren())
+    );
 
-  protected handleExpand(event: TreeNodeExpandEvent): void {
-    const key = event.node?.key;
-    if (typeof key === 'string') this.nodeExpanded.emit(key);
-  }
+    protected handleExpand(event: TreeNodeExpandEvent): void {
+        const key = event.node?.key;
+        if (typeof key === 'string') this.nodeExpanded.emit(key);
+    }
 
-  protected handleCollapse(event: TreeNodeExpandEvent): void {
-    const key = event.node?.key;
-    if (typeof key === 'string') this.nodeCollapsed.emit(key);
-  }
+    protected handleCollapse(event: TreeNodeExpandEvent): void {
+        const key = event.node?.key;
+        if (typeof key === 'string') this.nodeCollapsed.emit(key);
+    }
 
-  protected handleSelect(event: TreeNodeSelectEvent): void {
-    const key = event.node?.key;
-    if (typeof key === 'string') this.nodeSelected.emit(key);
-  }
+    protected handleSelect(event: TreeNodeSelectEvent): void {
+        const key = event.node?.key;
+        if (typeof key === 'string') this.nodeSelected.emit(key);
+    }
 }
 
 function applyLoading(
-  nodes: TreeNode<FolderNode>[],
-  folderIdsWithLoadingChildren: string[],
+    nodes: TreeNode<FolderNode>[],
+    folderIdsWithLoadingChildren: string[]
 ): TreeNode<FolderNode>[] {
-  const loadingIds = new Set(folderIdsWithLoadingChildren);
-  return applyLoadingState(nodes, loadingIds);
+    const loadingIds = new Set(folderIdsWithLoadingChildren);
+    return applyLoadingState(nodes, loadingIds);
 }
 
 function applyLoadingState(
-  nodes: TreeNode<FolderNode>[],
-  loadingIds: ReadonlySet<string>,
+    nodes: TreeNode<FolderNode>[],
+    loadingIds: ReadonlySet<string>
 ): TreeNode<FolderNode>[] {
-  return nodes.map((node) => ({
-    ...node,
-    loading: typeof node.key === 'string' && loadingIds.has(node.key),
-    children: node.children
-      ? applyLoadingState(node.children as TreeNode<FolderNode>[], loadingIds)
-      : node.children,
-  }));
+    return nodes.map((node) => ({
+        ...node,
+        loading: typeof node.key === 'string' && loadingIds.has(node.key),
+        children: node.children
+            ? applyLoadingState(node.children as TreeNode<FolderNode>[], loadingIds)
+            : node.children
+    }));
 }
 
 function findNodeByKey(
-  nodes: TreeNode<FolderNode>[],
-  key: string,
+    nodes: TreeNode<FolderNode>[],
+    key: string
 ): TreeNode<FolderNode> | null {
-  for (const n of nodes) {
-    if (n.key === key) return n;
-    if (n.children?.length) {
-      const found = findNodeByKey(n.children as TreeNode<FolderNode>[], key);
-      if (found) return found;
+    for (const n of nodes) {
+        if (n.key === key) return n;
+        if (n.children?.length) {
+            const found = findNodeByKey(n.children as TreeNode<FolderNode>[], key);
+            if (found) return found;
+        }
     }
-  }
-  return null;
+    return null;
 }
