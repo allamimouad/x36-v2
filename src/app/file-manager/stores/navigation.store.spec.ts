@@ -44,7 +44,7 @@ describe('NavigationStore', () => {
 
     function byPath(path: string): string {
         const node = fs.entities().find((n) => n.path === path);
-        if (!node) {throw new Error(`No entity at path: ${path}`);}
+        if (!node) { throw new Error(`No entity at path: ${path}`); }
 
         return node.id;
     }
@@ -357,7 +357,7 @@ describe('NavigationStore load triggering', () => {
         expect(reader.loadChildrenSpy).toHaveBeenCalledOnceWith(fakeRoot.id);
     });
 
-    it('navigateTo to the current tombstone id keeps the unavailable state and does not load', () => {
+    it('keeps the unavailable state when navigating to the current tombstone id', () => {
         nav.navigateTo(fakeRoot.id);
         nav.navigateTo(fakeDocs.id);
         evict(fakeDocs.id);

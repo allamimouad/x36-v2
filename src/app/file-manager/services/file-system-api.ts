@@ -42,7 +42,11 @@ export abstract class FileSystemApi {
     ): Observable<ResolvedDocumentPath>;
 
     /** Create a new folder under `parent`. Throws on name collision. */
-    public abstract createFolder(projectId: string, parent: FolderNode, name: string): Observable<FolderNode>;
+    public abstract createFolder(
+        projectId: string,
+        parent: FolderNode,
+        name: string
+    ): Observable<FolderNode>;
 
     /** Rename a folder or file. Throws on name collision or invalid name. */
     public abstract rename(

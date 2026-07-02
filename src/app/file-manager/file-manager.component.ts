@@ -85,16 +85,16 @@ export class FileManagerComponent implements OnInit {
     /** The editable path for the current folder, seeded into the address-bar input. */
     protected readonly currentEditablePath = computed<string>(() => {
         const ctx = this.navigation.currentBreadcrumb();
-        if (ctx) {return ctx.path ? `${ctx.listKey}/${ctx.path}` : ctx.listKey;}
+        if (ctx) { return ctx.path ? `${ctx.listKey}/${ctx.path}` : ctx.listKey; }
         // Cached navigation: derive listKey from the root walk + ancestor folder names.
         const id = this.navigation.currentFolderId();
         const map = this.fileSystem.entityMap();
-        if (!id) {return '';}
+        if (!id) { return ''; }
         const names: string[] = [];
         let cursor: FileSystemNode | undefined = map[id];
         let rootId: string | undefined;
         while (cursor) {
-            if (!isFolder(cursor)) {break;}
+            if (!isFolder(cursor)) { break; }
             if (cursor.parentId === null) {
                 rootId = cursor.id;
                 break;
@@ -110,20 +110,22 @@ export class FileManagerComponent implements OnInit {
 
     protected readonly isCurrentLoading = computed(() => {
         const id = this.navigation.currentFolderId();
-        if (!id) {return false;}
+        if (!id) { return false; }
 
         return this.fileSystem.folderIdsWithLoadingChildren().includes(id);
     });
 
     protected readonly statusText = computed(() => {
         const navError = this.navigation.navigationError();
-        if (navError) {return navError;}
+        if (navError) { return navError; }
         const folder = this.navigation.currentFolder();
-        if (!folder || this.isCurrentLoading()) {return 'Loading…';}
+        if (!folder || this.isCurrentLoading()) { return 'Loading…'; }
         const { folders, files } = this.navigation.currentFolderChildren();
         const total = folders.length + files.length;
+        const folderCount = `${folders.length} folder${folders.length === 1 ? '' : 's'}`;
+        const fileCount = `${files.length} file${files.length === 1 ? '' : 's'}`;
 
-        return `${folders.length} folder${folders.length === 1 ? '' : 's'}, ${files.length} file${files.length === 1 ? '' : 's'} (${total} total)`;
+        return `${folderCount}, ${fileCount} (${total} total)`;
     });
 
     public ngOnInit(): void {
@@ -143,7 +145,7 @@ export class FileManagerComponent implements OnInit {
     }
 
     protected onItemDoubleClicked(node: FileSystemNode): void {
-        if (!isFolder(node)) {return;}
+        if (!isFolder(node)) { return; }
         const ctx = this.navigation.currentBreadcrumb();
         const currentId = this.navigation.currentFolderId();
         // In a resolved (typed-path) context, navigating into a direct child stays
@@ -201,7 +203,7 @@ export class FileManagerComponent implements OnInit {
     protected async onUp(): Promise<void> {
         const ctx = this.navigation.currentBreadcrumb();
         if (ctx) {
-            if (ctx.path === '') {return;} // already at the list root
+            if (ctx.path === '') { return; } // already at the list root
             const parentPath = ctx.path.split('/').slice(0, -1).join('/');
             try {
                 await this.resolveAndOpen(ctx.listKey, parentPath);
@@ -254,9 +256,9 @@ export class FileManagerComponent implements OnInit {
     /** Build the `p-tree` nodes for one list, traversing from its root id. */
     private buildTreeSection(listKey: DocumentListKey): TreeNode<FolderNode>[] {
         const rootId = this.fileSystem.rootIdByList()[listKey];
-        if (!rootId) {return [];}
+        if (!rootId) { return []; }
         const root = this.fileSystem.entityMap()[rootId];
-        if (!root || !isFolder(root)) {return [];}
+        if (!root || !isFolder(root)) { return []; }
         const all = this.fileSystem.entities();
         const expanded = this.navigation.expandedTreeIds();
         const loaded = new Set(this.fileSystem.folderIdsWithLoadedChildren());
@@ -268,7 +270,8 @@ export class FileManagerComponent implements OnInit {
 
             return {
                 key: folder.id,
-                // Section header already carries the full label; the root node shows the short name.
+                // Section header already carries the full label; the root node shows
+                // the short name.
                 label: isRoot ? `${listKey[0].toUpperCase()}${listKey.slice(1)}` : folder.name,
                 icon: 'pi pi-folder',
                 data: folder,
@@ -303,7 +306,7 @@ export class FileManagerComponent implements OnInit {
         const map = this.fileSystem.entityMap();
         let cursor: string | null = candidateId;
         while (cursor) {
-            if (cursor === ancestorId) {return true;}
+            if (cursor === ancestorId) { return true; }
             cursor = map[cursor]?.parentId ?? null;
         }
 

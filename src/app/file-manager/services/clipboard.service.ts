@@ -1,15 +1,21 @@
-import { Injectable, computed, signal } from '@angular/core';
+import { Injectable, type Signal, computed, signal } from '@angular/core';
 
 export type ClipboardMode = 'cut' | 'copy';
 
 @Injectable()
 export class ClipboardService {
+    public readonly ids: Signal<ReadonlySet<string>>;
+    public readonly mode: Signal<ClipboardMode | null>;
+    public readonly isEmpty: Signal<boolean>;
+
     private readonly idsSignal = signal<ReadonlySet<string>>(new Set<string>());
     private readonly modeSignal = signal<ClipboardMode | null>(null);
 
-    public readonly ids = this.idsSignal.asReadonly();
-    public readonly mode = this.modeSignal.asReadonly();
-    public readonly isEmpty = computed(() => this.idsSignal().size === 0);
+    public constructor() {
+        this.ids = this.idsSignal.asReadonly();
+        this.mode = this.modeSignal.asReadonly();
+        this.isEmpty = computed(() => this.idsSignal().size === 0);
+    }
 
     public has(id: string): boolean {
         return this.idsSignal().has(id);
@@ -34,17 +40,17 @@ export class ClipboardService {
    */
     public pruneReferences(removedIds: Iterable<string>): void {
         const removed = new Set(removedIds);
-        if (removed.size === 0) {return;}
+        if (removed.size === 0) { return; }
         const current = this.idsSignal();
         let changed = false;
         const next = new Set<string>();
         for (const id of current) {
-            if (removed.has(id)) {changed = true;}
-            else {next.add(id);}
+            if (removed.has(id)) { changed = true; }
+            else { next.add(id); }
         }
-        if (!changed) {return;}
+        if (!changed) { return; }
         this.idsSignal.set(next);
-        if (next.size === 0) {this.modeSignal.set(null);}
+        if (next.size === 0) { this.modeSignal.set(null); }
     }
 
     private set(ids: Iterable<string>, mode: ClipboardMode): void {

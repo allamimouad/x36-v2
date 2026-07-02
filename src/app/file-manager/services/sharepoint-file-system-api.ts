@@ -121,7 +121,10 @@ export class SharePointFileSystemApi extends FileSystemApi {
    * GET /_api/web/GetFolderById('<parentId>')?$expand=Folders,Files and map into a
    * DocumentListing. Addressed by id alone — UniqueId is unique within the site.
    */
-    public override listDocuments(_projectId: string, _parentId: string): Observable<DocumentListing> {
+    public override listDocuments(
+        _projectId: string,
+        _parentId: string
+    ): Observable<DocumentListing> {
     // TODO: implement with the SharePoint integration US.
         return throwError(() => new Error(IMPLEMENTATION_PENDING));
     }

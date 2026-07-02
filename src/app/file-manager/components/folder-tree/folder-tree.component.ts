@@ -22,7 +22,7 @@ export class FolderTreeComponent {
 
     protected readonly selectedTreeNode = computed<TreeNode<FolderNode> | null>(() => {
         const id = this.currentFolderId();
-        if (!id) {return null;}
+        if (!id) { return null; }
 
         return findNodeByKey(this.visibleNodes(), id);
     });
@@ -33,17 +33,17 @@ export class FolderTreeComponent {
 
     protected handleExpand(event: TreeNodeExpandEvent): void {
         const key = event.node?.key;
-        if (typeof key === 'string') {this.nodeExpanded.emit(key);}
+        if (typeof key === 'string') { this.nodeExpanded.emit(key); }
     }
 
     protected handleCollapse(event: TreeNodeExpandEvent): void {
         const key = event.node?.key;
-        if (typeof key === 'string') {this.nodeCollapsed.emit(key);}
+        if (typeof key === 'string') { this.nodeCollapsed.emit(key); }
     }
 
     protected handleSelect(event: TreeNodeSelectEvent): void {
         const key = event.node?.key;
-        if (typeof key === 'string') {this.nodeSelected.emit(key);}
+        if (typeof key === 'string') { this.nodeSelected.emit(key); }
     }
 }
 
@@ -74,10 +74,10 @@ function findNodeByKey(
     key: string
 ): TreeNode<FolderNode> | null {
     for (const n of nodes) {
-        if (n.key === key) {return n;}
+        if (n.key === key) { return n; }
         if (n.children?.length) {
             const found = findNodeByKey(n.children as TreeNode<FolderNode>[], key);
-            if (found) {return found;}
+            if (found) { return found; }
         }
     }
 

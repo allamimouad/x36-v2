@@ -44,7 +44,9 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(store.rootIdByList().marketing).toBe(roots.marketing.id);
         expect(store.folderIdsWithLoadedChildren()).toContain(roots.execution.id);
         expect(store.folderIdsWithLoadedChildren()).toContain(roots.marketing.id);
-        expect(store.entities().filter((node) => node.parentId === roots.execution.id).length).toBe(3);
+        expect(
+            store.entities().filter((node) => node.parentId === roots.execution.id).length
+        ).toBe(3);
     });
 
     it('loads nested content by parent id using the initialized project', async () => {
@@ -52,7 +54,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         const contracts = store
             .entities()
             .find((node) => isFolder(node) && node.path === '/execution/Contracts');
-        if (!contracts) {throw new Error('Expected Contracts folder');}
+        if (!contracts) { throw new Error('Expected Contracts folder'); }
         const listDocuments = spyOn(api, 'listDocuments').and.callThrough();
 
         await store.loadChildren(contracts.id);
@@ -69,7 +71,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(createFolder).toHaveBeenCalledOnceWith('project-123', roots.execution, 'New folder');
     });
 
-    it('leaves the store unchanged when a write fails (pessimistic, no rollback needed)', async () => {
+    it('leaves the store unchanged when a write fails', async () => {
         const { execution: root } = await store.initialize('project-123');
         const countBefore = store.entities().length;
         const itemCountBefore = (store.entityMap()[root.id] as FolderNode).itemCount;
@@ -83,7 +85,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect((store.entityMap()[root.id] as FolderNode).itemCount).toBe(itemCountBefore);
     });
 
-    it('move replaces the cached subtree with the returned node and returns removed ids', async () => {
+    it('move replaces the cached subtree with the returned node and removed ids', async () => {
         const { execution: root } = await store.initialize('project-123');
         const tops = store
             .entities()
@@ -112,10 +114,13 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(removed.length).toBe(directChildren.length + 1);
     });
 
-    it('loadPathListing resolves a typed path, caches the target, and returns canonical casing', async () => {
+    it('loadPathListing resolves a typed path and returns canonical casing', async () => {
         await store.initialize('project-123');
 
-        const { folder, canonicalPath } = await store.loadPathListing('execution', 'contracts/VENDORS');
+        const { folder, canonicalPath } = await store.loadPathListing(
+            'execution',
+            'contracts/VENDORS'
+        );
 
         expect(canonicalPath).toBe('Contracts/Vendors');
         expect(folder.path).toBe('/execution/Contracts/Vendors');

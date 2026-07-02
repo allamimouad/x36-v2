@@ -78,9 +78,9 @@ export class FileTableComponent {
 }
 
 function formatSize(bytes: number): string {
-    if (bytes < 1024) {return `${bytes} B`;}
-    if (bytes < 1024 * 1024) {return `${(bytes / 1024).toFixed(1)} KB`;}
-    if (bytes < 1024 * 1024 * 1024) {return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;}
+    if (bytes < 1024) { return `${bytes} B`; }
+    if (bytes < 1024 * 1024) { return `${(bytes / 1024).toFixed(1)} KB`; }
+    if (bytes < 1024 * 1024 * 1024) { return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }
 
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
@@ -114,7 +114,7 @@ function iconForFile(f: FileNode): string {
 /** Split a file name into its display base and extension (no leading-dot files). */
 function fileNameParts(name: string): { base: string; ext: string } {
     const dot = name.lastIndexOf('.');
-    if (dot <= 0) {return { base: name, ext: '' };}
+    if (dot <= 0) { return { base: name, ext: '' }; }
 
     return { base: name.slice(0, dot), ext: name.slice(dot + 1) };
 }

@@ -22,7 +22,16 @@ export default tseslint.config(
     rules: {
       'no-undef': 'off',
       curly: ['error', 'all'],
+      '@stylistic/block-spacing': ['error', 'always'],
       '@stylistic/indent': ['error', 4],
+      '@stylistic/max-len': [
+        'error',
+        {
+          code: 100
+        }
+      ],
+      '@stylistic/object-curly-spacing': ['error', 'always'],
+      '@stylistic/spaced-comment': ['error', 'always'],
       '@stylistic/comma-dangle': ['error', 'never'],
       '@stylistic/padding-line-between-statements': [
         'error',
@@ -43,14 +52,12 @@ export default tseslint.config(
         {
           default: [
             'signature',
-            [
-              'public-static-field',
-              'protected-static-field',
-              'private-static-field',
-              'public-instance-field',
-              'protected-instance-field',
-              'private-instance-field'
-            ],
+            'public-static-field',
+            'protected-static-field',
+            'private-static-field',
+            'public-instance-field',
+            'protected-instance-field',
+            'private-instance-field',
             'constructor',
             'public-instance-method',
             'protected-instance-method',

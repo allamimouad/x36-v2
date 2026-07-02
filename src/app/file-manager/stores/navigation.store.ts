@@ -72,7 +72,7 @@ export const NavigationStore = signalStore(
 
         const currentFolder = computed<FolderNode | null>(() => {
             const id = store.currentFolderId();
-            if (!id) {return null;}
+            if (!id) { return null; }
             const node: FileSystemNode | undefined = entityMap()[id];
 
             return node && isFolder(node) ? node : null;
@@ -96,14 +96,16 @@ export const NavigationStore = signalStore(
 
         const pathSegments = computed<PathSegment[]>(() => {
             const id = store.currentFolderId();
-            if (!id) {return [];}
+            if (!id) { return []; }
             const ctx = currentBreadcrumb();
             if (ctx) {
                 // Path-based segments from listKey + canonical path (ancestors may be uncached).
                 if (!ctx.path) {
                     return [{ label: ctx.listKey, listKey: ctx.listKey, path: '', id }];
                 }
-                const segs: PathSegment[] = [{ label: ctx.listKey, listKey: ctx.listKey, path: '' }];
+                const segs: PathSegment[] = [
+                    { label: ctx.listKey, listKey: ctx.listKey, path: '' }
+                ];
                 const names = ctx.path.split('/');
                 let prefix = '';
                 names.forEach((name, i) => {
@@ -123,12 +125,13 @@ export const NavigationStore = signalStore(
             const map = entityMap();
             let n: FileSystemNode | undefined = map[id];
             while (n) {
-                if (!isFolder(n)) {break;}
+                if (!isFolder(n)) { break; }
                 if (n.parentId === null) {
                     const listKey = _listKeyOfRoot(n.id);
-                    segs.unshift(
-                        listKey ? { label: listKey, id: n.id, listKey, path: '' } : { label: n.name, id: n.id }
-                    );
+                    const rootSegment: PathSegment = listKey
+                        ? { label: listKey, id: n.id, listKey, path: '' }
+                        : { label: n.name, id: n.id };
+                    segs.unshift(rootSegment);
                     break;
                 }
                 segs.unshift({ label: n.name, id: n.id });
@@ -140,14 +143,14 @@ export const NavigationStore = signalStore(
 
         const currentFolderChildren = computed<FolderChildren>(() => {
             const id = store.currentFolderId();
-            if (!id) {return { folders: [], files: [] };}
+            if (!id) { return { folders: [], files: [] }; }
             const all = entities();
             const folders: FolderNode[] = [];
             const files: FileNode[] = [];
             for (const n of all) {
-                if (n.parentId !== id) {continue;}
-                if (isFolder(n)) {folders.push(n);}
-                else {files.push(n);}
+                if (n.parentId !== id) { continue; }
+                if (isFolder(n)) { folders.push(n); }
+                else { files.push(n); }
             }
             folders.sort((a, b) => a.name.localeCompare(b.name));
             files.sort((a, b) => a.name.localeCompare(b.name));
@@ -185,7 +188,7 @@ export const NavigationStore = signalStore(
      * store member — it is not returned from `withMethods`.
      */
         const _loadChildrenUnlessAlreadyLoading = (id: string): void => {
-            if (fsReader.folderIdsWithLoadingChildren().includes(id)) {return;}
+            if (fsReader.folderIdsWithLoadingChildren().includes(id)) { return; }
             void fsReader.loadChildren(id);
         };
 
@@ -198,7 +201,7 @@ export const NavigationStore = signalStore(
 
                     return;
                 }
-                if (store.navigationError()) {patchState(store, { navigationError: null });}
+                if (store.navigationError()) { patchState(store, { navigationError: null }); }
                 _loadChildrenUnlessAlreadyLoading(id);
 
                 return;
@@ -265,36 +268,36 @@ export const NavigationStore = signalStore(
 
         const back = (): void => {
             const idx = store.currentHistoryIndex();
-            if (idx <= 0) {return;}
+            if (idx <= 0) { return; }
             const newIdx = idx - 1;
             const entry = store.history()[newIdx];
-            if (!entry) {return;}
+            if (!entry) { return; }
             _goToHistory(newIdx, entry);
         };
 
         const forward = (): void => {
             const idx = store.currentHistoryIndex();
             const hist = store.history();
-            if (idx < 0 || idx >= hist.length - 1) {return;}
+            if (idx < 0 || idx >= hist.length - 1) { return; }
             const newIdx = idx + 1;
             const entry = hist[newIdx];
-            if (!entry) {return;}
+            if (!entry) { return; }
             _goToHistory(newIdx, entry);
         };
 
         const up = (): void => {
             const parent = store.parentId();
-            if (parent === null) {return;}
+            if (parent === null) { return; }
             navigateTo(parent);
         };
 
         const refresh = (): void => {
             const id = store.currentFolderId();
-            if (!id) {return;}
+            if (!id) { return; }
             // On a tombstone (unavailable history entry / id no longer cached) there is
             // nothing to refresh — don't attempt a load.
-            if (store.navigationError() || !fsReader.entityMap()[id]) {return;}
-            if (fsReader.folderIdsWithLoadingChildren().includes(id)) {return;}
+            if (store.navigationError() || !fsReader.entityMap()[id]) { return; }
+            if (fsReader.folderIdsWithLoadingChildren().includes(id)) { return; }
             fsReader.invalidate(id);
             void fsReader.loadChildren(id);
         };
@@ -305,11 +308,13 @@ export const NavigationStore = signalStore(
      */
         const pruneReferences = (ids: Iterable<string>): void => {
             const removed = new Set(ids);
-            if (removed.size === 0) {return;}
+            if (removed.size === 0) { return; }
             const focusedId = store.focusedId();
             const renamingId = store.renamingId();
             patchState(store, {
-                expandedTreeIds: new Set([...store.expandedTreeIds()].filter((x) => !removed.has(x))),
+                expandedTreeIds: new Set(
+                    [...store.expandedTreeIds()].filter((x) => !removed.has(x))
+                ),
                 selectedIds: new Set([...store.selectedIds()].filter((x) => !removed.has(x))),
                 focusedId: focusedId !== null && removed.has(focusedId) ? null : focusedId,
                 renamingId: renamingId !== null && removed.has(renamingId) ? null : renamingId
@@ -328,7 +333,7 @@ export const NavigationStore = signalStore(
 
         const collapse = (id: string): void => {
             const set = store.expandedTreeIds();
-            if (!set.has(id)) {return;}
+            if (!set.has(id)) { return; }
             const next = new Set(set);
             next.delete(id);
             patchState(store, { expandedTreeIds: next });

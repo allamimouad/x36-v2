@@ -17,6 +17,10 @@ interface SeedFileSpec {
     contentType: string;
 }
 
+function seedFile(name: string, sizeBytes: number, contentType: string): SeedFileSpec {
+    return { name, sizeBytes, contentType };
+}
+
 export interface SeedResult {
     rootIdByList: Record<DocumentListKey, string>;
     nodes: Map<string, FileSystemNode>;
@@ -36,7 +40,7 @@ const EDITORS = [
 /** Deterministic editor per node name, so the demo data is stable across reloads. */
 function editorFor(name: string): string {
     let sum = 0;
-    for (let i = 0; i < name.length; i++) {sum += name.charCodeAt(i);}
+    for (let i = 0; i < name.length; i++) { sum += name.charCodeAt(i); }
 
     return EDITORS[sum % EDITORS.length];
 }
@@ -46,6 +50,16 @@ const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.doc
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const PNG = 'image/png';
 const TXT = 'text/plain';
+const LAYOUT_STRESS_ROOT =
+    'SuperLongMarketingCampaignAssetsFolderNameWithoutAnySpacesForLayoutAndOverflowTesting';
+const LAYOUT_STRESS_LEVEL_ONE =
+    'NestedLevelOneExtremelyLongUnbrokenFolderNameWithoutSpacesToStressTreeIndentation';
+const LAYOUT_STRESS_LEVEL_TWO =
+    'NestedLevelTwoAnotherVeryLongContinuousFolderNameWithoutSpacesForBreadcrumbTesting';
+const LAYOUT_STRESS_LEVEL_THREE =
+    'NestedLevelThreeYetAnotherReallyLongFolderNameWithoutSpacesToCheckWrappingBehavior';
+const LAYOUT_STRESS_LEVEL_FOUR =
+    'NestedLevelFourDeepestLongFolderNameWithoutSpacesAtTheBottomOfTheFiveLevelTree';
 
 /** Execution documents (contracts, schedules, on-site reporting). */
 const EXECUTION_SEED: SeedFolderSpec[] = [
@@ -64,30 +78,40 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
                                     {
                                         name: 'Signed',
                                         files: [
-                                            { name: 'acme-msa-signed.pdf', sizeBytes: 318_400, contentType: PDF },
-                                            { name: 'globex-msa-signed.pdf', sizeBytes: 291_700, contentType: PDF }
+                                            seedFile('acme-msa-signed.pdf', 318_400, PDF),
+                                            seedFile('globex-msa-signed.pdf', 291_700, PDF)
                                         ]
                                     },
                                     {
                                         name: 'Pending Signature',
-                                        files: [{ name: 'initech-msa-draft.pdf', sizeBytes: 264_900, contentType: PDF }]
+                                        files: [
+                                            seedFile('initech-msa-draft.pdf', 264_900, PDF)
+                                        ]
                                     }
                                 ],
-                                files: [{ name: 'q1-vendor-summary.xlsx', sizeBytes: 74_200, contentType: XLSX }]
+                                files: [
+                                    seedFile('q1-vendor-summary.xlsx', 74_200, XLSX)
+                                ]
                             },
                             {
                                 name: 'Q2',
-                                files: [{ name: 'q2-vendor-summary.xlsx', sizeBytes: 71_800, contentType: XLSX }]
+                                files: [
+                                    seedFile('q2-vendor-summary.xlsx', 71_800, XLSX)
+                                ]
                             }
                         ],
-                        files: [{ name: 'vendor-index-2026.txt', sizeBytes: 2_100, contentType: TXT }]
+                        files: [
+                            seedFile('vendor-index-2026.txt', 2_100, TXT)
+                        ]
                     },
                     {
                         name: 'Archive',
                         folders: [
                             {
                                 name: '2025',
-                                files: [{ name: 'vendor-msa-2025.pdf', sizeBytes: 402_500, contentType: PDF }]
+                                files: [
+                                    seedFile('vendor-msa-2025.pdf', 402_500, PDF)
+                                ]
                             }
                         ],
                         files: [{ name: 'archive-notes.txt', sizeBytes: 1_400, contentType: TXT }]
@@ -106,14 +130,20 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
                         folders: [
                             {
                                 name: 'Inspections',
-                                files: [{ name: 'electrical-inspection.pdf', sizeBytes: 142_800, contentType: PDF }]
+                                files: [
+                                    seedFile('electrical-inspection.pdf', 142_800, PDF)
+                                ]
                             }
                         ],
-                        files: [{ name: 'electrical-agreement.pdf', sizeBytes: 188_300, contentType: PDF }]
+                        files: [
+                            seedFile('electrical-agreement.pdf', 188_300, PDF)
+                        ]
                     },
                     {
                         name: 'Plumbing',
-                        files: [{ name: 'plumbing-agreement.pdf', sizeBytes: 176_100, contentType: PDF }]
+                        files: [
+                            seedFile('plumbing-agreement.pdf', 176_100, PDF)
+                        ]
                     }
                 ],
                 files: [
@@ -138,11 +168,15 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
                         folders: [
                             {
                                 name: 'Week 01',
-                                files: [{ name: 'week-01-plan.xlsx', sizeBytes: 64_200, contentType: XLSX }]
+                                files: [
+                                    seedFile('week-01-plan.xlsx', 64_200, XLSX)
+                                ]
                             },
                             {
                                 name: 'Week 02',
-                                files: [{ name: 'week-02-plan.xlsx', sizeBytes: 65_900, contentType: XLSX }]
+                                files: [
+                                    seedFile('week-02-plan.xlsx', 65_900, XLSX)
+                                ]
                             }
                         ]
                     }
@@ -214,7 +248,9 @@ const MARKETING_SEED: SeedFolderSpec[] = [
                         folders: [
                             {
                                 name: 'Campaign Shoots',
-                                files: [{ name: 'hero-shot.png', sizeBytes: 2_410_000, contentType: PNG }]
+                                files: [
+                                    seedFile('hero-shot.png', 2_410_000, PNG)
+                                ]
                             }
                         ]
                     }
@@ -235,11 +271,15 @@ const MARKETING_SEED: SeedFolderSpec[] = [
                         folders: [
                             {
                                 name: 'Drafts',
-                                files: [{ name: 'announcement-draft.docx', sizeBytes: 52_100, contentType: DOCX }]
+                                files: [
+                                    seedFile('announcement-draft.docx', 52_100, DOCX)
+                                ]
                             },
                             {
                                 name: 'Sent',
-                                files: [{ name: 'announcement.docx', sizeBytes: 54_300, contentType: DOCX }]
+                                files: [
+                                    seedFile('announcement.docx', 54_300, DOCX)
+                                ]
                             }
                         ]
                     },
@@ -248,7 +288,9 @@ const MARKETING_SEED: SeedFolderSpec[] = [
                         folders: [
                             {
                                 name: 'Instagram',
-                                files: [{ name: 'ig-post-plan.xlsx', sizeBytes: 48_700, contentType: XLSX }]
+                                files: [
+                                    seedFile('ig-post-plan.xlsx', 48_700, XLSX)
+                                ]
                             }
                         ]
                     }
@@ -274,19 +316,19 @@ const MARKETING_SEED: SeedFolderSpec[] = [
     // Layout-stress folder: very long, space-free names nested 5 levels deep,
     // for testing tree indentation / breadcrumb / horizontal-overflow behavior.
     {
-        name: 'SuperLongMarketingCampaignAssetsFolderNameWithoutAnySpacesForLayoutAndOverflowTesting',
+        name: LAYOUT_STRESS_ROOT,
         folders: [
             {
-                name: 'NestedLevelOneExtremelyLongUnbrokenFolderNameWithoutSpacesToStressTreeIndentation',
+                name: LAYOUT_STRESS_LEVEL_ONE,
                 folders: [
                     {
-                        name: 'NestedLevelTwoAnotherVeryLongContinuousFolderNameWithoutSpacesForBreadcrumbTesting',
+                        name: LAYOUT_STRESS_LEVEL_TWO,
                         folders: [
                             {
-                                name: 'NestedLevelThreeYetAnotherReallyLongFolderNameWithoutSpacesToCheckWrappingBehavior',
+                                name: LAYOUT_STRESS_LEVEL_THREE,
                                 folders: [
                                     {
-                                        name: 'NestedLevelFourDeepestLongFolderNameWithoutSpacesAtTheBottomOfTheFiveLevelTree',
+                                        name: LAYOUT_STRESS_LEVEL_FOUR,
                                         files: [
                                             {
                                                 name: 'deeply-nested-asset-report.pdf',
