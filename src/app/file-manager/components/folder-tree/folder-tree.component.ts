@@ -1,13 +1,16 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
-import type { TreeNode } from 'primeng/api';
+import { PrimeTemplate, type TreeNode } from 'primeng/api';
 import { Tree, type TreeNodeExpandEvent, type TreeNodeSelectEvent } from 'primeng/tree';
 import type { FolderNode } from '../../models/file-system-node.model';
+import {
+    FileSystemPrimeIconComponent
+} from '../../shared/file-system-prime-icon/file-system-prime-icon.component';
 
 @Component({
     selector: 'pr-folder-tree',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [Tree],
+    imports: [Tree, PrimeTemplate, FileSystemPrimeIconComponent],
     templateUrl: './folder-tree.component.html',
     styleUrl: './folder-tree.component.scss'
 })

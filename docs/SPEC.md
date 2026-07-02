@@ -396,6 +396,9 @@ file-manager/
       create-folder-dialog.component.ts
       rename-dialog.component.ts
       conflict-resolution-dialog.component.ts
+  shared/
+    file-system-icon/                  # SVG icon (assets/file-manager/icons/<name>.svg) — the target-environment icon set
+    file-system-prime-icon/            # PrimeIcons stand-in, same API; dev-only, NOT copied to the target repo
   stores/
     file-system.store.ts
     navigation.store.ts

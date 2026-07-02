@@ -15,3 +15,20 @@
 :host ::ng-deep .p-tree-root {
   height: 100%;
 }
+
+.fm-tree-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.fm-tree-node pr-file-system-prime-icon {
+  --fm-icon-size: 1rem;
+}
+
+.fm-tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

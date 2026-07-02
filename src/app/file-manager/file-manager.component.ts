@@ -273,7 +273,6 @@ export class FileManagerComponent implements OnInit {
                 // Section header already carries the full label; the root node shows
                 // the short name.
                 label: isRoot ? `${listKey[0].toUpperCase()}${listKey.slice(1)}` : folder.name,
-                icon: 'pi pi-folder',
                 data: folder,
                 leaf: isLoaded && childFolders.length === 0,
                 expanded: expanded.has(folder.id),

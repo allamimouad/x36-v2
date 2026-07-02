@@ -32,7 +32,11 @@
       >
         <td>
           <span class="fm-name">
-            <i class="fm-icon" [class]="row.icon" [class.fm-icon-folder]="row.kind === 'folder'"></i>
+            @if (row.kind === 'folder') {
+              <pr-file-system-prime-icon name="folder" />
+            } @else {
+              <pr-file-system-prime-icon [fileName]="row.node.name" />
+            }
             <span class="fm-name-text">{{ row.name }}</span>
           </span>
         </td>
