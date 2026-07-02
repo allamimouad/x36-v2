@@ -52,7 +52,7 @@ export const FileSystemStore = signalStore(
     // NOT NgRx private store members — they are not returned from `withMethods`.
         const _markLoading = (folderId: string): void => {
             const ids = store.folderIdsWithLoadingChildren();
-            if (ids.includes(folderId)) return;
+            if (ids.includes(folderId)) {return;}
             patchState(store, { folderIdsWithLoadingChildren: [...ids, folderId] });
         };
         const _unmarkLoading = (folderId: string): void => {
@@ -69,12 +69,12 @@ export const FileSystemStore = signalStore(
         };
         const _markLoaded = (parentId: string): void => {
             const loaded = store.folderIdsWithLoadedChildren();
-            if (loaded.includes(parentId)) return;
+            if (loaded.includes(parentId)) {return;}
             patchState(store, { folderIdsWithLoadedChildren: [...loaded, parentId] });
         };
         const _unmarkLoaded = (...parentIds: Array<string | null | undefined>): void => {
             const ids = new Set(parentIds.filter((id): id is string => typeof id === 'string'));
-            if (ids.size === 0) return;
+            if (ids.size === 0) {return;}
             patchState(store, {
                 folderIdsWithLoadedChildren: store
                     .folderIdsWithLoadedChildren()
@@ -87,6 +87,7 @@ export const FileSystemStore = signalStore(
             if (!projectId) {
                 throw new FileSystemError('unknown', 'FileSystemStore has not been initialized');
             }
+
             return projectId;
         };
 
@@ -112,6 +113,7 @@ export const FileSystemStore = signalStore(
                 },
                 folderIdsWithLoadedChildren: [execution.currentFolder.id, marketing.currentFolder.id]
             });
+
             return { execution: execution.currentFolder, marketing: marketing.currentFolder };
         };
 
@@ -139,7 +141,7 @@ export const FileSystemStore = signalStore(
         };
 
         const loadChildren = async (parentId: string): Promise<void> => {
-            if (store.folderIdsWithLoadingChildren().includes(parentId)) return;
+            if (store.folderIdsWithLoadingChildren().includes(parentId)) {return;}
             _markLoading(parentId);
             _setError(parentId, undefined);
             try {
@@ -171,6 +173,7 @@ export const FileSystemStore = signalStore(
                     api.resolveDocumentPath(_requireProjectId(), listKey, path)
                 );
                 _applyListing(listing);
+
                 return { folder: listing.currentFolder, canonicalPath };
             } finally {
                 patchState(store, { isResolvingPath: false });
@@ -189,18 +192,20 @@ export const FileSystemStore = signalStore(
         const _cachedSubtreeIds = (id: string): string[] => {
             const out = [id];
             for (const node of store.entities()) {
-                if (node.parentId !== id) continue;
+                if (node.parentId !== id) {continue;}
                 if (isFolder(node)) {
                     out.push(..._cachedSubtreeIds(node.id));
                 } else {
                     out.push(node.id);
                 }
             }
+
             return out;
         };
 
         const _cachedSubtree = (id: string): FileSystemNode[] => {
             const map = store.entityMap();
+
             return _cachedSubtreeIds(id)
                 .map((nodeId) => map[nodeId])
                 .filter((node): node is FileSystemNode => node !== undefined);
@@ -213,9 +218,9 @@ export const FileSystemStore = signalStore(
         // (the mutation response carries them only for the affected node, not its parent).
         // Stale parent timestamps self-heal on the next revalidating load.
         const _adjustParentCount = (parentId: string | null, delta: number): void => {
-            if (!parentId) return;
+            if (!parentId) {return;}
             const parent = store.entityMap()[parentId];
-            if (!parent || !isFolder(parent)) return;
+            if (!parent || !isFolder(parent)) {return;}
             patchState(
                 store,
                 setEntity<FileSystemNode>({
@@ -238,12 +243,14 @@ export const FileSystemStore = signalStore(
         ): FileSystemNode[] => {
             const nodes = _cachedSubtree(id);
             const root = nodes.find((node) => node.id === id);
-            if (!root) throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
+            if (!root) {throw new FileSystemError('not-found', `Node not found in cache: ${id}`);}
             const oldPath = root.path;
             const now = new Date().toISOString();
+
             return nodes.map((node): FileSystemNode => {
                 const isRoot = node.id === id;
                 const path = isRoot ? newPath : node.path.replace(`${oldPath}/`, `${newPath}/`);
+
                 return isFolder(node)
                     ? {
                         ...node,
@@ -271,6 +278,7 @@ export const FileSystemStore = signalStore(
             const created = await firstValueFrom(api.createFolder(_requireProjectId(), parent, trimmed));
             patchState(store, setEntity<FileSystemNode>(created));
             _adjustParentCount(parentId, 1);
+
             return created;
         };
 
@@ -290,6 +298,7 @@ export const FileSystemStore = signalStore(
             const updated = _updateCachedSubtreePaths(id, node.parentId, renamed.path, renamed.name);
             patchState(store, setEntities(updated), setEntity<FileSystemNode>(renamed));
             _unmarkLoaded(id);
+
             return renamed;
         };
 
@@ -297,7 +306,7 @@ export const FileSystemStore = signalStore(
             const id = onlySingleId(ids, 'delete');
             const subtree = _cachedSubtree(id);
             const node = subtree.find((candidate) => candidate.id === id);
-            if (!node) throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
+            if (!node) {throw new FileSystemError('not-found', `Node not found in cache: ${id}`);}
             await firstValueFrom(api.delete(_requireProjectId(), node));
             patchState(store, removeEntities(subtree.map((candidate) => candidate.id)));
             _adjustParentCount(node.parentId, -1);
@@ -325,7 +334,7 @@ export const FileSystemStore = signalStore(
                     `Target folder not found in cache: ${targetParentId}`
                 );
             }
-            if (node.parentId === targetParentId) return [];
+            if (node.parentId === targetParentId) {return [];}
             if (isFolder(node) && _cachedSubtreeIds(id).includes(targetParentId)) {
                 throw new FileSystemError(
                     'descendant-move',
@@ -350,6 +359,7 @@ export const FileSystemStore = signalStore(
                     .folderIdsWithLoadingChildren()
                     .filter((fid) => !removedSet.has(fid))
             });
+
             return removedIds;
         };
 
@@ -397,6 +407,7 @@ function fileSystemDevtoolsFeature() {
                 const entities = Object.values(state.entityMap).sort((a, b) =>
                     a.path.localeCompare(b.path)
                 );
+
                 return {
                     projectId: state.projectId,
                     rootIdByList: state.rootIdByList,
@@ -416,20 +427,22 @@ export type FileSystemStoreInstance = InstanceType<typeof FileSystemStore>;
 
 function compactErrors(errors: Record<string, string | undefined>): Record<string, string> {
     return Object.entries(errors).reduce<Record<string, string>>((acc, [id, message]) => {
-        if (message !== undefined) acc[id] = message;
+        if (message !== undefined) {acc[id] = message;}
+
         return acc;
     }, {});
 }
 
 function errorMessage(e: unknown): string {
-    if (e instanceof FileSystemError) return e.message;
-    if (e instanceof Error) return e.message;
+    if (e instanceof FileSystemError) {return e.message;}
+    if (e instanceof Error) {return e.message;}
+
     return 'Unknown error';
 }
 
 function onlySingleId(ids: string | string[], method: string): string {
-    if (typeof ids === 'string') return ids;
-    if (ids.length === 1) return ids[0];
+    if (typeof ids === 'string') {return ids;}
+    if (ids.length === 1) {return ids[0];}
     // TODO: bulk operations arrive with the multi-select US.
     throw notImplemented(`${method} bulk operations`);
 }

@@ -3,7 +3,7 @@ import { ButtonModule } from 'primeng/button';
 import { TooltipModule } from 'primeng/tooltip';
 
 @Component({
-    selector: 'app-nav-toolbar',
+    selector: 'pr-nav-toolbar',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [ButtonModule, TooltipModule],
@@ -11,12 +11,12 @@ import { TooltipModule } from 'primeng/tooltip';
     styleUrl: './nav-toolbar.component.scss'
 })
 export class NavToolbarComponent {
-    readonly canGoBack = input<boolean>(false);
-    readonly canGoForward = input<boolean>(false);
-    readonly canGoUp = input<boolean>(false);
+    public readonly canGoBack = input<boolean>(false);
+    public readonly canGoForward = input<boolean>(false);
+    public readonly canGoUp = input<boolean>(false);
 
-    readonly back = output<void>();
-    readonly forward = output<void>();
-    readonly up = output<void>();
-    readonly refresh = output<void>();
+    public readonly back = output<void>();
+    public readonly forward = output<void>();
+    public readonly up = output<void>();
+    public readonly refresh = output<void>();
 }

@@ -118,14 +118,14 @@ $fm-control-height: 2.25rem;
  * make the first stacked tree eat the whole pane). A container selector out-specifies
  * the component's own :host, so collapse each stacked tree to its content height.
  */
-.fm-tree-pane app-folder-tree {
+.fm-tree-pane pr-folder-tree {
   display: block;
   height: auto;
   overflow: visible;
 }
 
-.fm-tree-pane app-folder-tree ::ng-deep .fm-tree,
-.fm-tree-pane app-folder-tree ::ng-deep .p-tree-root {
+.fm-tree-pane pr-folder-tree ::ng-deep .fm-tree,
+.fm-tree-pane pr-folder-tree ::ng-deep .p-tree-root {
   height: auto;
   overflow: visible;
 }

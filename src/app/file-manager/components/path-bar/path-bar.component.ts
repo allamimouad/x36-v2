@@ -29,7 +29,7 @@ import type { PathSegment } from '../../stores/navigation.store';
  * visible segment.
  */
 @Component({
-    selector: 'app-path-bar',
+    selector: 'pr-path-bar',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [Menu],
@@ -37,17 +37,17 @@ import type { PathSegment } from '../../stores/navigation.store';
     styleUrl: './path-bar.component.scss'
 })
 export class PathBarComponent {
-    readonly segments = input.required<PathSegment[]>();
-    readonly projectLabel = input.required<string>();
-    readonly editablePath = input<string>('');
-    readonly editing = input<boolean>(false);
-    readonly resolving = input<boolean>(false);
-    readonly pathError = input<string | null>(null);
+    public readonly segments = input.required<PathSegment[]>();
+    public readonly projectLabel = input.required<string>();
+    public readonly editablePath = input<string>('');
+    public readonly editing = input<boolean>(false);
+    public readonly resolving = input<boolean>(false);
+    public readonly pathError = input<string | null>(null);
 
-    readonly editRequested = output<void>();
-    readonly editCancelled = output<void>();
-    readonly segmentClicked = output<PathSegment>();
-    readonly pathSubmitted = output<string>();
+    public readonly editRequested = output<void>();
+    public readonly editCancelled = output<void>();
+    public readonly segmentClicked = output<PathSegment>();
+    public readonly pathSubmitted = output<string>();
 
     private readonly hostRef = inject<ElementRef<HTMLElement>>(ElementRef);
     private readonly destroyRef = inject(DestroyRef);
@@ -69,13 +69,15 @@ export class PathBarComponent {
         const parts = this.segments().map((seg) =>
             [seg.id ?? '', seg.listKey ?? '', seg.path ?? '', seg.label].join('\u001f')
         );
+
         return [this.projectLabel(), ...parts].join('\u001e');
     });
 
     private readonly effectiveCollapsed = computed(() => {
         const maxCollapsed = Math.max(0, this.segments().length - 1);
         // New paths render conservatively (`… > current`) until measurement proves more fits.
-        if (this.fittedKey() !== this.fitKey()) return maxCollapsed;
+        if (this.fittedKey() !== this.fitKey()) {return maxCollapsed;}
+
         return Math.min(this.collapsedCount(), maxCollapsed);
     });
 
@@ -105,7 +107,7 @@ export class PathBarComponent {
 
     private static readonly MAX_MEASURE_RETRIES = 5;
 
-    constructor() {
+    public constructor() {
         afterNextRender(() => {
             const cs = getComputedStyle(this.hostRef.nativeElement);
             this.hostPadX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
@@ -132,34 +134,59 @@ export class PathBarComponent {
         });
     }
 
+    protected onEnterEdit(): void {
+        this.draft.set(this.editablePath());
+        this.editRequested.emit();
+    }
+
+    protected onDraftInput(value: string): void {
+        this.draft.set(value);
+    }
+
+    protected onSubmit(): void {
+        if (this.resolving()) {return;}
+        this.pathSubmitted.emit(this.draft());
+    }
+
+    protected onCancel(): void {
+        this.editCancelled.emit();
+    }
+
+    protected onBlur(): void {
+        if (this.resolving()) {return;}
+        this.editCancelled.emit();
+    }
+
     private refreshEditReserve(): void {
         const el = this.editZoneRef()?.nativeElement;
-        if (!el) return;
+        if (!el) {return;}
 
         const minWidth = parseFloat(getComputedStyle(el).minWidth);
-        if (!Number.isNaN(minWidth)) this.editReservePx = minWidth;
+        if (!Number.isNaN(minWidth)) {this.editReservePx = minWidth;}
     }
 
     private availablePx(): number {
         const host = this.hostRef.nativeElement;
         const prefixW = this.prefixRef()?.nativeElement.offsetWidth ?? 0;
+
         return Math.max(0, host.clientWidth - this.hostPadX - prefixW - this.editReservePx);
     }
 
     private measureAndFit(retries = 0): void {
-        if (this.editing()) return;
+        if (this.editing()) {return;}
 
         const pass = ++this.fitPass;
         const key = this.fitKey();
         requestAnimationFrame(() => {
-            if (!this.isCurrentFit(pass, key)) return;
+            if (!this.isCurrentFit(pass, key)) {return;}
 
             if (!this.readNaturalWidths()) {
                 if (retries < PathBarComponent.MAX_MEASURE_RETRIES) {
                     requestAnimationFrame(() => {
-                        if (this.isCurrentFit(pass, key)) this.measureAndFit(retries + 1);
+                        if (this.isCurrentFit(pass, key)) {this.measureAndFit(retries + 1);}
                     });
                 }
+
                 return;
             }
 
@@ -174,7 +201,7 @@ export class PathBarComponent {
             ? Array.from(measureEl.querySelectorAll<HTMLElement>('.fm-measure-seg'))
             : [];
 
-        if (!measureEl || segEls.length !== this.segments().length) return false;
+        if (!measureEl || segEls.length !== this.segments().length) {return false;}
 
         const gap = parseFloat(getComputedStyle(measureEl).columnGap);
         this.cachedWidths = segEls.map((el) => el.offsetWidth);
@@ -191,9 +218,10 @@ export class PathBarComponent {
     }
 
     private fitFromCachedWidths(): void {
-        if (this.editing()) return;
+        if (this.editing()) {return;}
         if (this.cachedWidths.length !== this.segments().length) {
             this.measureAndFit();
+
             return;
         }
 
@@ -208,7 +236,7 @@ export class PathBarComponent {
 
     private calculateCollapsedCount(): number {
         const count = this.cachedWidths.length;
-        if (count <= 1) return 0;
+        if (count <= 1) {return 0;}
 
         const available = this.availablePx();
         const fullWidth =
@@ -216,7 +244,7 @@ export class PathBarComponent {
       this.cachedSepW * (count - 1) +
       this.cachedGapW * Math.max(0, 2 * count - 2);
 
-        if (fullWidth <= available) return 0;
+        if (fullWidth <= available) {return 0;}
 
         let suffixWidth = this.cachedWidths[count - 1]; // current folder is always kept
         let suffixCount = 1;
@@ -230,7 +258,7 @@ export class PathBarComponent {
         this.cachedSepW * nextCount +
         this.cachedGapW * (2 * nextCount);
 
-            if (collapsedWidth > available) break;
+            if (collapsedWidth > available) {break;}
 
             suffixWidth = nextWidth;
             suffixCount = nextCount;
@@ -240,7 +268,7 @@ export class PathBarComponent {
     }
 
     private correctRenderedOverflow(pass: number): void {
-        if (pass !== this.fitPass || this.editing()) return;
+        if (pass !== this.fitPass || this.editing()) {return;}
 
         const nav = this.breadcrumbRef()?.nativeElement;
         const current = this.collapsedCount();
@@ -250,28 +278,5 @@ export class PathBarComponent {
             this.collapsedCount.set(current + 1);
             requestAnimationFrame(() => this.correctRenderedOverflow(pass));
         }
-    }
-
-    protected onEnterEdit(): void {
-        this.draft.set(this.editablePath());
-        this.editRequested.emit();
-    }
-
-    protected onDraftInput(value: string): void {
-        this.draft.set(value);
-    }
-
-    protected onSubmit(): void {
-        if (this.resolving()) return;
-        this.pathSubmitted.emit(this.draft());
-    }
-
-    protected onCancel(): void {
-        this.editCancelled.emit();
-    }
-
-    protected onBlur(): void {
-        if (this.resolving()) return;
-        this.editCancelled.emit();
     }
 }

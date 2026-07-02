@@ -2,11 +2,11 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { FileManagerComponent } from '../file-manager/file-manager.component';
 
 @Component({
-    selector: 'app-file-manager-demo',
+    selector: 'pr-file-manager-demo',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [FileManagerComponent],
-    template: '<app-file-manager [projectId]="projectId" [projectLabel]="projectLabel" />',
+    template: '<pr-file-manager [projectId]="projectId" [projectLabel]="projectLabel" />',
     styles: `
     :host {
       display: block;

@@ -36,7 +36,8 @@ const EDITORS = [
 /** Deterministic editor per node name, so the demo data is stable across reloads. */
 function editorFor(name: string): string {
     let sum = 0;
-    for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
+    for (let i = 0; i < name.length; i++) {sum += name.charCodeAt(i);}
+
     return EDITORS[sum % EDITORS.length];
 }
 
@@ -335,6 +336,7 @@ export function buildSeed(): SeedResult {
         }
         rootIdByList[listKey] = rootId;
     }
+
     return { rootIdByList, nodes };
 }
 

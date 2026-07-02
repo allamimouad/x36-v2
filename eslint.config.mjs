@@ -21,8 +21,43 @@ export default tseslint.config(
     processor: angular.processInlineTemplates,
     rules: {
       'no-undef': 'off',
+      curly: ['error', 'all'],
       '@stylistic/indent': ['error', 4],
       '@stylistic/comma-dangle': ['error', 'never'],
+      '@stylistic/padding-line-between-statements': [
+        'error',
+        {
+          blankLine: 'always',
+          prev: '*',
+          next: 'return'
+        }
+      ],
+      '@typescript-eslint/explicit-member-accessibility': [
+        'error',
+        {
+          accessibility: 'explicit'
+        }
+      ],
+      '@typescript-eslint/member-ordering': [
+        'error',
+        {
+          default: [
+            'signature',
+            [
+              'public-static-field',
+              'protected-static-field',
+              'private-static-field',
+              'public-instance-field',
+              'protected-instance-field',
+              'private-instance-field'
+            ],
+            'constructor',
+            'public-instance-method',
+            'protected-instance-method',
+            'private-instance-method'
+          ]
+        }
+      ],
       '@typescript-eslint/no-unused-vars': [
         'error',
         {
@@ -35,7 +70,7 @@ export default tseslint.config(
         'error',
         {
           type: 'attribute',
-          prefix: 'app',
+          prefix: 'pr',
           style: 'camelCase',
         },
       ],
@@ -43,7 +78,7 @@ export default tseslint.config(
         'error',
         {
           type: 'element',
-          prefix: 'app',
+          prefix: 'pr',
           style: 'kebab-case',
         },
       ],

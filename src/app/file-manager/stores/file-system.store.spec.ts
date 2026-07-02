@@ -52,7 +52,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         const contracts = store
             .entities()
             .find((node) => isFolder(node) && node.path === '/execution/Contracts');
-        if (!contracts) throw new Error('Expected Contracts folder');
+        if (!contracts) {throw new Error('Expected Contracts folder');}
         const listDocuments = spyOn(api, 'listDocuments').and.callThrough();
 
         await store.loadChildren(contracts.id);

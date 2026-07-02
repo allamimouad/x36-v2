@@ -24,18 +24,18 @@ export class MockFileSystemApi extends FileSystemApi {
     /** Stand-in for the signed-in user; stamped as `modifiedBy` on every mutation. */
     private readonly currentUser = 'You';
 
-    override listDocumentRoot(
+    public override listDocumentRoot(
         _projectId: string,
         listKey: DocumentListKey
     ): Observable<DocumentListing> {
         return this.read(() => this.listing(this.rootIdByList[listKey]));
     }
 
-    override listDocuments(_projectId: string, parentId: string): Observable<DocumentListing> {
+    public override listDocuments(_projectId: string, parentId: string): Observable<DocumentListing> {
         return this.read(() => this.listing(parentId));
     }
 
-    override resolveDocumentPath(
+    public override resolveDocumentPath(
         _projectId: string,
         listKey: DocumentListKey,
         path: string
@@ -61,26 +61,12 @@ export class MockFileSystemApi extends FileSystemApi {
                 folderId = child.id;
                 canonicalNames.push(child.name);
             }
+
             return { canonicalPath: canonicalNames.join('/'), listing: this.listing(folderId) };
         });
     }
 
-    /** Build a DocumentListing for `parentId`'s direct children. */
-    private listing(parentId: string): DocumentListing {
-        const parent = this.requireFolder(parentId);
-        const folders: FolderNode[] = [];
-        const files: FileNode[] = [];
-        for (const node of this.nodes.values()) {
-            if (node.parentId !== parent.id) continue;
-            if (isFolder(node)) folders.push(clone(node));
-            else files.push(clone(node));
-        }
-        folders.sort((a, b) => a.name.localeCompare(b.name));
-        files.sort((a, b) => a.name.localeCompare(b.name));
-        return { currentFolder: clone(parent), folders, files };
-    }
-
-    override createFolder(
+    public override createFolder(
         _projectId: string,
         parent: FolderNode,
         name: string
@@ -104,11 +90,12 @@ export class MockFileSystemApi extends FileSystemApi {
             };
             this.nodes.set(folder.id, folder);
             this.touchParentCounts(parentNode.id);
+
             return clone(folder);
         });
     }
 
-    override rename(
+    public override rename(
         _projectId: string,
         node: FileSystemNode,
         newName: string
@@ -121,6 +108,7 @@ export class MockFileSystemApi extends FileSystemApi {
             this.assertValidName(newName);
             this.assertNameAvailable(current.parentId, newName, current.id);
             const parent = this.requireFolder(current.parentId);
+
             return this.repathNode(
                 current.id,
                 current.parentId,
@@ -130,7 +118,7 @@ export class MockFileSystemApi extends FileSystemApi {
         });
     }
 
-    override move(
+    public override move(
         _projectId: string,
         node: FileSystemNode,
         newParent: FolderNode
@@ -141,7 +129,7 @@ export class MockFileSystemApi extends FileSystemApi {
             if (current.parentId === null) {
                 throw new FileSystemError('invalid-name', 'Root folder cannot be moved');
             }
-            if (current.parentId === target.id) return clone(current);
+            if (current.parentId === target.id) {return clone(current);}
             if (isFolder(current) && this.isAncestorOrSelf(current.id, target.id)) {
                 throw new FileSystemError(
                     'descendant-move',
@@ -158,11 +146,12 @@ export class MockFileSystemApi extends FileSystemApi {
             );
             this.touchParentCounts(oldParentId);
             this.touchParentCounts(target.id);
+
             return moved;
         });
     }
 
-    override copy(
+    public override copy(
         _projectId: string,
         node: FileSystemNode,
         newParent: FolderNode
@@ -173,11 +162,12 @@ export class MockFileSystemApi extends FileSystemApi {
             this.assertNameAvailable(target.id, source.name);
             const copied = this.copyRecursive(source, target.id, target.path, source.name);
             this.touchParentCounts(target.id);
+
             return clone(copied);
         });
     }
 
-    override delete(_projectId: string, node: FileSystemNode): Observable<void> {
+    public override delete(_projectId: string, node: FileSystemNode): Observable<void> {
         return this.write(() => {
             const current = this.requireNode(node.id);
             if (current.parentId === null) {
@@ -192,7 +182,7 @@ export class MockFileSystemApi extends FileSystemApi {
         });
     }
 
-    override upload(
+    public override upload(
         _projectId: string,
         _parent: FolderNode,
         _file: File,
@@ -201,6 +191,22 @@ export class MockFileSystemApi extends FileSystemApi {
     ): Observable<FileNode> {
     // TODO: implement with the upload US.
         return notImplemented('upload');
+    }
+
+    /** Build a DocumentListing for `parentId`'s direct children. */
+    private listing(parentId: string): DocumentListing {
+        const parent = this.requireFolder(parentId);
+        const folders: FolderNode[] = [];
+        const files: FileNode[] = [];
+        for (const node of this.nodes.values()) {
+            if (node.parentId !== parent.id) {continue;}
+            if (isFolder(node)) {folders.push(clone(node));}
+            else {files.push(clone(node));}
+        }
+        folders.sort((a, b) => a.name.localeCompare(b.name));
+        files.sort((a, b) => a.name.localeCompare(b.name));
+
+        return { currentFolder: clone(parent), folders, files };
     }
 
     /** Simulated read: emits the factory result after randomized read latency. */
@@ -217,6 +223,7 @@ export class MockFileSystemApi extends FileSystemApi {
         return timer(this.latencyMs('write')).pipe(
             map(() => {
                 this.maybeFail();
+
                 return factory();
             })
         );
@@ -225,11 +232,12 @@ export class MockFileSystemApi extends FileSystemApi {
     private latencyMs(kind: 'read' | 'write'): number {
         const min = this.config.minLatencyMs;
         const max = kind === 'read' ? this.config.maxLatencyMs : this.config.maxLatencyMs + 200;
+
         return min + Math.random() * Math.max(0, max - min);
     }
 
     private maybeFail(): void {
-        if (!this.config.enableErrors) return;
+        if (!this.config.enableErrors) {return;}
         if (Math.random() < this.config.errorRate) {
             throw new FileSystemError('network', 'Simulated network error');
         }
@@ -240,6 +248,7 @@ export class MockFileSystemApi extends FileSystemApi {
         if (!node) {
             throw new FileSystemError('not-found', `Node not found: ${id}`);
         }
+
         return node;
     }
 
@@ -248,6 +257,7 @@ export class MockFileSystemApi extends FileSystemApi {
         if (!isFolder(node)) {
             throw new FileSystemError('not-found', `Folder not found: ${id}`);
         }
+
         return node;
     }
 
@@ -261,7 +271,7 @@ export class MockFileSystemApi extends FileSystemApi {
     private assertNameAvailable(parentId: string, name: string, exceptId?: string): void {
         const normalized = name.trim().toLocaleLowerCase();
         for (const node of this.nodes.values()) {
-            if (node.parentId !== parentId || node.id === exceptId) continue;
+            if (node.parentId !== parentId || node.id === exceptId) {continue;}
             if (node.name.toLocaleLowerCase() === normalized) {
                 throw new FileSystemError(
                     'name-collision',
@@ -274,9 +284,10 @@ export class MockFileSystemApi extends FileSystemApi {
     private isAncestorOrSelf(ancestorId: string, candidateId: string): boolean {
         let current: string | null = candidateId;
         while (current !== null) {
-            if (current === ancestorId) return true;
+            if (current === ancestorId) {return true;}
             current = this.requireFolder(current).parentId;
         }
+
         return false;
     }
 
@@ -319,12 +330,13 @@ export class MockFileSystemApi extends FileSystemApi {
                     modifiedBy: isRoot ? this.currentUser : current.modifiedBy
                 };
             this.nodes.set(updated.id, updated);
-            if (isRoot) updatedRoot = updated;
+            if (isRoot) {updatedRoot = updated;}
         }
 
         if (!updatedRoot) {
             throw new FileSystemError('unknown', `Failed to update node: ${id}`);
         }
+
         return clone(updatedRoot);
     }
 
@@ -353,6 +365,7 @@ export class MockFileSystemApi extends FileSystemApi {
                 modifiedBy: this.currentUser
             };
             this.nodes.set(file.id, file);
+
             return file;
         }
 
@@ -372,25 +385,27 @@ export class MockFileSystemApi extends FileSystemApi {
             this.copyRecursive(child, folder.id, folder.path, child.name);
         }
         this.touchParentCounts(folder.id);
+
         return folder;
     }
 
     private collectDescendantIds(folderId: string): string[] {
         const out = [folderId];
         for (const node of Array.from(this.nodes.values())) {
-            if (node.parentId !== folderId) continue;
+            if (node.parentId !== folderId) {continue;}
             if (isFolder(node)) {
                 out.push(...this.collectDescendantIds(node.id));
             } else {
                 out.push(node.id);
             }
         }
+
         return out;
     }
 
     private touchParentCounts(parentId: string): void {
         const parent = this.nodes.get(parentId);
-        if (!parent || !isFolder(parent)) return;
+        if (!parent || !isFolder(parent)) {return;}
         const itemCount = Array.from(this.nodes.values()).filter(
             (node) => node.parentId === parentId
         ).length;

@@ -44,7 +44,8 @@ describe('NavigationStore', () => {
 
     function byPath(path: string): string {
         const node = fs.entities().find((n) => n.path === path);
-        if (!node) throw new Error(`No entity at path: ${path}`);
+        if (!node) {throw new Error(`No entity at path: ${path}`);}
+
         return node.id;
     }
 
@@ -190,28 +191,29 @@ const fakeShared: FolderNode = {
 };
 
 class FakeFileSystemReader extends FileSystemReader {
-    readonly nodes: FileSystemNode[] = [fakeRoot, fakeDocs, fakeShared];
-    readonly entityMap = signal<Record<string, FileSystemNode>>({
+    public readonly nodes: FileSystemNode[] = [fakeRoot, fakeDocs, fakeShared];
+    public readonly entityMap = signal<Record<string, FileSystemNode>>({
         [fakeRoot.id]: fakeRoot,
         [fakeDocs.id]: fakeDocs,
         [fakeShared.id]: fakeShared
     });
-    readonly entities = signal<FileSystemNode[]>(this.nodes);
-    readonly folderIdsWithLoadedChildren = signal<string[]>([]);
-    readonly folderIdsWithLoadingChildren = signal<string[]>([]);
-    readonly rootIdByList = signal<Record<DocumentListKey, string | null>>({
+    public readonly entities = signal<FileSystemNode[]>(this.nodes);
+    public readonly folderIdsWithLoadedChildren = signal<string[]>([]);
+    public readonly folderIdsWithLoadingChildren = signal<string[]>([]);
+    public readonly rootIdByList = signal<Record<DocumentListKey, string | null>>({
         execution: fakeRoot.id,
         marketing: null
     });
-    readonly loadChildrenSpy = jasmine.createSpy('loadChildren');
-    readonly invalidateSpy = jasmine.createSpy('invalidate');
+    public readonly loadChildrenSpy = jasmine.createSpy('loadChildren');
+    public readonly invalidateSpy = jasmine.createSpy('invalidate');
 
-    loadChildren(parentId: string): Promise<void> {
+    public loadChildren(parentId: string): Promise<void> {
         this.loadChildrenSpy(parentId);
+
         return Promise.resolve();
     }
 
-    invalidate(parentId: string): void {
+    public invalidate(parentId: string): void {
         this.invalidateSpy(parentId);
     }
 }

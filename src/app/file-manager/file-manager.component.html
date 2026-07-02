@@ -4,7 +4,7 @@
   </header>
 
   <div class="fm-toolbar-row">
-    <app-nav-toolbar
+    <pr-nav-toolbar
       [canGoBack]="navigation.canGoBack()"
       [canGoForward]="navigation.canGoForward()"
       [canGoUp]="navigation.canGoUp()"
@@ -14,7 +14,7 @@
       (refresh)="onRefresh()"
     />
 
-    <app-path-bar
+    <pr-path-bar
       class="fm-breadcrumb"
       [segments]="navigation.pathSegments()"
       [projectLabel]="projectLabel()"
@@ -83,7 +83,7 @@
       <aside class="fm-tree-pane" aria-label="Folder trees">
         <section class="fm-tree-section">
           <h2 class="fm-tree-section-title">{{ projectLabel() }} - {{ listLabels.marketing }}</h2>
-          <app-folder-tree
+          <pr-folder-tree
             [nodes]="marketingTree()"
             [currentFolderId]="navigation.currentFolderId()"
             [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
@@ -94,7 +94,7 @@
         </section>
         <section class="fm-tree-section">
           <h2 class="fm-tree-section-title">{{ projectLabel() }} - {{ listLabels.execution }}</h2>
-          <app-folder-tree
+          <pr-folder-tree
             [nodes]="executionTree()"
             [currentFolderId]="navigation.currentFolderId()"
             [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
@@ -113,7 +113,7 @@
             <p>{{ navError }}</p>
           </div>
         } @else {
-          <app-file-table
+          <pr-file-table
             [folders]="navigation.currentFolderChildren().folders"
             [files]="navigation.currentFolderChildren().files"
             [loading]="isCurrentLoading() || fileSystem.isResolvingPath()"

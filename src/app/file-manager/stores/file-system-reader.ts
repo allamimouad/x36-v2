@@ -12,16 +12,16 @@ import type { FileSystemNode } from '../models/file-system-node.model';
  * are intentionally absent so they remain type-level forbidden here.
  */
 export abstract class FileSystemReader {
-    abstract readonly entityMap: Signal<Record<string, FileSystemNode>>;
-    abstract readonly entities: Signal<FileSystemNode[]>;
-    abstract readonly folderIdsWithLoadedChildren: Signal<string[]>;
-    abstract readonly folderIdsWithLoadingChildren: Signal<string[]>;
+    public abstract readonly entityMap: Signal<Record<string, FileSystemNode>>;
+    public abstract readonly entities: Signal<FileSystemNode[]>;
+    public abstract readonly folderIdsWithLoadedChildren: Signal<string[]>;
+    public abstract readonly folderIdsWithLoadingChildren: Signal<string[]>;
     /** The root folder id of each document list (for mapping a root back to its list key). */
-    abstract readonly rootIdByList: Signal<Record<DocumentListKey, string | null>>;
+    public abstract readonly rootIdByList: Signal<Record<DocumentListKey, string | null>>;
 
     /** Fetch (or refetch) the children of `parentId` and cache them. */
-    abstract loadChildren(parentId: string): Promise<void>;
+    public abstract loadChildren(parentId: string): Promise<void>;
 
     /** Drop the cached "loaded" flag for `parentId` so the next load refetches. */
-    abstract invalidate(parentId: string): void;
+    public abstract invalidate(parentId: string): void;
 }

@@ -4,7 +4,7 @@ import { Tree, type TreeNodeExpandEvent, type TreeNodeSelectEvent } from 'primen
 import type { FolderNode } from '../../models/file-system-node.model';
 
 @Component({
-    selector: 'app-folder-tree',
+    selector: 'pr-folder-tree',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [Tree],
@@ -12,17 +12,18 @@ import type { FolderNode } from '../../models/file-system-node.model';
     styleUrl: './folder-tree.component.scss'
 })
 export class FolderTreeComponent {
-    readonly nodes = input.required<TreeNode<FolderNode>[]>();
-    readonly currentFolderId = input<string | null>(null);
-    readonly folderIdsWithLoadingChildren = input<string[]>([]);
+    public readonly nodes = input.required<TreeNode<FolderNode>[]>();
+    public readonly currentFolderId = input<string | null>(null);
+    public readonly folderIdsWithLoadingChildren = input<string[]>([]);
 
-    readonly nodeSelected = output<string>();
-    readonly nodeExpanded = output<string>();
-    readonly nodeCollapsed = output<string>();
+    public readonly nodeSelected = output<string>();
+    public readonly nodeExpanded = output<string>();
+    public readonly nodeCollapsed = output<string>();
 
     protected readonly selectedTreeNode = computed<TreeNode<FolderNode> | null>(() => {
         const id = this.currentFolderId();
-        if (!id) return null;
+        if (!id) {return null;}
+
         return findNodeByKey(this.visibleNodes(), id);
     });
 
@@ -32,17 +33,17 @@ export class FolderTreeComponent {
 
     protected handleExpand(event: TreeNodeExpandEvent): void {
         const key = event.node?.key;
-        if (typeof key === 'string') this.nodeExpanded.emit(key);
+        if (typeof key === 'string') {this.nodeExpanded.emit(key);}
     }
 
     protected handleCollapse(event: TreeNodeExpandEvent): void {
         const key = event.node?.key;
-        if (typeof key === 'string') this.nodeCollapsed.emit(key);
+        if (typeof key === 'string') {this.nodeCollapsed.emit(key);}
     }
 
     protected handleSelect(event: TreeNodeSelectEvent): void {
         const key = event.node?.key;
-        if (typeof key === 'string') this.nodeSelected.emit(key);
+        if (typeof key === 'string') {this.nodeSelected.emit(key);}
     }
 }
 
@@ -51,6 +52,7 @@ function applyLoading(
     folderIdsWithLoadingChildren: string[]
 ): TreeNode<FolderNode>[] {
     const loadingIds = new Set(folderIdsWithLoadingChildren);
+
     return applyLoadingState(nodes, loadingIds);
 }
 
@@ -72,11 +74,12 @@ function findNodeByKey(
     key: string
 ): TreeNode<FolderNode> | null {
     for (const n of nodes) {
-        if (n.key === key) return n;
+        if (n.key === key) {return n;}
         if (n.children?.length) {
             const found = findNodeByKey(n.children as TreeNode<FolderNode>[], key);
-            if (found) return found;
+            if (found) {return found;}
         }
     }
+
     return null;
 }
