@@ -1,9 +1,9 @@
 import {
     DOCUMENT_LIST_KEYS,
     type DocumentListKey
-} from '../models/document-list.model';
-import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
-import { ROOT_PATH } from '../utils/path.utils';
+} from '../../models/document-list.model';
+import type { FileNode, FileSystemNode, FolderNode } from '../../models/file-system-node.model';
+import { ROOT_PATH } from '../../utils/path.utils';
 
 interface SeedFolderSpec {
     name: string;

@@ -3,8 +3,8 @@ import { throwError } from 'rxjs';
 import { isFolder, type FolderNode } from '../models/file-system-node.model';
 import { FileSystemError } from '../models/file-system-error.model';
 import { FileSystemApi } from '../services/file-system-api';
-import { MockFileSystemApi } from '../services/mock-file-system-api';
-import { MOCK_CONFIG } from '../tokens/mock-config.token';
+import { MockFileSystemApi } from '../services/testing/mock-file-system-api';
+import { MOCK_CONFIG } from '../services/testing/mock-config.token';
 import { FileSystemStore } from './file-system.store';
 
 describe('FileSystemStore project-scoped API contract', () => {

@@ -36,6 +36,8 @@ Stores **MUST NOT know about SharePoint**. They depend on an abstract `FileSyste
 - `MockFileSystemApi` — in-memory, used for dev and tests (default provider)
 - `SharePointFileSystemApi` — stubbed now, implemented later on another machine
 
+`services/testing/` contains the mock/dev backend and unit-test double (`mock-file-system-api.ts`, `mock-seed.ts`, `mock-config.token.ts`). It is used by the default local `FileManagerComponent` provider until the SharePoint laptop swaps that provider to `SharePointFileSystemApi` — after which the directory (plus the two store specs, if tests aren't kept) can be deleted in one go.
+
 The interface uses generic terminology (`projectId`, `listKey`, `id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. A project has **two document lists**, selected by the domain `listKey` (`'execution' | 'marketing'`); the backend maps each to one of the project's SharePoint document libraries. `id` is a stable, opaque UUID for the entity's lifetime, unique within the project's SharePoint site. `path` is the mutable, human-readable backend path. In the mock, `id` is a `crypto.randomUUID()` value; in the SharePoint adapter, `id = UniqueId` (the GUID SharePoint exposes per list item) and `path = ServerRelativeUrl`. Retrieval is split: `listDocumentRoot(projectId, listKey)` returns a list's root (the only operation that needs `listKey`, since a root has no parent id), and `listDocuments(projectId, parentId)` returns a folder's direct children addressed by id. Nodes stay generic — they do **not** carry `listKey`; a node's list is derived by walking to its root. Mutations take full `FolderNode` / `FileSystemNode` arguments so each implementation can read whatever fields it needs. No internal id↔url mapping cache.
 
 ### 2.3 Signal Store for entities, plain signals for simple state
@@ -400,9 +402,11 @@ file-manager/
   services/
     file-system-api.ts                 # abstract class
     clipboard.service.ts               # plain signal clipboard state
-    mock-file-system-api.ts
     sharepoint-file-system-api.ts      # stub
-    mock-seed.ts                       # seed data
+    testing/
+      mock-file-system-api.ts          # mock/dev backend + unit-test double
+      mock-seed.ts                     # seed data
+      mock-config.token.ts             # mock latency/error settings
     drag-drop.service.ts
     upload.service.ts
     concurrency-queue.ts
@@ -417,7 +421,6 @@ file-manager/
     naming.utils.ts                    # resolveNameCollision, sanitizeName, validateName
   tokens/
     file-manager-config.token.ts
-    mock-config.token.ts
 ```
 
 ---

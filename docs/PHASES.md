@@ -23,7 +23,7 @@
 **API layer**
 - `services/file-system-api.ts` — abstract class per SPEC §5
 - `services/file-system-api.ts` — all methods signed, bodies empty (concrete classes implement); every operation receives `projectId`
-- `services/mock-file-system-api.ts` — full implementation per SPEC §6, including:
+- `services/testing/mock-file-system-api.ts` — full implementation per SPEC §6, including:
   - In-memory `Map<string, FileSystemNode>`
   - Seed data loading
   - Latency simulation
@@ -31,9 +31,9 @@
   - Constraint enforcement (name, descendant, collision, not-found)
   - Deep clone on return
   - **For Phase 1, only the read operations need to be correct**: `listDocumentRoot(projectId, listKey)` (a document list's root) and `listDocuments(projectId, parentId)` (a folder's direct children, addressed by id), each returning the current folder plus its direct files/folders.
-- `services/mock-seed.ts` — realistic seed: 3 top-level folders, each with 2 levels of subfolders, mix of files
+- `services/testing/mock-seed.ts` — realistic seed: 3 top-level folders, each with 2 levels of subfolders, mix of files
 - `services/sharepoint-file-system-api.ts` — stub per SPEC §7 (all methods throw)
-- `tokens/mock-config.token.ts` — `MOCK_CONFIG` InjectionToken
+- `services/testing/mock-config.token.ts` — `MOCK_CONFIG` InjectionToken
 - `tokens/file-manager-config.token.ts` — `FILE_MANAGER_CONFIG` InjectionToken
 
 **Stores**
@@ -333,7 +333,8 @@
 - Implement `id` as the SharePoint `UniqueId` (GUID) and `path` as `ServerRelativeUrl`. Source operations address items via `GetFolderById('<id>')` / `GetFileById('<id>')`. The adapter is a thin shim over the auto-generated SharePoint client — every API method takes full `FolderNode` / `FileSystemNode` arguments, so the shim can read whichever fields (`id`, `path`, `name`, `parent.id`, `parent.path`, ...) the generated DTOs require.
 - Error code mapping from SharePoint error codes to `FileSystemError` codes
 - Implement chunked upload (`StartUpload` / `ContinueUpload` / `FinishUpload`)
-- Flip provider in `app.config.ts` from `MockFileSystemApi` to `SharePointFileSystemApi`
+- In `file-manager.component.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
+- Only after that swap, optionally delete `services/testing/` (mock backend + seed + mock config token) and the two `stores/*.spec.ts` if unit tests aren't kept in that repo
 
 ### Acceptance
 - All Phase 1–5 acceptance checks still pass, now against real SharePoint

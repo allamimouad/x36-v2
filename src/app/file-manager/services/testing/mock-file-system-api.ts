@@ -1,18 +1,18 @@
 import { Injectable, inject } from '@angular/core';
 import { type Observable, map, throwError, timer } from 'rxjs';
-import type { DocumentListing, ResolvedDocumentPath } from '../models/document-listing.model';
-import type { DocumentListKey } from '../models/document-list.model';
-import { FileSystemError } from '../models/file-system-error.model';
+import type { DocumentListing, ResolvedDocumentPath } from '../../models/document-listing.model';
+import type { DocumentListKey } from '../../models/document-list.model';
+import { FileSystemError } from '../../models/file-system-error.model';
 import {
     isFolder,
     type FileNode,
     type FileSystemNode,
     type FolderNode
-} from '../models/file-system-node.model';
-import { MOCK_CONFIG, type MockConfig } from '../tokens/mock-config.token';
-import { joinPath } from '../utils/path.utils';
-import { validateName } from '../utils/naming.utils';
-import { FileSystemApi } from './file-system-api';
+} from '../../models/file-system-node.model';
+import { joinPath } from '../../utils/path.utils';
+import { validateName } from '../../utils/naming.utils';
+import { FileSystemApi } from '../file-system-api';
+import { MOCK_CONFIG, type MockConfig } from './mock-config.token';
 import { buildSeed } from './mock-seed';
 
 @Injectable()

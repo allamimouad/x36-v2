@@ -18,11 +18,11 @@
 - [x] `models/file-system-error.model.ts`
 - [x] `utils/path.utils.ts`
 - [x] `utils/naming.utils.ts` (validateName only)
-- [x] `tokens/mock-config.token.ts`
+- [x] `services/testing/mock-config.token.ts` (moved out of `tokens/` on 2026-07-02)
 - [x] `tokens/file-manager-config.token.ts`
 - [x] `services/file-system-api.ts` (abstract class)
-- [x] `services/mock-file-system-api.ts` (read listing real, mutations initially stubbed; now `listDocumentRoot` + `listDocuments(parentId)` — see the two-document-lists decision)
-- [x] `services/mock-seed.ts` (two list roots — Execution & Marketing — each with two levels of subfolders and mixed file types)
+- [x] `services/testing/mock-file-system-api.ts` (read listing real, mutations initially stubbed; now `listDocumentRoot` + `listDocuments(parentId)` — see the two-document-lists decision)
+- [x] `services/testing/mock-seed.ts` (two list roots — Execution & Marketing — each with two levels of subfolders and mixed file types)
 - [x] `services/sharepoint-file-system-api.ts` (full stub with implementation notes + per-method JSDoc + SP error-code map)
 - [x] `stores/file-system.store.ts` (`initialize(projectId)` + loadChildren + invalidate; mutations initially rejected as Phase 2)
 - [x] `stores/navigation.store.ts` (full minus selection; selection methods are no-op stubs)
@@ -42,7 +42,7 @@
 ## Phase 2 — Mutations
 
 - [x] `utils/naming.utils.ts` — `resolveNameCollision(baseName, existingNames)`
-- [x] `services/mock-file-system-api.ts` — implemented `createFolder`, `rename`, `move`, `copy`, `delete`
+- [x] `services/testing/mock-file-system-api.ts` — implemented `createFolder`, `rename`, `move`, `copy`, `delete`
 - [x] `stores/file-system.store.ts` — implemented single-item create/rename/delete/move/copy
 - [x] `stores/navigation.store.ts` — implemented `startRename`, `endRename` (path-id remapping no longer needed after UUID switch — see refactor note 2026-05-21)
 - [ ] `services/notification.service.ts`
@@ -89,6 +89,7 @@ _What should the next session work on?_
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
+- **Mock unit grouped under `services/testing/`** (2026-07-02): `mock-file-system-api.ts`, `mock-seed.ts`, and `mock-config.token.ts` (moved out of `tokens/`) live together in `services/testing/` — the standard Angular signal for non-production code. The three files are one deletable unit used only by the `FileManagerComponent` provider and the two store specs. **The `FileSystemApi` binding intentionally stays inside `FileManagerComponent`** (considered and rejected host-provided binding: one consumer, one swap; self-contained beats pluggable, and component providers shadow parents anyway). Phase 6 workflow: swap `useClass: MockFileSystemApi` → `SharePointFileSystemApi` + fix the import in `file-manager.component.ts`; only then optionally delete `services/testing/` + the store specs. The mock never reaches the production bundle once nothing imports it.
 - **Source is plan-free / portable** (2026-07-02): `src/app/file-manager/` will be copied verbatim to another machine and pushed to a different repository (mock swapped for the SharePoint adapter there), so no file under it may reference the internal planning workflow — no "Phase N" in comments/tooltips/error messages, no pointers to SPEC/PHASES/PROGRESS. Neutral wording ("not available yet", "not implemented yet") instead. Phase references live only in `docs/`. See SPEC §2.6. This includes mock seed data: the seed's `Phase 1`/`Phase 2` schedule folders were renamed `Stage 1`/`Stage 2` (and `gantt-phase*.xlsx` → `gantt-stage*.xlsx`) on 2026-07-02 so a grep for "phase" in source returns nothing and future sessions can't mistake data for plan references.
 - **State management**: NgRx Signal Store is used for entity collections and stateful domains with non-trivial derived graphs. `FileSystemStore` uses `withEntities` for tree+table cache sync; `NavigationStore` uses Signal Store for history, expanded IDs, selection/focus/rename state, and derived folder computeds. Small command-style state uses plain signal services; `ClipboardService` is a plain injectable signal service.
 - **Drag-and-drop**: Native HTML5 DnD over PrimeNG DnD or CDK DragDrop. Reason: uniform API for internal + external drops, single drag-state source of truth.
@@ -128,6 +129,7 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-07-02 — mock unit moved to `services/testing/`**: `git mv` of `mock-file-system-api.ts`, `mock-seed.ts` (from `services/`), and `mock-config.token.ts` (from `tokens/`) into `services/testing/`; fixed relative imports in the moved files and updated the three importers (container provider import path, both store specs). Binding stays in the container by design (see decisions log). SPEC §2.2/§8.3 + PHASES Phase 6 updated. tsc (app+spec), dev build, lint, and old-path grep all clean; run `npm test` locally.
 - **2026-07-02 — fixed component height via `height` input**: `FileManagerComponent` no longer fills its parent; it gets an optional `height` input (any CSS length, default `80vh`) applied through a host style binding, with panes scrolling inside as before. Hosts embedding the component set `[height]` explicitly; the demo uses the default. tsc + dev build green; browser check pending (sandbox can't reach localhost).
 - **2026-07-02 — minimal US-style TODO markers**: added one-line `TODO` comments at every unimplemented-feature site in `src/app/file-manager/` (SharePoint stub methods, mock/store upload stubs, bulk-op guard, selection stubs, paste note, `moveNode` wiring, disabled toolbar buttons). Wording references the future user story ("implement with the <feature> US."), never a phase — the user will swap in the real US references later. SPEC §2.6 updated with the TODO wording rule. Comment-only change; tsc + dev build green. Follow-ups the same day: neutralized the last phase-worded doc lines (PHASES.md store-placeholder error, PROGRESS.md toolbar-tooltip status) and renamed the mock seed's `Phase 1`/`Phase 2` schedule folders to `Stage 1`/`Stage 2` (+ `gantt-stage*.xlsx`) — `grep -ri phase src/app/file-manager` now returns nothing.
 - **2026-07-02 — plan-reference scrub + docs sync**: scrubbed all "Phase N" / planning-workflow references out of `src/app/file-manager/` (tooltips → "Not available yet", stub/store error messages → "not implemented yet", comments reworded; no behavior change) so the folder can be copied verbatim to the SharePoint-connected machine and pushed to its repo. Codified the rule as SPEC §2.6, updated SPEC §7's mandated stub body and the PHASES.md Phase 1 tooltip wording to match. Verified no spec asserts on the old messages; only remaining "Phase" hits in source are mock-seed folder names (intentional, realistic data).
