@@ -58,10 +58,13 @@ import { NavToolbarComponent } from './components/nav-toolbar/nav-toolbar.compon
   ],
   templateUrl: './file-manager.component.html',
   styleUrl: './file-manager.component.scss',
+  host: { '[style.height]': 'height()' },
 })
 export class FileManagerComponent implements OnInit {
   readonly projectId = input.required<string>();
   readonly projectLabel = input.required<string>();
+  /** Fixed component height (any CSS length); the panes scroll within it. */
+  readonly height = input('80vh');
 
   protected readonly fileSystem = inject(FileSystemStore);
   protected readonly navigation = inject(NavigationStore);

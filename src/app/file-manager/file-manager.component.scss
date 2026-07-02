@@ -1,6 +1,6 @@
 :host {
   display: block;
-  height: 100%;
+  // Actual height comes from the `height` input (host style binding, default 80vh).
 }
 
 .fm-root {
