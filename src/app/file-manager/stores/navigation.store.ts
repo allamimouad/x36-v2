@@ -349,15 +349,15 @@ export const NavigationStore = signalStore(
       collapse,
       setExpanded,
       pruneReferences,
-      // Phase 3 stubs (kept here so containers can reference them already)
+      // TODO: implement with the multi-select US.
       select(_id: string, _mode: 'single' | 'toggle' | 'range'): void {
-        /* Phase 3 */
+        /* intentionally empty */
       },
       selectRange(_id: string): void {
-        /* Phase 3 */
+        /* intentionally empty */
       },
       clearSelection(): void {
-        /* Phase 3 */
+        /* intentionally empty */
       },
       startRename,
       endRename,

@@ -69,6 +69,9 @@ feel like a missed click; this is wired into the dialogs/context-menu actions wh
 ### 2.5 Component-level providers
 All stores and services specific to the file manager are provided on `FileManagerComponent`, not `providedIn: 'root'`. State dies with the component.
 
+### 2.6 Portable, plan-free source
+The `src/app/file-manager/` folder will be copied verbatim to another machine and pushed to a different repository (with the SharePoint adapter swapped in for the mock). Therefore **no file under `src/app/file-manager/` may reference the internal planning workflow**: no "Phase N" in comments, tooltips, error messages, or identifiers, and no pointers to `SPEC.md` / `PHASES.md` / `PROGRESS.md`. Not-yet-built functionality is worded neutrally ("not available yet", "not implemented yet"). Phase references live only in `docs/`. `TODO` comments are allowed and mark every unimplemented feature, but must be short one-liners referencing the feature / user story that will implement it (e.g. `// TODO: implement with the upload US.`) — never a phase.
+
 ---
 
 ## 3. Feature Requirements
@@ -327,7 +330,7 @@ export abstract class FileSystemApi {
 `SharePointFileSystemApi` is a **stub file** committed now, implemented on another laptop later.
 
 - Class implements `FileSystemApi` with every method present
-- Each method body: `throw new Error('TODO: implement in Phase 6 — see PHASES.md');`
+- Each method body: `return throwError(() => new Error('SharePointFileSystemApi is not implemented yet'));` (error on the Observable channel, per §5)
 - File contains a detailed comment block at the top listing:
   - Base URL pattern (`{siteUrl}/_api/web/`)
   - Auth assumption (NTLM/Kerberos, `withCredentials: true`)

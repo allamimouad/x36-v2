@@ -37,7 +37,7 @@
 - `tokens/file-manager-config.token.ts` — `FILE_MANAGER_CONFIG` InjectionToken
 
 **Stores**
-- `stores/file-system.store.ts` — Signal Store with `withEntities<FileSystemNode>` keyed by `id`. Phase 1 methods: `initialize(projectId)`, `loadChildren(parentId)`, `invalidate(parentId)`. Other methods exist as placeholders returning `Promise.reject(new Error('Phase 2'))`.
+- `stores/file-system.store.ts` — Signal Store with `withEntities<FileSystemNode>` keyed by `id`. Phase 1 methods: `initialize(projectId)`, `loadChildren(parentId)`, `invalidate(parentId)`. Other methods exist as placeholders rejecting with a neutral "not implemented yet" `FileSystemError` (source stays plan-free — SPEC §2.6).
 - `stores/navigation.store.ts` — full implementation: state, computed, `navigateTo`, `back`, `forward`, `up`, `expand`, `collapse`. Selection methods can be stubs (Phase 3).
 - `services/clipboard.service.ts` — plain signal service with clipboard ids/mode and `cut`, `copy`, `clear`. Paste orchestration deferred to Phase 3.
 
@@ -59,7 +59,7 @@
 - `components/nav-toolbar/nav-toolbar.component.ts`:
   - Inputs: `canGoBack`, `canGoForward`, `canGoUp`
   - Outputs: `back`, `forward`, `up`, `refresh`
-  - Action buttons (new folder, upload) present but disabled with tooltip "Coming in Phase 2"
+  - Action buttons (new folder, upload) present but disabled with tooltip "Not available yet" (source must stay plan-free — SPEC §2.6)
 
 **Container**
 - `file-manager.component.ts`:

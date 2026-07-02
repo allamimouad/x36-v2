@@ -30,7 +30,7 @@
 - [x] `components/folder-tree/folder-tree.component.ts` (read-only, p-tree, lazy via container-built nodes, per-node loading input)
 - [x] `components/file-table/file-table.component.ts` (read-only, p-table, dblclick → output)
 - [x] `components/path-bar/path-bar.component.ts`
-- [x] `components/nav-toolbar/nav-toolbar.component.ts` (new-folder + upload buttons disabled with tooltip pointing at later phases)
+- [x] `components/nav-toolbar/nav-toolbar.component.ts` (new-folder + upload buttons disabled with neutral "Not available yet" tooltip — plan-free source, SPEC §2.6)
 - [x] `file-manager.component.ts` (container; provides stores + Mock as `FileSystemApi`; computed tree; effect auto-loads on nav)
 - [x] `stores/navigation.store.spec.ts` (one test per public method + computeds; initial-state test tightened)
 - [x] `ng build --configuration development` succeeds
@@ -89,6 +89,7 @@ _What should the next session work on?_
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
+- **Source is plan-free / portable** (2026-07-02): `src/app/file-manager/` will be copied verbatim to another machine and pushed to a different repository (mock swapped for the SharePoint adapter there), so no file under it may reference the internal planning workflow — no "Phase N" in comments/tooltips/error messages, no pointers to SPEC/PHASES/PROGRESS. Neutral wording ("not available yet", "not implemented yet") instead. Phase references live only in `docs/`. See SPEC §2.6. This includes mock seed data: the seed's `Phase 1`/`Phase 2` schedule folders were renamed `Stage 1`/`Stage 2` (and `gantt-phase*.xlsx` → `gantt-stage*.xlsx`) on 2026-07-02 so a grep for "phase" in source returns nothing and future sessions can't mistake data for plan references.
 - **State management**: NgRx Signal Store is used for entity collections and stateful domains with non-trivial derived graphs. `FileSystemStore` uses `withEntities` for tree+table cache sync; `NavigationStore` uses Signal Store for history, expanded IDs, selection/focus/rename state, and derived folder computeds. Small command-style state uses plain signal services; `ClipboardService` is a plain injectable signal service.
 - **Drag-and-drop**: Native HTML5 DnD over PrimeNG DnD or CDK DragDrop. Reason: uniform API for internal + external drops, single drag-state source of truth.
 - **Backend abstraction**: `FileSystemApi` as abstract class (not interface + token). Reason: abstract classes work directly as DI tokens in Angular; cleaner idiom.
@@ -127,6 +128,8 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-07-02 — minimal US-style TODO markers**: added one-line `TODO` comments at every unimplemented-feature site in `src/app/file-manager/` (SharePoint stub methods, mock/store upload stubs, bulk-op guard, selection stubs, paste note, `moveNode` wiring, disabled toolbar buttons). Wording references the future user story ("implement with the <feature> US."), never a phase — the user will swap in the real US references later. SPEC §2.6 updated with the TODO wording rule. Comment-only change; tsc + dev build green. Follow-ups the same day: neutralized the last phase-worded doc lines (PHASES.md store-placeholder error, PROGRESS.md toolbar-tooltip status) and renamed the mock seed's `Phase 1`/`Phase 2` schedule folders to `Stage 1`/`Stage 2` (+ `gantt-stage*.xlsx`) — `grep -ri phase src/app/file-manager` now returns nothing.
+- **2026-07-02 — plan-reference scrub + docs sync**: scrubbed all "Phase N" / planning-workflow references out of `src/app/file-manager/` (tooltips → "Not available yet", stub/store error messages → "not implemented yet", comments reworded; no behavior change) so the folder can be copied verbatim to the SharePoint-connected machine and pushed to its repo. Codified the rule as SPEC §2.6, updated SPEC §7's mandated stub body and the PHASES.md Phase 1 tooltip wording to match. Verified no spec asserts on the old messages; only remaining "Phase" hits in source are mock-seed folder names (intentional, realistic data).
 - **2026-07-01 — Redux DevTools for file-manager stores**: replaced the temporary DevTools console hook with `@angular-architects/ngrx-toolkit` Signal Store DevTools integration. Added `provideDevtoolsConfig({ name: 'X36 File Manager' })`, `withDevtools` for `FileSystemStore` and `NavigationStore`, readable store mappers, and prod `withDevToolsStub` fallback. Installed `@angular-architects/ngrx-toolkit@20.7.0` and `@ngrx/store@20.1.0`; latest toolkit `21.x` was skipped because it requires Angular 21. `npx tsc -p tsconfig.app.json --noEmit`, `npx tsc -p tsconfig.spec.json --noEmit`, `npx ng build --configuration development`, and `git diff --check` pass.
 - **2026-07-01 — single tree-pane horizontal scrollbar**: moved horizontal scrolling responsibility to the left pane by letting stacked tree sections size to their content and overriding PrimeNG tree/root overflow to visible, so the pane has one scrollbar instead of one per tree.
 - **2026-07-01 — project-prefixed tree headers**: updated the left tree section headers to include the current project label, e.g. `Kit Kat Purchase - Marketing Documents` and `Kit Kat Purchase - Execution Documents`, matching the reference UI. Removed the uppercase transform so the labels render in title case.
@@ -170,5 +173,6 @@ _One line per session, newest at top. Include date, phase, what was completed, a
 - Out-of-scope features (SPEC §16) are never built, not even stubbed
 - Every mutation goes through stores; components never call `FileSystemApi` directly
 - IDs are stable opaque primary keys everywhere; rename/move update mutable paths while ids stay unchanged
+- Source under `src/app/file-manager/` must stay plan-free (SPEC §2.6): no "Phase N" or SPEC/PHASES/PROGRESS references in code, comments, tooltips, or error messages — the folder gets copied to another repo verbatim
 - When in doubt, re-read SPEC.md and PHASES.md before writing code
 - Update this file at session end

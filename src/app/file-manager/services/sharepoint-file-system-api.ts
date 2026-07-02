@@ -1,8 +1,7 @@
 /**
  * SharePoint on-prem implementation of {@link FileSystemApi}.
  *
- * STATUS: STUB. To be implemented on the SharePoint-connected laptop in Phase 6.
- * Every method body must currently throw "TODO: implement in Phase 6".
+ * STATUS: STUB. Every method body currently returns an implementation-pending error.
  *
  * ───────────────────────────────────────────────────────────────────────────
  * Implementation notes for the developer who picks this up
@@ -86,7 +85,7 @@
  *   any network  →  'network'
  *   AbortError   →  'cancelled'
  *
- * Risks to watch (also in PHASES.md §6)
+ * Risks to watch
  *   - Form digest expiry under load
  *   - 429 throttling on bulk ops (concurrency 4 may still be too aggressive)
  *   - Permission errors masked as generic 401/403
@@ -102,7 +101,7 @@ import type { DocumentListKey } from '../models/document-list.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { FileSystemApi } from './file-system-api';
 
-const PHASE6 = 'TODO: implement in Phase 6 — see PHASES.md';
+const IMPLEMENTATION_PENDING = 'SharePointFileSystemApi is not implemented yet';
 
 @Injectable()
 export class SharePointFileSystemApi extends FileSystemApi {
@@ -114,7 +113,8 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _projectId: string,
     _listKey: DocumentListKey,
   ): Observable<DocumentListing> {
-    return throwError(() => new Error(PHASE6));
+    // TODO: implement with the SharePoint integration US.
+    return throwError(() => new Error(IMPLEMENTATION_PENDING));
   }
 
   /**
@@ -122,7 +122,8 @@ export class SharePointFileSystemApi extends FileSystemApi {
    * DocumentListing. Addressed by id alone — UniqueId is unique within the site.
    */
   override listDocuments(_projectId: string, _parentId: string): Observable<DocumentListing> {
-    return throwError(() => new Error(PHASE6));
+    // TODO: implement with the SharePoint integration US.
+    return throwError(() => new Error(IMPLEMENTATION_PENDING));
   }
 
   /**
@@ -137,7 +138,8 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _listKey: DocumentListKey,
     _path: string,
   ): Observable<ResolvedDocumentPath> {
-    return throwError(() => new Error(PHASE6));
+    // TODO: implement with the SharePoint integration US.
+    return throwError(() => new Error(IMPLEMENTATION_PENDING));
   }
 
   /**
@@ -149,7 +151,8 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _parent: FolderNode,
     _name: string,
   ): Observable<FolderNode> {
-    return throwError(() => new Error(PHASE6));
+    // TODO: implement with the SharePoint integration US.
+    return throwError(() => new Error(IMPLEMENTATION_PENDING));
   }
 
   /**
@@ -161,7 +164,8 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _node: FileSystemNode,
     _newName: string,
   ): Observable<FileSystemNode> {
-    return throwError(() => new Error(PHASE6));
+    // TODO: implement with the SharePoint integration US.
+    return throwError(() => new Error(IMPLEMENTATION_PENDING));
   }
 
   /**
@@ -174,7 +178,8 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _node: FileSystemNode,
     _newParent: FolderNode,
   ): Observable<FileSystemNode> {
-    return throwError(() => new Error(PHASE6));
+    // TODO: implement with the SharePoint integration US.
+    return throwError(() => new Error(IMPLEMENTATION_PENDING));
   }
 
   /**
@@ -186,12 +191,14 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _node: FileSystemNode,
     _newParent: FolderNode,
   ): Observable<FileSystemNode> {
-    return throwError(() => new Error(PHASE6));
+    // TODO: implement with the SharePoint integration US.
+    return throwError(() => new Error(IMPLEMENTATION_PENDING));
   }
 
   /** POST .../GetFolderById('<node.id>') (or GetFileById) with X-HTTP-Method: DELETE. */
   override delete(_projectId: string, _node: FileSystemNode): Observable<void> {
-    return throwError(() => new Error(PHASE6));
+    // TODO: implement with the SharePoint integration US.
+    return throwError(() => new Error(IMPLEMENTATION_PENDING));
   }
 
   /**
@@ -207,6 +214,7 @@ export class SharePointFileSystemApi extends FileSystemApi {
     _onProgress: (percent: number) => void,
     _signal?: AbortSignal,
   ): Observable<FileNode> {
-    return throwError(() => new Error(PHASE6));
+    // TODO: implement with the SharePoint integration US.
+    return throwError(() => new Error(IMPLEMENTATION_PENDING));
   }
 }

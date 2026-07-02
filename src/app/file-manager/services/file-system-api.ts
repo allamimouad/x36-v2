@@ -5,7 +5,7 @@ import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system
 
 /**
  * Backend-agnostic file system contract. Implementations are an in-memory mock
- * and a SharePoint adapter (Phase 6). The store always traffics in `FolderNode`
+ * and a SharePoint adapter. The store always traffics in `FolderNode`
  * / `FileSystemNode` values — each implementation reads whichever fields it
  * needs (`id` for stable identity, `path` for URL construction, etc.).
  *

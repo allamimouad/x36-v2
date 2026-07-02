@@ -199,6 +199,7 @@ export class MockFileSystemApi extends FileSystemApi {
     _onProgress: (percent: number) => void,
     _signal?: AbortSignal,
   ): Observable<FileNode> {
+    // TODO: implement with the upload US.
     return notImplemented('upload');
   }
 
@@ -411,6 +412,6 @@ function nowIso(): string {
 
 function notImplemented(method: string): Observable<never> {
   return throwError(
-    () => new FileSystemError('unknown', `MockFileSystemApi.${method} is not implemented in Phase 1`),
+    () => new FileSystemError('unknown', `MockFileSystemApi.${method} is not implemented yet`),
   );
 }

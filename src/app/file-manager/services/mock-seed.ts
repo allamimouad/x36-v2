@@ -46,7 +46,7 @@ const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 const PNG = 'image/png';
 const TXT = 'text/plain';
 
-/** Execution-phase documents (contracts, schedules, on-site reporting). */
+/** Execution documents (contracts, schedules, on-site reporting). */
 const EXECUTION_SEED: SeedFolderSpec[] = [
   {
     name: 'Contracts',
@@ -130,7 +130,7 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
     name: 'Schedules',
     folders: [
       {
-        name: 'Phase 1',
+        name: 'Stage 1',
         folders: [
           {
             name: 'Weekly',
@@ -147,13 +147,13 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
           },
         ],
         files: [
-          { name: 'gantt-phase1.xlsx', sizeBytes: 184_500, contentType: XLSX },
+          { name: 'gantt-stage1.xlsx', sizeBytes: 184_500, contentType: XLSX },
           { name: 'milestones.docx', sizeBytes: 41_200, contentType: DOCX },
         ],
       },
       {
-        name: 'Phase 2',
-        files: [{ name: 'gantt-phase2.xlsx', sizeBytes: 176_900, contentType: XLSX }],
+        name: 'Stage 2',
+        files: [{ name: 'gantt-stage2.xlsx', sizeBytes: 176_900, contentType: XLSX }],
       },
     ],
     files: [{ name: 'master-schedule.xlsx', sizeBytes: 221_300, contentType: XLSX }],
@@ -183,7 +183,7 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
   },
 ];
 
-/** Marketing-phase documents (brand assets, campaigns, press). */
+/** Marketing documents (brand assets, campaigns, press). */
 const MARKETING_SEED: SeedFolderSpec[] = [
   {
     name: 'Brand Assets',

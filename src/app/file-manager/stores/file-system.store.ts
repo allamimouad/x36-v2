@@ -382,8 +382,9 @@ export const FileSystemStore = signalStore(
       delete: deleteNodes,
       move,
       copy,
+      // TODO: implement with the upload US.
       upload: (_parentId: string, _files: File[]): Promise<void> =>
-        Promise.reject(notImplementedInPhase('upload', 5)),
+        Promise.reject(notImplemented('upload')),
     };
   }),
 );
@@ -429,14 +430,12 @@ function errorMessage(e: unknown): string {
 function onlySingleId(ids: string | string[], method: string): string {
   if (typeof ids === 'string') return ids;
   if (ids.length === 1) return ids[0];
-  throw notImplementedInPhase(`${method} bulk operations`, 3);
+  // TODO: bulk operations arrive with the multi-select US.
+  throw notImplemented(`${method} bulk operations`);
 }
 
-function notImplementedInPhase(method: string, phase: number): FileSystemError {
-  return new FileSystemError(
-    'unknown',
-    `FileSystemStore.${method} is not implemented until Phase ${phase}`,
-  );
+function notImplemented(method: string): FileSystemError {
+  return new FileSystemError('unknown', `FileSystemStore.${method} is not implemented yet`);
 }
 
 // Re-exports kept for callers that want narrow types.

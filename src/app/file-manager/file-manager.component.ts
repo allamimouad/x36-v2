@@ -264,7 +264,8 @@ export class FileManagerComponent implements OnInit {
   }
 
   /**
-   * Coordination point for a move (cut-paste / drag wiring lands in later phases).
+   * Coordination point for move flows initiated by the container.
+   * TODO: wire to the cut/copy/paste and drag-and-drop USs.
    * Guards against moving a folder whose subtree contains the current view — that
    * would orphan `currentFolderId` in a removed subtree. On success, prunes
    * navigation/clipboard references that pointed into the removed subtree.
