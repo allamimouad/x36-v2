@@ -3,8 +3,8 @@ import { TestBed } from '@angular/core/testing';
 import type { DocumentListKey } from '../models/document-list.model';
 import type { FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { FileSystemApi } from '../services/file-system-api';
-import { MockFileSystemApi } from '../services/testing/mock-file-system-api';
-import { MOCK_CONFIG } from '../services/testing/mock-config.token';
+import { MockFileSystemApi } from '../services/mock/mock-file-system-api';
+import { MOCK_CONFIG } from '../services/mock/mock-config.token';
 import { FileSystemReader } from './file-system-reader';
 import { FileSystemStore } from './file-system.store';
 import { NAVIGATION_UNAVAILABLE, NavigationStore } from './navigation.store';
@@ -321,9 +321,9 @@ describe('NavigationStore load triggering', () => {
 
     /** Remove an id from the fake cache to simulate a moved-away (tombstone) node. */
     function evict(id: string): void {
-        const map = { ...reader.entityMap() };
-        delete map[id];
-        reader.entityMap.set(map);
+        const remaining = Object.entries(reader.entityMap())
+            .filter(([nodeId]) => nodeId !== id);
+        reader.entityMap.set(Object.fromEntries(remaining));
     }
 
     it('Back/Forward to a removed id shows the unavailable state without loading', () => {

@@ -1,6 +1,13 @@
 import { inject, isDevMode } from '@angular/core';
 import { withDevToolsStub, withDevtools, withMapper } from '@angular-architects/ngrx-toolkit';
-import { patchState, signalStore, withMethods, withState } from '@ngrx/signals';
+import {
+    patchState,
+    signalStore,
+    withMethods,
+    withState,
+    type EmptyFeatureResult,
+    type SignalStoreFeature
+} from '@ngrx/signals';
 import { firstValueFrom } from 'rxjs';
 import {
     removeEntities,
@@ -72,7 +79,7 @@ export const FileSystemStore = signalStore(
             if (loaded.includes(parentId)) { return; }
             patchState(store, { folderIdsWithLoadedChildren: [...loaded, parentId] });
         };
-        const _unmarkLoaded = (...parentIds: Array<string | null | undefined>): void => {
+        const _unmarkLoaded = (...parentIds: (string | null | undefined)[]): void => {
             const ids = new Set(parentIds.filter((id): id is string => typeof id === 'string'));
             if (ids.size === 0) { return; }
             patchState(store, {
@@ -164,7 +171,7 @@ export const FileSystemStore = signalStore(
                 );
                 _applyListing(listing);
             } catch (e) {
-                // TODO: map the error code to an exact user-facing message with the error-handling US.
+                // TODO: map the error code to an exact user message with the error-handling US.
                 _setError(parentId, errorMessage(e));
             } finally {
                 _unmarkLoading(parentId);
@@ -302,8 +309,11 @@ export const FileSystemStore = signalStore(
 
         const rename = async (id: string, newName: string): Promise<FileSystemNode> => {
             const node = store.entityMap()[id];
-            if (!node || node.parentId === null) {
+            if (!node) {
                 throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
+            }
+            if (node.parentId === null) {
+                throw new FileSystemError('invalid-name', 'Root folder cannot be renamed');
             }
             const parent = store.entityMap()[node.parentId];
             if (!parent || !isFolder(parent)) {
@@ -338,6 +348,20 @@ export const FileSystemStore = signalStore(
             _unmarkLoaded(...subtree.filter(isFolder).map((folder) => folder.id));
         };
 
+        // Clear loaded/loading markers for a removed subtree only (incl. its root, so a
+        // moved node shows collapsed/unloaded at the destination). Old/target parents stay
+        // loaded — their child lists are correct via the local remove + insert.
+        const clearRemovedFolderMarkers = (removedSubtree: FileSystemNode[]): void => {
+            const removedFolderIds = removedSubtree.filter(isFolder).map((folder) => folder.id);
+            _unmarkLoaded(...removedFolderIds);
+            const removedSet = new Set(removedFolderIds);
+            patchState(store, {
+                folderIdsWithLoadingChildren: store
+                    .folderIdsWithLoadingChildren()
+                    .filter((fid) => !removedSet.has(fid))
+            });
+        };
+
         /**
      * Replace-on-success: drop the moved node's cached subtree and insert only the
      * server-returned `moved` node (collapsed/unloaded), rather than repathing and
@@ -348,8 +372,11 @@ export const FileSystemStore = signalStore(
             const id = onlySingleId(ids, 'move');
             const node = store.entityMap()[id];
             const targetParent = store.entityMap()[targetParentId];
-            if (!node || node.parentId === null) {
+            if (!node) {
                 throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
+            }
+            if (node.parentId === null) {
+                throw new FileSystemError('invalid-name', 'Root folder cannot be moved');
             }
             if (!targetParent || !isFolder(targetParent)) {
                 throw new FileSystemError(
@@ -371,17 +398,7 @@ export const FileSystemStore = signalStore(
             patchState(store, removeEntities(removedIds), setEntity<FileSystemNode>(moved));
             _adjustParentCount(oldParentId, -1);
             _adjustParentCount(targetParentId, 1);
-            // Clear loaded/loading markers for the removed subtree only (incl. the moved root,
-            // so it shows collapsed/unloaded at the destination). Old/target parents stay
-            // loaded — their child lists are correct via the local remove + insert.
-            const removedFolderIds = removedSubtree.filter(isFolder).map((folder) => folder.id);
-            _unmarkLoaded(...removedFolderIds);
-            const removedSet = new Set(removedFolderIds);
-            patchState(store, {
-                folderIdsWithLoadingChildren: store
-                    .folderIdsWithLoadingChildren()
-                    .filter((fid) => !removedSet.has(fid))
-            });
+            clearRemovedFolderMarkers(removedSubtree);
 
             return removedIds;
         };
@@ -424,7 +441,7 @@ export const FileSystemStore = signalStore(
     })
 );
 
-function fileSystemDevtoolsFeature() {
+function fileSystemDevtoolsFeature(): SignalStoreFeature<EmptyFeatureResult, EmptyFeatureResult> {
     return isDevMode()
         ? withDevtools(
             'FileSystemStore',

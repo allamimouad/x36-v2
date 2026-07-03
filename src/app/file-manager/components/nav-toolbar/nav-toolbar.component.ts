@@ -15,8 +15,8 @@ export class NavToolbarComponent {
     public readonly canGoForward = input<boolean>(false);
     public readonly canGoUp = input<boolean>(false);
 
-    public readonly back = output<void>();
-    public readonly forward = output<void>();
-    public readonly up = output<void>();
-    public readonly refresh = output<void>();
+    public readonly back = output();
+    public readonly forward = output();
+    public readonly up = output();
+    public readonly refresh = output();
 }

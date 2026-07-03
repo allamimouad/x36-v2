@@ -46,8 +46,8 @@ export class PathBarComponent {
     public readonly resolving = input<boolean>(false);
     public readonly pathError = input<string | null>(null);
 
-    public readonly editRequested = output<void>();
-    public readonly editCancelled = output<void>();
+    public readonly editRequested = output();
+    public readonly editCancelled = output();
     public readonly segmentClicked = output<PathSegment>();
     public readonly pathSubmitted = output<string>();
 

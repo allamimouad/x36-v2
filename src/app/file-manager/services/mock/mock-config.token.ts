@@ -18,5 +18,5 @@ export const DEFAULT_MOCK_CONFIG: MockConfig = {
 
 export const MOCK_CONFIG = new InjectionToken<MockConfig>('MOCK_CONFIG', {
     providedIn: 'root',
-    factory: () => DEFAULT_MOCK_CONFIG
+    factory: (): MockConfig => DEFAULT_MOCK_CONFIG
 });

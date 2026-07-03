@@ -65,6 +65,12 @@ export default tseslint.config(
           ]
         }
       ],
+      '@typescript-eslint/no-invalid-void-type': [
+        'error',
+        {
+          allowInGenericTypeArguments: ['Promise', 'Observable'],
+        },
+      ],
       '@typescript-eslint/no-unused-vars': [
         'error',
         {

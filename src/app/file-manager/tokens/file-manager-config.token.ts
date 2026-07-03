@@ -18,5 +18,5 @@ export const DEFAULT_FILE_MANAGER_CONFIG: FileManagerConfig = {
 
 export const FILE_MANAGER_CONFIG = new InjectionToken<FileManagerConfig>('FILE_MANAGER_CONFIG', {
     providedIn: 'root',
-    factory: () => DEFAULT_FILE_MANAGER_CONFIG
+    factory: (): FileManagerConfig => DEFAULT_FILE_MANAGER_CONFIG
 });

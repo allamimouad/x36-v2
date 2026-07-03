@@ -1,6 +1,14 @@
 import { computed, inject, isDevMode } from '@angular/core';
 import { withDevToolsStub, withDevtools, withMapper } from '@angular-architects/ngrx-toolkit';
-import { patchState, signalStore, withComputed, withMethods, withState } from '@ngrx/signals';
+import {
+    patchState,
+    signalStore,
+    withComputed,
+    withMethods,
+    withState,
+    type EmptyFeatureResult,
+    type SignalStoreFeature
+} from '@ngrx/signals';
 import { DOCUMENT_LIST_KEYS, type DocumentListKey } from '../models/document-list.model';
 import {
     isFolder,
@@ -98,47 +106,10 @@ export const NavigationStore = signalStore(
             const id = store.currentFolderId();
             if (!id) { return []; }
             const ctx = currentBreadcrumb();
-            if (ctx) {
-                // Path-based segments from listKey + canonical path (ancestors may be uncached).
-                if (!ctx.path) {
-                    return [{ label: ctx.listKey, listKey: ctx.listKey, path: '', id }];
-                }
-                const segs: PathSegment[] = [
-                    { label: ctx.listKey, listKey: ctx.listKey, path: '' }
-                ];
-                const names = ctx.path.split('/');
-                let prefix = '';
-                names.forEach((name, i) => {
-                    prefix = prefix ? `${prefix}/${name}` : name;
-                    const isLast = i === names.length - 1;
-                    segs.push(
-                        isLast
-                            ? { label: name, listKey: ctx.listKey, path: prefix, id }
-                            : { label: name, listKey: ctx.listKey, path: prefix }
-                    );
-                });
 
-                return segs;
-            }
-            // Cached parent chain (id-based); the root segment's label is its list key.
-            const segs: PathSegment[] = [];
-            const map = entityMap();
-            let n: FileSystemNode | undefined = map[id];
-            while (n) {
-                if (!isFolder(n)) { break; }
-                if (n.parentId === null) {
-                    const listKey = _listKeyOfRoot(n.id);
-                    const rootSegment: PathSegment = listKey
-                        ? { label: listKey, id: n.id, listKey, path: '' }
-                        : { label: n.name, id: n.id };
-                    segs.unshift(rootSegment);
-                    break;
-                }
-                segs.unshift({ label: n.name, id: n.id });
-                n = map[n.parentId];
-            }
-
-            return segs;
+            return ctx
+                ? buildResolvedSegments(ctx, id)
+                : buildCachedSegments(id, entityMap(), _listKeyOfRoot);
         });
 
         const currentFolderChildren = computed<FolderChildren>(() => {
@@ -379,7 +350,53 @@ export const NavigationStore = signalStore(
     })
 );
 
-function navigationDevtoolsFeature() {
+/** Path-based segments from listKey + canonical path (ancestors may be uncached). */
+function buildResolvedSegments(ctx: ResolvedBreadcrumbContext, currentId: string): PathSegment[] {
+    if (!ctx.path) {
+        return [{ label: ctx.listKey, listKey: ctx.listKey, path: '', id: currentId }];
+    }
+    const segs: PathSegment[] = [{ label: ctx.listKey, listKey: ctx.listKey, path: '' }];
+    const names = ctx.path.split('/');
+    let prefix = '';
+    names.forEach((name, i) => {
+        prefix = prefix ? `${prefix}/${name}` : name;
+        const isLast = i === names.length - 1;
+        segs.push(
+            isLast
+                ? { label: name, listKey: ctx.listKey, path: prefix, id: currentId }
+                : { label: name, listKey: ctx.listKey, path: prefix }
+        );
+    });
+
+    return segs;
+}
+
+/** Cached parent chain (id-based); the root segment's label is its list key. */
+function buildCachedSegments(
+    currentId: string,
+    map: Record<string, FileSystemNode>,
+    listKeyOfRoot: (rootId: string) => DocumentListKey | null
+): PathSegment[] {
+    const segs: PathSegment[] = [];
+    let n: FileSystemNode | undefined = map[currentId];
+    while (n) {
+        if (!isFolder(n)) { break; }
+        if (n.parentId === null) {
+            const listKey = listKeyOfRoot(n.id);
+            const rootSegment: PathSegment = listKey
+                ? { label: listKey, id: n.id, listKey, path: '' }
+                : { label: n.name, id: n.id };
+            segs.unshift(rootSegment);
+            break;
+        }
+        segs.unshift({ label: n.name, id: n.id });
+        n = map[n.parentId];
+    }
+
+    return segs;
+}
+
+function navigationDevtoolsFeature(): SignalStoreFeature<EmptyFeatureResult, EmptyFeatureResult> {
     return isDevMode()
         ? withDevtools(
             'NavigationStore',

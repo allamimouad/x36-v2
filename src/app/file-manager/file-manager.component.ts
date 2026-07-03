@@ -24,7 +24,7 @@ import {
     type FolderNode
 } from './models/file-system-node.model';
 import { FileSystemApi } from './services/file-system-api';
-import { MockFileSystemApi } from './services/testing/mock-file-system-api';
+import { MockFileSystemApi } from './services/mock/mock-file-system-api';
 import { ClipboardService } from './services/clipboard.service';
 import { FileSystemReader } from './stores/file-system-reader';
 import { FileSystemStore } from './stores/file-system.store';
