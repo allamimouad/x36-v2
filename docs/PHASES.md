@@ -31,7 +31,7 @@
   - Constraint enforcement (name, descendant, collision, not-found)
   - Deep clone on return
   - **For Phase 1, only the read operations need to be correct**: `listDocumentRoot(projectId, listKey)` (a document list's root) and `listDocuments(projectId, parentId)` (a folder's direct children, addressed by id), each returning the current folder plus its direct files/folders.
-- `services/testing/mock-seed.ts` — realistic seed: 3 top-level folders, each with 2 levels of subfolders, mix of files
+- `services/testing/mock-seed.ts` — realistic seed with Execution + Marketing roots, nested folders, mixed files, and one mock-only unavailable folder for stale-navigation testing
 - `services/sharepoint-file-system-api.ts` — stub per SPEC §7 (all methods throw)
 - `services/testing/mock-config.token.ts` — `MOCK_CONFIG` InjectionToken
 - `tokens/file-manager-config.token.ts` — `FILE_MANAGER_CONFIG` InjectionToken
@@ -80,7 +80,7 @@
 
 ### Acceptance checks
 - [ ] `npm start` runs; no console errors
-- [ ] Tree renders root + 3 seed folders; expanding fetches children with visible loading indicator
+- [ ] Tree renders both list roots + seed folders; expanding fetches children with visible loading indicator
 - [ ] Double-clicking a folder in the right pane navigates into it
 - [ ] Single-clicking a tree node navigates into it
 - [ ] Current folder is highlighted in the tree

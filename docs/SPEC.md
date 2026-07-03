@@ -302,10 +302,10 @@ export abstract class FileSystemApi {
 `MockFileSystemApi` must:
 
 - **In-memory tree**: `Map<string, FileSystemNode>` seeded from `mock-seed.ts`
-- **Seed data**: 3 top-level folders (`Documents`, `Shared`, `Archive`), each with 2 levels of subfolders and a mix of files (various sizes, types: `.pdf`, `.docx`, `.xlsx`, `.png`, `.txt`)
+- **Seed data**: two document-list roots (`execution`, `marketing`) with nested folders and mixed file types (`.pdf`, `.docx`, `.xlsx`, `.png`, `.txt`). The local mock includes `execution/Unavailable on open` to simulate a folder that appears in a listing but returns `not-found` when opened.
 - **Fresh state on every page refresh** (no localStorage)
 - **Simulated latency**: 150–400ms random for reads, 250–600ms for writes, 300–1500ms for uploads (proportional to file size)
-- **Simulated errors**: 5% random failure rate on writes, configurable via `MOCK_CONFIG.errorRate` token; errors throw `FileSystemError('network', ...)`
+- **Simulated errors**: 5% random failure rate on writes, configurable via `MOCK_CONFIG.errorRate` token; errors throw `FileSystemError('network', ...)`. `MOCK_CONFIG.unavailableFolderPaths` can also force deterministic `not-found` reads for specific list-relative paths.
 - **Constraint enforcement** (mandatory — the mock behaves like real SharePoint):
   - Name collision check on create/rename/move/copy (throw `name-collision`)
   - Descendant guard on move (throw `descendant-move`)
@@ -321,6 +321,7 @@ export abstract class FileSystemApi {
     minLatencyMs: number;    // default 150
     maxLatencyMs: number;    // default 400
     enableErrors: boolean;   // default true; turn off for automated tests
+    unavailableFolderPaths?: readonly string[];
   }
   export const MOCK_CONFIG = new InjectionToken<MockConfig>('MOCK_CONFIG');
   ```

@@ -8,8 +8,8 @@
       [canGoBack]="navigation.canGoBack()"
       [canGoForward]="navigation.canGoForward()"
       [canGoUp]="navigation.canGoUp()"
-      (back)="navigation.back()"
-      (forward)="navigation.forward()"
+      (back)="onBack()"
+      (forward)="onForward()"
       (up)="onUp()"
       (refresh)="onRefresh()"
     />
@@ -107,10 +107,10 @@
     </ng-template>
     <ng-template #panel>
       <main class="fm-table-pane" aria-label="Folder contents">
-        @if (navigation.navigationError(); as navError) {
+        @if (currentFolderError(); as currentError) {
           <div class="fm-unavailable" role="status">
             <i class="pi pi-exclamation-triangle"></i>
-            <p>{{ navError }}</p>
+            <p>{{ currentError }}</p>
           </div>
         } @else {
           <pr-file-table

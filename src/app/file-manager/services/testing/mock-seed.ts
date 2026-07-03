@@ -194,6 +194,12 @@ const EXECUTION_SEED: SeedFolderSpec[] = [
         files: [{ name: 'master-schedule.xlsx', sizeBytes: 221_300, contentType: XLSX }]
     },
     {
+        name: 'Unavailable on open',
+        files: [
+            seedFile('this-folder-will-not-load.txt', 1_200, TXT)
+        ]
+    },
+    {
         name: 'Site Reports',
         folders: [
             {

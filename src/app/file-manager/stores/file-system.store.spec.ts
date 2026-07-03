@@ -22,7 +22,8 @@ describe('FileSystemStore project-scoped API contract', () => {
                         errorRate: 0,
                         minLatencyMs: 0,
                         maxLatencyMs: 0,
-                        enableErrors: false
+                        enableErrors: false,
+                        unavailableFolderPaths: ['execution/Unavailable on open']
                     }
                 }
             ]
@@ -46,7 +47,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(store.folderIdsWithLoadedChildren()).toContain(roots.marketing.id);
         expect(
             store.entities().filter((node) => node.parentId === roots.execution.id).length
-        ).toBe(3);
+        ).toBe(4);
     });
 
     it('loads nested content by parent id using the initialized project', async () => {
@@ -60,6 +61,21 @@ describe('FileSystemStore project-scoped API contract', () => {
         await store.loadChildren(contracts.id);
 
         expect(listDocuments).toHaveBeenCalledOnceWith('project-123', contracts.id);
+    });
+
+    it('records an error when a configured unavailable folder is opened', async () => {
+        await store.initialize('project-123');
+        const unavailable = store
+            .entities()
+            .find((node) => isFolder(node) && node.path === '/execution/Unavailable on open');
+        if (!unavailable) { throw new Error('Expected unavailable folder'); }
+
+        await store.loadChildren(unavailable.id);
+
+        expect(store.errorByParentId()[unavailable.id]).toContain(
+            'Folder is no longer available'
+        );
+        expect(store.folderIdsWithLoadingChildren()).not.toContain(unavailable.id);
     });
 
     it('passes the initialized project id to mutation operations', async () => {

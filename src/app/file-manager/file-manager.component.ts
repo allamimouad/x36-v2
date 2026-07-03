@@ -115,9 +115,18 @@ export class FileManagerComponent implements OnInit {
         return this.fileSystem.folderIdsWithLoadingChildren().includes(id);
     });
 
-    protected readonly statusText = computed(() => {
+    protected readonly currentFolderError = computed<string | null>(() => {
         const navError = this.navigation.navigationError();
         if (navError) { return navError; }
+        const id = this.navigation.currentFolderId();
+        if (!id) { return null; }
+
+        return this.fileSystem.errorByParentId()[id] ?? null;
+    });
+
+    protected readonly statusText = computed(() => {
+        const currentError = this.currentFolderError();
+        if (currentError) { return currentError; }
         const folder = this.navigation.currentFolder();
         if (!folder || this.isCurrentLoading()) { return 'Loading…'; }
         const { folders, files } = this.navigation.currentFolderChildren();
@@ -133,6 +142,7 @@ export class FileManagerComponent implements OnInit {
     }
 
     protected onTreeNodeSelected(id: string): void {
+        this.closePathEditor();
         this.navigation.navigateTo(id);
     }
 
@@ -153,16 +163,19 @@ export class FileManagerComponent implements OnInit {
         // breadcrumb. Extend the path instead, and load the child's listing by id.
         if (ctx && node.parentId === currentId) {
             const childPath = ctx.path ? `${ctx.path}/${node.name}` : node.name;
+            this.closePathEditor();
             this.navigation.openResolvedFolder(node.id, { listKey: ctx.listKey, path: childPath });
             void this.fileSystem.loadChildren(node.id);
 
             return;
         }
+        this.closePathEditor();
         this.navigation.navigateTo(node.id);
     }
 
     protected async onSegmentClicked(seg: PathSegment): Promise<void> {
         if (seg.id) {
+            this.closePathEditor();
             this.navigation.navigateTo(seg.id);
 
             return;
@@ -170,6 +183,7 @@ export class FileManagerComponent implements OnInit {
         if (seg.listKey !== undefined && seg.path !== undefined) {
             try {
                 await this.resolveAndOpen(seg.listKey, seg.path);
+                this.closePathEditor();
             } catch (e) {
                 console.error('[file-manager] breadcrumb resolve failed', e);
             }
@@ -203,17 +217,33 @@ export class FileManagerComponent implements OnInit {
     protected async onUp(): Promise<void> {
         const ctx = this.navigation.currentBreadcrumb();
         if (ctx) {
-            if (ctx.path === '') { return; } // already at the list root
+            if (ctx.path === '') {
+                this.closePathEditor();
+
+                return; // already at the list root
+            }
             const parentPath = ctx.path.split('/').slice(0, -1).join('/');
             try {
                 await this.resolveAndOpen(ctx.listKey, parentPath);
+                this.closePathEditor();
             } catch (e) {
                 console.error('[file-manager] up resolve failed', e);
             }
 
             return;
         }
+        this.closePathEditor();
         this.navigation.up();
+    }
+
+    protected onBack(): void {
+        this.closePathEditor();
+        this.navigation.back();
+    }
+
+    protected onForward(): void {
+        this.closePathEditor();
+        this.navigation.forward();
     }
 
     protected onEditRequested(): void {
@@ -298,6 +328,11 @@ export class FileManagerComponent implements OnInit {
     private async resolveAndOpen(listKey: DocumentListKey, path: string): Promise<void> {
         const { folder, canonicalPath } = await this.fileSystem.loadPathListing(listKey, path);
         this.navigation.openResolvedFolder(folder.id, { listKey, path: canonicalPath });
+    }
+
+    private closePathEditor(): void {
+        this.pathError.set(null);
+        this.pathEditing.set(false);
     }
 
     /** Walk up from `candidateId` via parentId; true if `ancestorId` is hit (or is it). */

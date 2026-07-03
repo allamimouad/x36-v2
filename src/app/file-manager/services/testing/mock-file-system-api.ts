@@ -21,6 +21,9 @@ export class MockFileSystemApi extends FileSystemApi {
     private readonly seed = buildSeed();
     private readonly nodes: Map<string, FileSystemNode> = this.seed.nodes;
     private readonly rootIdByList: Record<DocumentListKey, string> = this.seed.rootIdByList;
+    private readonly unavailableFolderPaths = new Set(
+        (this.config.unavailableFolderPaths ?? []).map(normalizeMockPath)
+    );
     /** Stand-in for the signed-in user; stamped as `modifiedBy` on every mutation. */
     private readonly currentUser = 'You';
 
@@ -202,6 +205,7 @@ export class MockFileSystemApi extends FileSystemApi {
     /** Build a DocumentListing for `parentId`'s direct children. */
     private listing(parentId: string): DocumentListing {
         const parent = this.requireFolder(parentId);
+        this.assertFolderAvailable(parent);
         const folders: FolderNode[] = [];
         const files: FileNode[] = [];
         for (const node of this.nodes.values()) {
@@ -213,6 +217,15 @@ export class MockFileSystemApi extends FileSystemApi {
         files.sort((a, b) => a.name.localeCompare(b.name));
 
         return { currentFolder: clone(parent), folders, files };
+    }
+
+    private assertFolderAvailable(folder: FolderNode): void {
+        if (!this.unavailableFolderPaths.has(normalizeMockPath(folder.path))) { return; }
+
+        throw new FileSystemError(
+            'not-found',
+            `Folder is no longer available: ${folder.path}`
+        );
     }
 
     /** Simulated read: emits the factory result after randomized read latency. */
@@ -431,6 +444,16 @@ function clone<T>(value: T): T {
 
 function nowIso(): string {
     return new Date().toISOString();
+}
+
+function normalizeMockPath(path: string): string {
+    return path
+        .trim()
+        .replace(/^\/+|\/+$/g, '')
+        .split('/')
+        .filter((segment) => segment.length > 0)
+        .join('/')
+        .toLowerCase();
 }
 
 function notImplemented(method: string): Observable<never> {

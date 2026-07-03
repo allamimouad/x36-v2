@@ -164,6 +164,7 @@ export const FileSystemStore = signalStore(
                 );
                 _applyListing(listing);
             } catch (e) {
+                // TODO: map the error code to an exact user-facing message with the error-handling US.
                 _setError(parentId, errorMessage(e));
             } finally {
                 _unmarkLoading(parentId);

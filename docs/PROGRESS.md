@@ -79,9 +79,10 @@
 
 _What should the next session work on?_
 
-1. Add `NotificationService`.
-2. Add Phase 2 dialogs: create folder, rename, conflict-resolution shell.
-3. Add context-menu and inline rename wiring, staying within the Phase 2 scope.
+1. **Start here — friendly read-error messages**: in `FileSystemStore.loadChildren`'s catch, replace `_setError(parentId, errorMessage(e))` with a code→text mapping (`userMessageFor(e)`: `not-found` → "Folder is no longer available." [keeps the existing spec's `toContain` passing], `permission-denied` → no-permission text, `network` → "Connection problem — try refreshing.", default → generic) plus `console.error` of the raw error. Rationale: user-facing text must derive from the stable `FileSystemError.code`, never from raw server messages (the SP adapter's raw text is technical and can leak internals; raw error belongs in the console / `cause`). ~15 lines, one file; agreed on 2026-07-03, deferred for time.
+2. Add `NotificationService`.
+3. Add Phase 2 dialogs: create folder, rename, conflict-resolution shell.
+4. Add context-menu and inline rename wiring, staying within the Phase 2 scope.
 
 ---
 
@@ -123,6 +124,8 @@ _Things noticed during implementation but not fixed in the current phase. Review
 - **`FileSystemStore.upload` signature is `(parentId, files)`** in the store stub but the underlying `FileSystemApi.upload` takes a single `File` plus progress callback. The mismatch is intentional — the store will fan out to `UploadService` in Phase 5 — but worth flagging now so the Phase 5 implementer doesn't try to wire them 1:1.
 - **Karma runner in agent sandbox** — current sandbox cannot bind Karma's local server on port 9876 (`listen EPERM`). Specs compile here, but browser tests cannot execute in the agent environment. User confirmed local `npm test` works.
 - **`@primeng/themes@20.4.0` shows a deprecation warning on install** advising migration to `@primeuix/themes`. The package still works — the Aura preset import path (`@primeng/themes/aura`) is unchanged. Migrate to `@primeuix/themes` when convenient (likely Phase 2 or 3); not blocking.
+- **Read-error pane shows for ALL error codes** (2026-07-03): `currentFolderError` swaps the table for the unavailable pane on any `errorByParentId` entry. Correct for `not-found`; wrong for transient `network` errors on an already-cached folder (a failed background revalidation would blank good cached content — only reachable with the real backend; mock reads never fail randomly). When `NotificationService` lands, branch on `FileSystemError.code`: `not-found` → pane, others → keep table + toast with Retry (SPEC §12).
+- **Prune-on-404 considered and deliberately skipped** (2026-07-03): a folder that 404s on open stays in the tree until its parent's next revalidating load prunes it via `_applyListing` (self-heals within a click or two; keeping the cached entity also keeps Up working from the error pane). If real-world usage shows the stale tree entry confusing users, implement: `loadChildren` prunes the subtree on `not-found` (returns removed ids like `move`), navigation prunes refs + tombstones — the `execution/Unavailable on open` mock fixture is ready to test it.
 
 ---
 
@@ -130,6 +133,7 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-07-03 — mock unavailable-folder scenario**: added a deterministic mock-only stale-navigation case: `execution/Unavailable on open` appears in the Execution listing, but `MockFileSystemApi.listing()` throws `FileSystemError('not-found')` when that folder is opened. The behavior is driven by optional `MOCK_CONFIG.unavailableFolderPaths` using list-relative paths. This reproduces the current real-backend race where a folder can exist during retrieval but disappear before navigation; the container now reads `errorByParentId[currentFolderId]` and reuses the persistent unavailable pane/footer instead of rendering an empty table.
 - **2026-07-02 — file-type icon components + `pr-` selector migration**: added `shared/file-system-icon/` (SVG, target env) and `shared/file-system-prime-icon/` (PrimeIcons dev stand-in, same API — see decisions log); wired the Prime variant into `file-table` (folder + per-extension file icons, replacing the local `iconForFile()`/`row.icon`) and `folder-tree` (custom `pTemplate="default"` node template; requires `PrimeTemplate` in imports — see gotcha in decisions log); dropped `icon: 'pi pi-folder'` from the container's TreeNodes. All selectors renamed `app-*` → `pr-*` per the new angular.json/ESLint prefix. tsc + dev build + lint green; tree icon rendering needs a browser check.
 - **2026-07-02 — mock unit moved to `services/testing/`**: `git mv` of `mock-file-system-api.ts`, `mock-seed.ts` (from `services/`), and `mock-config.token.ts` (from `tokens/`) into `services/testing/`; fixed relative imports in the moved files and updated the three importers (container provider import path, both store specs). Binding stays in the container by design (see decisions log). SPEC §2.2/§8.3 + PHASES Phase 6 updated. tsc (app+spec), dev build, lint, and old-path grep all clean; run `npm test` locally.
 - **2026-07-02 — fixed component height via `height` input**: `FileManagerComponent` no longer fills its parent; it gets an optional `height` input (any CSS length, default `80vh`) applied through a host style binding, with panes scrolling inside as before. Hosts embedding the component set `[height]` explicitly; the demo uses the default. tsc + dev build green; browser check pending (sandbox can't reach localhost).
