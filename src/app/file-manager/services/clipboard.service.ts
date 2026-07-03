@@ -11,7 +11,7 @@ export class ClipboardService {
     private readonly idsSignal = signal<ReadonlySet<string>>(new Set<string>());
     private readonly modeSignal = signal<ClipboardMode | null>(null);
 
-    public constructor() {
+    constructor() {
         this.ids = this.idsSignal.asReadonly();
         this.mode = this.modeSignal.asReadonly();
         this.isEmpty = computed(() => this.idsSignal().size === 0);

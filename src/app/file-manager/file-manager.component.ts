@@ -137,6 +137,12 @@ export class FileManagerComponent implements OnInit {
         return `${folderCount}, ${fileCount} (${total} total)`;
     });
 
+    @HostListener('document:keydown.F5', ['$event'])
+    protected onF5(event: Event): void {
+        event.preventDefault();
+        this.onRefresh();
+    }
+
     public ngOnInit(): void {
         void this.bootstrap(this.projectId());
     }
@@ -275,12 +281,6 @@ export class FileManagerComponent implements OnInit {
         const removed = await this.fileSystem.move(sourceId, targetParentId);
         this.navigation.pruneReferences(removed);
         this.clipboard.pruneReferences(removed);
-    }
-
-    @HostListener('document:keydown.F5', ['$event'])
-    protected onF5(event: Event): void {
-        event.preventDefault();
-        this.onRefresh();
     }
 
     /** Build the `p-tree` nodes for one list, traversing from its root id. */

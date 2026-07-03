@@ -55,9 +55,10 @@ export class MockFileSystemApi extends FileSystemApi {
             const canonicalNames: string[] = [];
             for (const segment of segments) {
                 const target = segment.toLocaleLowerCase();
+                const parentId = folderId;
                 const child = [...this.nodes.values()].find(
                     (node) =>
-                        node.parentId === folderId &&
+                        node.parentId === parentId &&
                         isFolder(node) &&
                         node.name.toLocaleLowerCase() === target
                 );
@@ -323,42 +324,43 @@ export class MockFileSystemApi extends FileSystemApi {
         const node = this.requireNode(id);
         const oldPath = node.path;
         const now = nowIso();
-        const subtree = isFolder(node)
-            ? this.collectDescendantIds(id).map((nodeId) => this.requireNode(nodeId))
-            : [node];
-
-        let updatedRoot: FileSystemNode | null = null;
-        for (const current of subtree) {
-            const isRoot = current.id === id;
-            const updatedPath = isRoot
-                ? newPath
-                : current.path.replace(`${oldPath}/`, `${newPath}/`);
-            const updated: FileSystemNode = isFolder(current)
-                ? {
-                    ...current,
-                    path: updatedPath,
-                    name: isRoot ? newName : current.name,
-                    parentId: isRoot ? newParentId : current.parentId,
-                    modifiedAt: isRoot ? now : current.modifiedAt,
-                    modifiedBy: isRoot ? this.currentUser : current.modifiedBy
-                }
-                : {
-                    ...current,
-                    path: updatedPath,
-                    name: isRoot ? newName : current.name,
-                    parentId: isRoot ? newParentId : current.parentId,
-                    modifiedAt: isRoot ? now : current.modifiedAt,
-                    modifiedBy: isRoot ? this.currentUser : current.modifiedBy
-                };
-            this.nodes.set(updated.id, updated);
-            if (isRoot) { updatedRoot = updated; }
-        }
-
-        if (!updatedRoot) {
-            throw new FileSystemError('unknown', `Failed to update node: ${id}`);
+        const updatedRoot: FileSystemNode = isFolder(node)
+            ? {
+                ...node,
+                path: newPath,
+                name: newName,
+                parentId: newParentId,
+                modifiedAt: now,
+                modifiedBy: this.currentUser
+            }
+            : {
+                ...node,
+                path: newPath,
+                name: newName,
+                parentId: newParentId,
+                modifiedAt: now,
+                modifiedBy: this.currentUser
+            };
+        this.nodes.set(updatedRoot.id, updatedRoot);
+        if (isFolder(node)) {
+            this.repathDescendants(id, oldPath, newPath);
         }
 
         return clone(updatedRoot);
+    }
+
+    /** Rewrite the path prefix of every descendant; ids, names, and audit fields stay. */
+    private repathDescendants(folderId: string, oldPath: string, newPath: string): void {
+        const descendantIds = this.collectDescendantIds(folderId)
+            .filter((nodeId) => nodeId !== folderId);
+        for (const nodeId of descendantIds) {
+            const current = this.requireNode(nodeId);
+            const path = current.path.replace(`${oldPath}/`, `${newPath}/`);
+            const updated: FileSystemNode = isFolder(current)
+                ? { ...current, path }
+                : { ...current, path };
+            this.nodes.set(nodeId, updated);
+        }
     }
 
     private copyRecursive(
@@ -367,29 +369,45 @@ export class MockFileSystemApi extends FileSystemApi {
         targetParentPath: string,
         name: string
     ): FileSystemNode {
-        const now = nowIso();
-        const targetPath = joinPath(targetParentPath, name);
         this.assertNameAvailable(targetParentId, name);
-        const children = isFolder(source)
-            ? Array.from(this.nodes.values()).filter((node) => node.parentId === source.id)
-            : [];
+        const targetPath = joinPath(targetParentPath, name);
 
-        if (!isFolder(source)) {
-            const file: FileNode = {
-                ...source,
-                id: crypto.randomUUID(),
-                path: targetPath,
-                name,
-                parentId: targetParentId,
-                createdAt: now,
-                modifiedAt: now,
-                modifiedBy: this.currentUser
-            };
-            this.nodes.set(file.id, file);
+        return isFolder(source)
+            ? this.copyFolderNode(source, targetParentId, targetPath, name)
+            : this.copyFileNode(source, targetParentId, targetPath, name);
+    }
 
-            return file;
-        }
+    private copyFileNode(
+        source: FileNode,
+        targetParentId: string,
+        targetPath: string,
+        name: string
+    ): FileNode {
+        const now = nowIso();
+        const file: FileNode = {
+            ...source,
+            id: crypto.randomUUID(),
+            path: targetPath,
+            name,
+            parentId: targetParentId,
+            createdAt: now,
+            modifiedAt: now,
+            modifiedBy: this.currentUser
+        };
+        this.nodes.set(file.id, file);
 
+        return file;
+    }
+
+    private copyFolderNode(
+        source: FolderNode,
+        targetParentId: string,
+        targetPath: string,
+        name: string
+    ): FolderNode {
+        const now = nowIso();
+        const children = Array.from(this.nodes.values())
+            .filter((node) => node.parentId === source.id);
         const folder: FolderNode = {
             ...source,
             id: crypto.randomUUID(),
@@ -401,7 +419,6 @@ export class MockFileSystemApi extends FileSystemApi {
             modifiedBy: this.currentUser
         };
         this.nodes.set(folder.id, folder);
-
         for (const child of children) {
             this.copyRecursive(child, folder.id, folder.path, child.name);
         }

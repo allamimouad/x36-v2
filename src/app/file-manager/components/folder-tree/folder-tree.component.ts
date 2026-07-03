@@ -67,7 +67,7 @@ function applyLoadingState(
         ...node,
         loading: typeof node.key === 'string' && loadingIds.has(node.key),
         children: node.children
-            ? applyLoadingState(node.children as TreeNode<FolderNode>[], loadingIds)
+            ? applyLoadingState(node.children, loadingIds)
             : node.children
     }));
 }
@@ -79,7 +79,7 @@ function findNodeByKey(
     for (const n of nodes) {
         if (n.key === key) { return n; }
         if (n.children?.length) {
-            const found = findNodeByKey(n.children as TreeNode<FolderNode>[], key);
+            const found = findNodeByKey(n.children, key);
             if (found) { return found; }
         }
     }

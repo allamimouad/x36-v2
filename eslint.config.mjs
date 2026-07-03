@@ -44,7 +44,10 @@ export default tseslint.config(
       '@typescript-eslint/explicit-member-accessibility': [
         'error',
         {
-          accessibility: 'explicit'
+          accessibility: 'explicit',
+          overrides: {
+            constructors: 'no-public'
+          }
         }
       ],
       '@typescript-eslint/member-ordering': [
@@ -59,6 +62,9 @@ export default tseslint.config(
             'protected-instance-field',
             'private-instance-field',
             'constructor',
+            'public-decorated-method',
+            'protected-decorated-method',
+            'private-decorated-method',
             'public-instance-method',
             'protected-instance-method',
             'private-instance-method'

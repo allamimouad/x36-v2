@@ -62,10 +62,10 @@ export class PathBarComponent {
     protected readonly visibleStartIndex = computed(() => this.effectiveCollapsed());
 
     protected readonly overflowMenuItems = computed<MenuItem[]>(() =>
-        this.overflowSegments().map((seg) => ({
+        this.overflowSegments().map((seg): MenuItem => ({
             label: seg.label,
             title: seg.label,
-            command: () => this.segmentClicked.emit(seg)
+            command: (): void => this.segmentClicked.emit(seg)
         }))
     );
 
@@ -107,7 +107,7 @@ export class PathBarComponent {
     private hostPadX = 0;
     private editReservePx = 20;
 
-    public constructor() {
+    constructor() {
         afterNextRender(() => {
             const cs = getComputedStyle(this.hostRef.nativeElement);
             this.hostPadX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
@@ -126,10 +126,10 @@ export class PathBarComponent {
         });
 
         effect(() => {
-            const input = this.pathInputRef()?.nativeElement;
-            if (this.editing() && input) {
-                input.focus();
-                input.select();
+            const inputEl = this.pathInputRef()?.nativeElement;
+            if (this.editing() && inputEl) {
+                inputEl.focus();
+                inputEl.select();
             }
         });
     }
