@@ -7,10 +7,10 @@ import { TooltipModule } from 'primeng/tooltip';
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [ButtonModule, TooltipModule],
-    templateUrl: './nav-toolbar.component.html',
-    styleUrl: './nav-toolbar.component.scss'
+    templateUrl: './nav-toolbar.html',
+    styleUrl: './nav-toolbar.scss'
 })
-export class NavToolbarComponent {
+export class NavToolbar {
     public readonly canGoBack = input<boolean>(false);
     public readonly canGoForward = input<boolean>(false);
     public readonly canGoUp = input<boolean>(false);

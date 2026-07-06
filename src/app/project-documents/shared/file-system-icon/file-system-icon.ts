@@ -43,10 +43,10 @@ const FILE_EXTENSION_ICONS: Readonly<Record<string, FileExtensionIconName>> = {
     selector: 'pr-file-system-icon',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    templateUrl: './file-system-icon.component.html',
-    styleUrl: './file-system-icon.component.scss'
+    templateUrl: './file-system-icon.html',
+    styleUrl: './file-system-icon.scss'
 })
-export class FileSystemIconComponent {
+export class FileSystemIcon {
     private static readonly iconBasePath = 'assets/file-manager/icons';
 
     public readonly name = input<FileSystemIconName>(DEFAULT_FILE_ICON);
@@ -56,7 +56,7 @@ export class FileSystemIconComponent {
         const fileName = this.fileName();
         const iconName = fileName ? this.iconNameForFileName(fileName) : this.name();
 
-        return `${FileSystemIconComponent.iconBasePath}/${iconName}.svg`;
+        return `${FileSystemIcon.iconBasePath}/${iconName}.svg`;
     });
 
     private iconNameForFileName(fileName: string): FileExtensionIconName {

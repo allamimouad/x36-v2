@@ -1,7 +1,7 @@
 # TODO — Open Review Findings
 
 > Open items from the 2026-07-06 working-tree code review (partial document-root
-> initialization + `ProjectDocumentsComponent` rename). Findings 1–3 from that review
+> initialization + `ProjectDocuments` rename). Findings 1–3 from that review
 > were fixed the same day; these are the ones deliberately left for later.
 > Items 1–2 are also tracked in `PROGRESS.md` → "Deferred / Known Issues"; this file
 > carries the full detail. Remove entries here (and in PROGRESS.md) as they are fixed.
@@ -12,7 +12,7 @@
 
 ## 1. Address bar accepts list keys whose root is unavailable
 
-- **Where**: `src/app/project-documents/project-documents.component.ts:222` — `onPathSubmitted` validates the typed key with `DOCUMENT_LIST_KEYS.find((key) => key === first)` only; it never checks `fileSystem.rootIdByList()[listKey]`.
+- **Where**: `src/app/project-documents/project-documents.ts:222` — `onPathSubmitted` validates the typed key with `DOCUMENT_LIST_KEYS.find((key) => key === first)` only; it never checks `fileSystem.rootIdByList()[listKey]`.
 - **Problem**: when a root failed to load (`not-found` or `error` status), its tree section is hidden, but the user can still type e.g. `execution/Contracts` into the address bar.
   - Against the **mock**: the path resolves anyway (the seed always contains both roots), so the user lands in a folder of a list the UI presents as nonexistent — table and breadcrumb show an "execution" location with no matching tree pane.
   - Against the **real backend**: the resolve would fail and surface the misleading generic "No folder matches that path." instead of saying the list itself is unavailable.
@@ -33,6 +33,6 @@
 
 ## 4. Duplicated template tree sections (cleanup, optional)
 
-- **Where**: `src/app/project-documents/project-documents.component.html:84` and `:97` — the marketing and execution `@if (fileSystem.rootIdByList().<key>)` blocks are ~13-line near-duplicates differing only in key, label, and tree signal.
+- **Where**: `src/app/project-documents/project-documents.html:84` and `:97` — the marketing and execution `@if (fileSystem.rootIdByList().<key>)` blocks are ~13-line near-duplicates differing only in key, label, and tree signal.
 - **Problem**: any tree-section change (new input, a11y attribute, loading binding) must be hand-applied to both blocks; duplicated template blocks reliably drift. The presence check also lives at three altitudes (store `rootIdByList`, `buildTreeSection`'s `[]` return, template `@if`).
 - **Suggested fix**: a `@for` over an ordered `[{ key, label, tree }]` array (marketing first, preserving the deliberate ordering), replacing the two per-list computeds with a keyed accessor. Best done together with the Phase 2 template work (context menus touch this template anyway).

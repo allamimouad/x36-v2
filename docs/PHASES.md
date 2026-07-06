@@ -42,27 +42,27 @@
 - `services/clipboard.service.ts` — plain signal service with clipboard ids/mode and `cut`, `copy`, `clear`. Paste orchestration deferred to Phase 3.
 
 **Components (dumb)**
-- `components/folder-tree/folder-tree.component.ts`:
+- `components/folder-tree/folder-tree.ts`:
   - Inputs: `nodes`, `expandedIds`, `currentFolderId`, `folderIdsWithLoadingChildren`
   - Outputs: `nodeSelected`, `nodeExpanded`, `nodeCollapsed`
   - Uses `p-tree` with lazy loading
   - **No DnD, no context menu in Phase 1**
-- `components/file-table/file-table.component.ts`:
+- `components/file-table/file-table.ts`:
   - Inputs: `items`, `loading`
   - Outputs: `itemDoubleClicked`
   - Uses `p-table`, shows name, size, modified date, type icon
   - **No selection, no DnD, no context menu, no rename in Phase 1** — single-click selects visually via p-table's default, but only for highlighting
-- `components/path-bar/path-bar.component.ts`:
+- `components/path-bar/path-bar.ts`:
   - Input: `segments`
   - Output: `segmentClicked`
   - Renders clickable breadcrumb; truncation deferred to Phase 2 if time permits
-- `components/nav-toolbar/nav-toolbar.component.ts`:
+- `components/nav-toolbar/nav-toolbar.ts`:
   - Inputs: `canGoBack`, `canGoForward`, `canGoUp`
   - Outputs: `back`, `forward`, `up`, `refresh`
   - Action buttons (new folder, upload) present but disabled with tooltip "Not available yet" (source must stay plan-free — SPEC §2.6)
 
 **Container**
-- `project-documents.component.ts`:
+- `project-documents.ts`:
   - Required `projectId` input supplied by its host
   - Provides all three stores + `MockFileSystemApi` as `FileSystemApi`
   - Provides default `MOCK_CONFIG` and `FILE_MANAGER_CONFIG`
@@ -126,15 +126,15 @@
 - `services/notification.service.ts` — wraps `MessageService`, methods: `success(message)`, `error(message, retry?)`, `warning(message)`, `info(message)`
 
 **Components**
-- `components/dialogs/create-folder-dialog.component.ts` — reactive form, name validation, disabled submit on invalid
-- `components/dialogs/rename-dialog.component.ts` — same pattern
-- `components/dialogs/conflict-resolution-dialog.component.ts` — shell only (used in Phase 4 for bulk move/copy; for Phase 2 single ops, errors show as toast)
-- `components/folder-tree/folder-tree.component.ts` — add context menu with p-contextMenu: Open, New folder, Rename, Delete
-- `components/file-table/file-table.component.ts` — add:
+- `components/dialogs/create-folder-dialog.ts` — reactive form, name validation, disabled submit on invalid
+- `components/dialogs/rename-dialog.ts` — same pattern
+- `components/dialogs/conflict-resolution-dialog.ts` — shell only (used in Phase 4 for bulk move/copy; for Phase 2 single ops, errors show as toast)
+- `components/folder-tree/folder-tree.ts` — add context menu with p-contextMenu: Open, New folder, Rename, Delete
+- `components/file-table/file-table.ts` — add:
   - Context menu per row
   - Context menu on empty area
   - Inline rename (when `focusedId === row.id` and rename mode active)
-- `components/nav-toolbar/nav-toolbar.component.ts` — enable new folder button (opens dialog), upload button still disabled
+- `components/nav-toolbar/nav-toolbar.ts` — enable new folder button (opens dialog), upload button still disabled
 
 **Container**
 - Wires context menu actions to store methods
@@ -175,14 +175,14 @@
 
 **Services**
 - `services/concurrency-queue.ts` — generic queue, max N concurrent; returns per-task results with errors isolated
-- `services/clipboard.service.ts` — keep as pure clipboard state (`cut`, `copy`, `clear`, `isEmpty`, `has`). Paste orchestration lives in `project-documents.component.ts` or a dedicated use-case service and dispatches to `fileSystemStore.move` / `.copy`.
+- `services/clipboard.service.ts` — keep as pure clipboard state (`cut`, `copy`, `clear`, `isEmpty`, `has`). Paste orchestration lives in `project-documents.ts` or a dedicated use-case service and dispatches to `fileSystemStore.move` / `.copy`.
 
 **Components**
-- `components/file-table/file-table.component.ts`:
+- `components/file-table/file-table.ts`:
   - Multi-select wired (p-table selectionMode="multiple")
   - Cut items render at 50% opacity (read from `ClipboardService`)
   - Context menu adds: Cut, Copy, Paste (if clipboard not empty)
-- `project-documents.component.ts`:
+- `project-documents.ts`:
   - `@HostListener` or signal-based key handler for all shortcuts (SPEC §3.8)
   - Handles Escape to clear selection / close menus
   - Handles Ctrl+A, Delete (confirm if bulk), F2, Enter, Backspace, Alt+Left/Right/Up, Ctrl+X/C/V, Ctrl+N
@@ -222,11 +222,11 @@
   - `isAncestorOrSelf` helper uses `allFolders` from `FileSystemStore` (injected)
 
 **Components**
-- `components/folder-tree/folder-tree.component.ts`:
+- `components/folder-tree/folder-tree.ts`:
   - Nodes become draggable (folders only, as tree only shows folders)
   - Nodes are drop targets (accept drops from tree and table; external drops deferred to Phase 5)
   - Visual highlight when `canDropOn` = true during drag
-- `components/file-table/file-table.component.ts`:
+- `components/file-table/file-table.ts`:
   - Rows draggable (both folders and files)
   - Folder rows are drop targets
   - Empty-area drop zone (folder background) = drop into current folder; show dashed border during drag
@@ -286,7 +286,7 @@
   - On task completion, calls `fileSystemStore.invalidate(parentId)` so UI refreshes
 
 **Components**
-- `components/upload-panel/upload-panel.component.ts`:
+- `components/upload-panel/upload-panel.ts`:
   - Floating bottom-right
   - Collapsible (header click)
   - Shows per-task progress (p-progressBar), status icon, cancel/retry buttons
@@ -333,7 +333,7 @@
 - Implement `id` as the SharePoint `UniqueId` (GUID) and `path` as `ServerRelativeUrl`. Source operations address items via `GetFolderById('<id>')` / `GetFileById('<id>')`. The adapter is a thin shim over the auto-generated SharePoint client — every API method takes full `FolderNode` / `FileSystemNode` arguments, so the shim can read whichever fields (`id`, `path`, `name`, `parent.id`, `parent.path`, ...) the generated DTOs require.
 - Error code mapping from SharePoint error codes to `FileSystemError` codes
 - Implement chunked upload (`StartUpload` / `ContinueUpload` / `FinishUpload`)
-- In `project-documents.component.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
+- In `project-documents.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
 - Only after that swap, optionally delete `services/mock/` (mock backend + seed + mock config token) and the two `stores/*.spec.ts` if unit tests aren't kept in that repo
 - Icon swap: after copying `src/app/project-documents/`, update `folder-tree` and `file-table` imports/templates by replacing `pr-file-system-prime-icon` with `pr-file-system-icon` (same API); then delete `shared/file-system-prime-icon/` from the target repo. Ensure the target app serves `assets/file-manager/icons/<name>.svg` for the 8 `FileSystemIconName` values
 

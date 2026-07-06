@@ -9,8 +9,8 @@ import {
     type FolderNode
 } from '../../models/file-system-node.model';
 import {
-    FileSystemPrimeIconComponent
-} from '../../shared/file-system-prime-icon/file-system-prime-icon.component';
+    FileSystemPrimeIcon
+} from '../../shared/file-system-prime-icon/file-system-prime-icon';
 
 interface RowVm {
     id: string;
@@ -28,11 +28,11 @@ interface RowVm {
     selector: 'pr-file-table',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [TableModule, ProgressSpinner, DatePipe, FileSystemPrimeIconComponent],
-    templateUrl: './file-table.component.html',
-    styleUrl: './file-table.component.scss'
+    imports: [TableModule, ProgressSpinner, DatePipe, FileSystemPrimeIcon],
+    templateUrl: './file-table.html',
+    styleUrl: './file-table.scss'
 })
-export class FileTableComponent {
+export class FileTable {
     public readonly folders = input.required<FolderNode[]>();
     public readonly files = input.required<FileNode[]>();
     public readonly loading = input<boolean>(false);

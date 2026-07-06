@@ -3,18 +3,18 @@ import { PrimeTemplate, type TreeNode } from 'primeng/api';
 import { Tree, type TreeNodeExpandEvent, type TreeNodeSelectEvent } from 'primeng/tree';
 import type { FolderNode } from '../../models/file-system-node.model';
 import {
-    FileSystemPrimeIconComponent
-} from '../../shared/file-system-prime-icon/file-system-prime-icon.component';
+    FileSystemPrimeIcon
+} from '../../shared/file-system-prime-icon/file-system-prime-icon';
 
 @Component({
     selector: 'pr-folder-tree',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [Tree, PrimeTemplate, FileSystemPrimeIconComponent],
-    templateUrl: './folder-tree.component.html',
-    styleUrl: './folder-tree.component.scss'
+    imports: [Tree, PrimeTemplate, FileSystemPrimeIcon],
+    templateUrl: './folder-tree.html',
+    styleUrl: './folder-tree.scss'
 })
-export class FolderTreeComponent {
+export class FolderTree {
     public readonly nodes = input.required<TreeNode<FolderNode>[]>();
     public readonly currentFolderId = input<string | null>(null);
     public readonly folderIdsWithLoadingChildren = input<string[]>([]);

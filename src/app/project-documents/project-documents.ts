@@ -32,20 +32,20 @@ import { FileSystemReader } from './stores/file-system-reader';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore, type PathSegment } from './stores/navigation.store';
 import { FILE_MANAGER_CONFIG } from './tokens/file-manager-config.token';
-import { FolderTreeComponent } from './components/folder-tree/folder-tree.component';
-import { FileTableComponent } from './components/file-table/file-table.component';
-import { PathBarComponent } from './components/path-bar/path-bar.component';
-import { NavToolbarComponent } from './components/nav-toolbar/nav-toolbar.component';
+import { FolderTree } from './components/folder-tree/folder-tree';
+import { FileTable } from './components/file-table/file-table';
+import { PathBar } from './components/path-bar/path-bar';
+import { NavToolbar } from './components/nav-toolbar/nav-toolbar';
 
 @Component({
     selector: 'pr-project-documents',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
-        FolderTreeComponent,
-        FileTableComponent,
-        PathBarComponent,
-        NavToolbarComponent,
+        FolderTree,
+        FileTable,
+        PathBar,
+        NavToolbar,
         ButtonModule,
         InputTextModule,
         SplitterModule,
@@ -58,11 +58,11 @@ import { NavToolbarComponent } from './components/nav-toolbar/nav-toolbar.compon
         ClipboardService,
         { provide: FileSystemApi, useClass: MockFileSystemApi }
     ],
-    templateUrl: './project-documents.component.html',
-    styleUrl: './project-documents.component.scss',
+    templateUrl: './project-documents.html',
+    styleUrl: './project-documents.scss',
     host: { '[style.height]': 'height()' }
 })
-export class ProjectDocumentsComponent implements OnInit {
+export class ProjectDocuments implements OnInit {
     public readonly projectId = input.required<string>();
     public readonly projectLabel = input.required<string>();
     /** Fixed component height (any CSS length); the panes scroll within it. */
@@ -76,7 +76,7 @@ export class ProjectDocumentsComponent implements OnInit {
     /** Section-header labels for the two tree panes (Marketing rendered first). */
     protected readonly listLabels = DOCUMENT_LIST_LABELS;
 
-    /** Address-bar edit state (owned here; PathBarComponent is a controlled child). */
+    /** Address-bar edit state (owned here; PathBar is a controlled child). */
     protected readonly pathEditing = signal(false);
     protected readonly pathError = signal<string | null>(null);
     protected readonly bootstrapError = signal<string | null>(null);

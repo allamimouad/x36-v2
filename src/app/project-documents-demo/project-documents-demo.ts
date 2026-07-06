@@ -1,11 +1,11 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { ProjectDocumentsComponent } from '../project-documents/project-documents.component';
+import { ProjectDocuments } from '../project-documents/project-documents';
 
 @Component({
     selector: 'pr-project-documents-demo',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [ProjectDocumentsComponent],
+    imports: [ProjectDocuments],
     template: '<pr-project-documents [projectId]="projectId" [projectLabel]="projectLabel" />',
     styles: `
     :host {
@@ -16,7 +16,7 @@ import { ProjectDocumentsComponent } from '../project-documents/project-document
     }
   `
 })
-export class ProjectDocumentsDemoComponent {
+export class ProjectDocumentsDemo {
     protected readonly projectId = 'demo-project';
     protected readonly projectLabel = 'Demo Project';
 }

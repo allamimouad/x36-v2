@@ -54,10 +54,10 @@ const PRIME_ICON_CLASSES: Readonly<Record<FileSystemPrimeIconName, string>> = {
     selector: 'pr-file-system-prime-icon',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    templateUrl: './file-system-prime-icon.component.html',
-    styleUrl: './file-system-prime-icon.component.scss'
+    templateUrl: './file-system-prime-icon.html',
+    styleUrl: './file-system-prime-icon.scss'
 })
-export class FileSystemPrimeIconComponent {
+export class FileSystemPrimeIcon {
     public readonly name = input<FileSystemPrimeIconName>(DEFAULT_FILE_ICON);
     public readonly fileName = input<string | null>(null);
 

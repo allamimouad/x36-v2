@@ -122,7 +122,7 @@ $fm-control-height: 2.25rem;
 }
 
 /*
- * FolderTreeComponent defaults to height:100% (correct for a single tree, but it would
+ * FolderTree defaults to height:100% (correct for a single tree, but it would
  * make the first stacked tree eat the whole pane). A container selector out-specifies
  * the component's own :host, so collapse each stacked tree to its content height.
  */

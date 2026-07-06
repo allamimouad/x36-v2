@@ -29,14 +29,14 @@
 ## 2. Architectural Principles (read before writing any code)
 
 ### 2.1 Dumb components
-Child components (`FolderTreeComponent`, `FileTableComponent`, `PathBarComponent`, `NavToolbarComponent`, `UploadPanelComponent`, dialogs) **MUST NOT inject stores**. They receive state via `input()` signals and emit via `output()`. Only the container (`ProjectDocumentsComponent`) and services wire stores to children. This is a hard rule.
+Child components (`FolderTree`, `FileTable`, `PathBar`, `NavToolbar`, `UploadPanel`, dialogs) **MUST NOT inject stores**. They receive state via `input()` signals and emit via `output()`. Only the container (`ProjectDocuments`) and services wire stores to children. This is a hard rule.
 
 ### 2.2 Backend-agnostic via `FileSystemApi`
 Stores **MUST NOT know about SharePoint**. They depend on an abstract `FileSystemApi` class. Two implementations exist:
 - `MockFileSystemApi` — in-memory, used for dev and tests (default provider)
 - `SharePointFileSystemApi` — stubbed now, implemented later on another machine
 
-`services/mock/` contains the mock/dev backend and unit-test double (`mock-file-system-api.ts`, `mock-seed.ts`, `mock-config.token.ts`). It is used by the default local `ProjectDocumentsComponent` provider until the SharePoint laptop swaps that provider to `SharePointFileSystemApi` — after which the directory (plus the two store specs, if tests aren't kept) can be deleted in one go. (Named `mock`, not `testing`: the target repo's `eslint-plugin-boundaries` config classifies `testing` folders as shared test utilities forbidden from importing feature code.)
+`services/mock/` contains the mock/dev backend and unit-test double (`mock-file-system-api.ts`, `mock-seed.ts`, `mock-config.token.ts`). It is used by the default local `ProjectDocuments` provider until the SharePoint laptop swaps that provider to `SharePointFileSystemApi` — after which the directory (plus the two store specs, if tests aren't kept) can be deleted in one go. (Named `mock`, not `testing`: the target repo's `eslint-plugin-boundaries` config classifies `testing` folders as shared test utilities forbidden from importing feature code.)
 
 The interface uses generic terminology (`projectId`, `listKey`, `id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. A project has **two document lists**, selected by the domain `listKey` (`'execution' | 'marketing'`); the backend maps each to one of the project's SharePoint document libraries. `id` is a stable, opaque UUID for the entity's lifetime, unique within the project's SharePoint site. `path` is the mutable, human-readable backend path. In the mock, `id` is a `crypto.randomUUID()` value; in the SharePoint adapter, `id = UniqueId` (the GUID SharePoint exposes per list item) and `path = ServerRelativeUrl`. Retrieval is split: `listDocumentRoot(projectId, listKey)` returns a list's root (the only operation that needs `listKey`, since a root has no parent id), and `listDocuments(projectId, parentId)` returns a folder's direct children addressed by id. Nodes stay generic — they do **not** carry `listKey`; a node's list is derived by walking to its root. Root-list load status is handled per list: a loaded root renders; a `not-found` root is hidden; any other root-load error does not discard the other loaded list. If both roots are `not-found`, the table area shows "No documents found for this project." Mutations take full `FolderNode` / `FileSystemNode` arguments so each implementation can read whatever fields it needs. No internal id↔url mapping cache.
 
@@ -69,7 +69,7 @@ The UI must signal an in-flight write (spinner / disabled affordance) so the wai
 feel like a missed click; this is wired into the dialogs/context-menu actions when they land.
 
 ### 2.5 Component-level providers
-All stores and services specific to the file manager are provided on `ProjectDocumentsComponent`, not `providedIn: 'root'`. State dies with the component.
+All stores and services specific to the file manager are provided on `ProjectDocuments`, not `providedIn: 'root'`. State dies with the component.
 
 ### 2.6 Portable, plan-free source
 The `src/app/project-documents/` folder will be copied verbatim to another machine and pushed to a different repository (with the SharePoint adapter swapped in for the mock). Therefore **no file under `src/app/project-documents/` may reference the internal planning workflow**: no "Phase N" in comments, tooltips, error messages, or identifiers, and no pointers to `SPEC.md` / `PHASES.md` / `PROGRESS.md`. Not-yet-built functionality is worded neutrally ("not available yet", "not implemented yet"). Phase references live only in `docs/`. `TODO` comments are allowed and mark every unimplemented feature, but must be short one-liners referencing the feature / user story that will implement it (e.g. `// TODO: implement with the upload US.`) — never a phase.
@@ -367,9 +367,9 @@ export abstract class FileSystemApi {
 - State: `ids: ReadonlySet<string>`, `mode: 'cut' | 'copy' | null`
 - Computed/helpers: `isEmpty`, `has(id)`
 - Methods: `cut(ids)`, `copy(ids)`, `clear()`
-- Paste orchestration belongs in `ProjectDocumentsComponent` or a dedicated use-case service because it coordinates `ClipboardService`, `NavigationStore`, and `FileSystemStore`
+- Paste orchestration belongs in `ProjectDocuments` or a dedicated use-case service because it coordinates `ClipboardService`, `NavigationStore`, and `FileSystemStore`
 
-All stores and feature services are provided at `ProjectDocumentsComponent` level.
+All stores and feature services are provided at `ProjectDocuments` level.
 
 ### 8.2 Services
 
@@ -386,17 +386,17 @@ All stores and feature services are provided at `ProjectDocumentsComponent` leve
 
 ```
 project-documents/
-  project-documents.component.ts      # container; provides stores; wires events
+  project-documents.ts      # container; provides stores; wires events
   components/
-    folder-tree/folder-tree.component.ts
-    file-table/file-table.component.ts
-    path-bar/path-bar.component.ts
-    nav-toolbar/nav-toolbar.component.ts
-    upload-panel/upload-panel.component.ts
+    folder-tree/folder-tree.ts
+    file-table/file-table.ts
+    path-bar/path-bar.ts
+    nav-toolbar/nav-toolbar.ts
+    upload-panel/upload-panel.ts
     dialogs/
-      create-folder-dialog.component.ts
-      rename-dialog.component.ts
-      conflict-resolution-dialog.component.ts
+      create-folder-dialog.ts
+      rename-dialog.ts
+      conflict-resolution-dialog.ts
   shared/
     file-system-icon/                  # SVG icon (assets/file-manager/icons/<name>.svg) — the target-environment icon set
     file-system-prime-icon/            # PrimeIcons stand-in, same API; dev-only, NOT copied to the target repo

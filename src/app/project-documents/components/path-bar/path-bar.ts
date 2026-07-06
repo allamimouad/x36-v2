@@ -33,10 +33,10 @@ import type { PathSegment } from '../../stores/navigation.store';
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [Menu],
-    templateUrl: './path-bar.component.html',
-    styleUrl: './path-bar.component.scss'
+    templateUrl: './path-bar.html',
+    styleUrl: './path-bar.scss'
 })
-export class PathBarComponent {
+export class PathBar {
     private static readonly MAX_MEASURE_RETRIES = 5;
 
     public readonly segments = input.required<PathSegment[]>();
@@ -181,7 +181,7 @@ export class PathBarComponent {
             if (!this.isCurrentFit(pass, key)) { return; }
 
             if (!this.readNaturalWidths()) {
-                if (retries < PathBarComponent.MAX_MEASURE_RETRIES) {
+                if (retries < PathBar.MAX_MEASURE_RETRIES) {
                     requestAnimationFrame(() => {
                         if (this.isCurrentFit(pass, key)) { this.measureAndFit(retries + 1); }
                     });
