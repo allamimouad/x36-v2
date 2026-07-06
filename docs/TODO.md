@@ -25,13 +25,11 @@
 - **Problem**: the entire partial-root feature — hidden tree sections, "No documents found for this project.", "Documents could not be loaded. Try refreshing.", the retry path — is exercised only by spec spies. No manual browser verification or QA smoke test can reach it; a regression in that UI would pass every manual check.
 - **Suggested fix**: extend `MOCK_CONFIG` with an optional `unavailableListKeys?: readonly DocumentListKey[]` that makes `listDocumentRoot` throw `FileSystemError('not-found')` for the listed keys, mirroring the existing `unavailableFolderPaths` pattern (see the 2026-07-03 session note). Optionally a second option (or an error-code field) to simulate the `error` status too, so the healthy-list-plus-console-error branch is also reachable.
 
-## 3. `initialize`'s reduce-with-spread pipeline (cleanup, optional)
+> (A former item here — `initialize`'s reduce-with-spread pipeline — was resolved on
+> 2026-07-06 by the reactive `connectProject` refactor, which rebuilt `initialize` on
+> `forkJoin` + tuple destructuring.)
 
-- **Where**: `src/app/project-documents/stores/file-system.store.ts:132` and `:136` — two `reduce`s with object-spread-per-iteration (`(acc, …) => ({ ...acc, [listKey]: … })`) build `listingByList` and `roots` from `loadedRoots`.
-- **Problem**: no functional impact at n=2, but the spread-in-reduce shape is the accidentally-quadratic pattern that gets copied onto longer lists, and the `{ listKey, … }` wrapper + `ListingByDocumentList` type exist only to feed the reduces.
-- **Suggested fix**: `DOCUMENT_LIST_KEYS` is a fixed ordered tuple and `Promise.all` preserves order, so `const [execution, marketing] = await Promise.all(DOCUMENT_LIST_KEYS.map(loadRoot));` lets both records be built as plain object literals, deleting the wrapper field, both reduces, and the extra type.
-
-## 4. Duplicated template tree sections (cleanup, optional)
+## 3. Duplicated template tree sections (cleanup, optional)
 
 - **Where**: `src/app/project-documents/project-documents.html:84` and `:97` — the marketing and execution `@if (fileSystem.rootIdByList().<key>)` blocks are ~13-line near-duplicates differing only in key, label, and tree signal.
 - **Problem**: any tree-section change (new input, a11y attribute, loading binding) must be hand-applied to both blocks; duplicated template blocks reliably drift. The presence check also lives at three altitudes (store `rootIdByList`, `buildTreeSection`'s `[]` return, template `@if`).

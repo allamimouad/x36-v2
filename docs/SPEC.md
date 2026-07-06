@@ -353,8 +353,8 @@ export abstract class FileSystemApi {
 
 **`FileSystemStore`** (entity cache, keyed by `id`):
 - Entities: `FileSystemNode`
-- State: `projectId: string | null`, `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, string | undefined>`, `folderIdsWithLoadedChildren: string[]`, `rootIdByList: Record<DocumentListKey, string | null>`
-- Methods: `initialize(projectId)` (returns `DocumentListRoots`, with each list marked `loaded`, `not-found`, or `error`), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(id, newName)`, `delete(ids)`, `move(ids, targetParentId)`, `copy(ids, targetParentId)`, `invalidate(parentId)`, `upload(parentId, files)`
+- State: `projectId: string | null`, `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, string | undefined>`, `folderIdsWithLoadedChildren: string[]`, `rootIdByList: Record<DocumentListKey, string | null>`, `isInitializing: boolean`, `initializedRoots: DocumentListRoots | null`
+- Methods: `connectProject(projectId)` (reactive `rxMethod`: the container passes its `projectId` input signal once; every change resets project state and re-initializes, with `switchMap` cancelling any in-flight load; imperative calls with a plain id retry the same project), `initialize(projectId)` (promise facade over one initialization — returns `DocumentListRoots` with each list marked `loaded`, `not-found`, or `error`; used by unit tests), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(id, newName)`, `delete(ids)`, `move(ids, targetParentId)`, `copy(ids, targetParentId)`, `invalidate(parentId)`, `upload(parentId, files)`
 - Depends on `FileSystemApi` (injected), not on a concrete class
 
 **`NavigationStore`**:

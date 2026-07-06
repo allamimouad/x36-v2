@@ -8,7 +8,18 @@ import {
     type EmptyFeatureResult,
     type SignalStoreFeature
 } from '@ngrx/signals';
-import { firstValueFrom } from 'rxjs';
+import {
+    catchError,
+    defer,
+    firstValueFrom,
+    forkJoin,
+    map,
+    of,
+    pipe,
+    switchMap,
+    type Observable
+} from 'rxjs';
+import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import {
     removeEntities,
     setAllEntities,
@@ -39,13 +50,16 @@ interface FileSystemState {
     rootIdByList: Record<DocumentListKey, string | null>;
     /** True while a typed-path / breadcrumb-path resolve is in flight. */
     isResolvingPath: boolean;
+    /** True from the start of a project (re-)initialization until its roots are applied. */
+    isInitializing: boolean;
+    /** Per-list result of the most recent completed initialization; null before the first. */
+    initializedRoots: DocumentListRoots | null;
 }
 
 type FileSystemDevtoolsState = FileSystemState & {
     entityMap: Record<string, FileSystemNode>;
 };
 
-type ListingByDocumentList = Record<DocumentListKey, DocumentListing | null>;
 type RootLoadResult = {
     listKey: DocumentListKey;
     listing: DocumentListing | null;
@@ -58,7 +72,9 @@ const initialState: FileSystemState = {
     errorByParentId: {},
     folderIdsWithLoadedChildren: [],
     rootIdByList: { execution: null, marketing: null },
-    isResolvingPath: false
+    isResolvingPath: false,
+    isInitializing: false,
+    initializedRoots: null
 };
 
 export const FileSystemStore = signalStore(
@@ -109,54 +125,95 @@ export const FileSystemStore = signalStore(
             return projectId;
         };
 
-        const initialize = async (projectId: string): Promise<DocumentListRoots> => {
-            const loadRoot = async (listKey: DocumentListKey): Promise<RootLoadResult> => {
-                try {
-                    const listing = await firstValueFrom(api.listDocumentRoot(projectId, listKey));
-
-                    return {
+        const _loadRoot$ = (
+            projectId: string,
+            listKey: DocumentListKey
+        ): Observable<RootLoadResult> =>
+            api.listDocumentRoot(projectId, listKey).pipe(
+                map(
+                    (listing): RootLoadResult => ({
                         listKey,
                         listing,
                         root: { status: 'loaded', root: listing.currentFolder }
-                    };
-                } catch (e) {
+                    })
+                ),
+                catchError((e) => {
                     const error = toFileSystemError(e);
-                    if (error.code === 'not-found') {
-                        return { listKey, listing: null, root: { status: 'not-found' } };
-                    }
 
-                    return { listKey, listing: null, root: { status: 'error', error } };
-                }
-            };
-            const loadedRoots = await Promise.all(DOCUMENT_LIST_KEYS.map(loadRoot));
-            const listingByList = loadedRoots.reduce<ListingByDocumentList>(
-                (acc, { listKey, listing }) => ({ ...acc, [listKey]: listing }),
-                { execution: null, marketing: null }
+                    return of<RootLoadResult>(
+                        error.code === 'not-found'
+                            ? { listKey, listing: null, root: { status: 'not-found' } }
+                            : { listKey, listing: null, root: { status: 'error', error } }
+                    );
+                })
             );
-            const roots = loadedRoots.reduce<DocumentListRoots>(
-                (acc, { listKey, root }) => ({ ...acc, [listKey]: root }),
-                { execution: { status: 'not-found' }, marketing: { status: 'not-found' } }
-            );
-            const nodes = DOCUMENT_LIST_KEYS.flatMap((listKey): FileSystemNode[] => {
-                const listing = listingByList[listKey];
-                if (!listing) { return []; }
 
-                return [listing.currentFolder, ...listing.folders, ...listing.files];
+        /** Wipe all project state and mark the given project as the one being loaded. */
+        const _beginInitialize = (projectId: string): void => {
+            patchState(store, setAllEntities<FileSystemNode>([]), {
+                projectId,
+                rootIdByList: { execution: null, marketing: null },
+                folderIdsWithLoadingChildren: [],
+                folderIdsWithLoadedChildren: [],
+                errorByParentId: {},
+                isResolvingPath: false,
+                isInitializing: true
             });
+        };
+
+        const _applyInitialize = (loadedRoots: RootLoadResult[]): DocumentListRoots => {
+            // forkJoin preserves DOCUMENT_LIST_KEYS order: [execution, marketing].
+            const [execution, marketing] = loadedRoots;
+            const roots: DocumentListRoots = {
+                execution: execution.root,
+                marketing: marketing.root
+            };
+            const nodes = loadedRoots.flatMap(({ listing }): FileSystemNode[] =>
+                listing ? [listing.currentFolder, ...listing.folders, ...listing.files] : []
+            );
             const rootIdByList = {
                 execution: rootIdFromStatus(roots.execution),
                 marketing: rootIdFromStatus(roots.marketing)
             };
             patchState(store, setAllEntities(nodes), {
-                projectId,
                 rootIdByList,
                 folderIdsWithLoadedChildren: Object.values(rootIdByList).filter(
                     (id): id is string => id !== null
-                )
+                ),
+                isInitializing: false,
+                initializedRoots: roots
             });
 
             return roots;
         };
+
+        /**
+     * One full project initialization as a cold Observable: reset on subscribe, load both
+     * roots (per-list errors are captured as statuses, never thrown), apply on completion.
+     * Unsubscribing before completion (switchMap on a project change) discards the load
+     * without touching the store again.
+     */
+        const _initialize$ = (projectId: string): Observable<DocumentListRoots> =>
+            defer(() => {
+                _beginInitialize(projectId);
+
+                return forkJoin(
+                    DOCUMENT_LIST_KEYS.map((listKey) => _loadRoot$(projectId, listKey))
+                );
+            }).pipe(map(_applyInitialize));
+
+        /**
+     * Reactive project connection: call once with the `projectId` signal — every change
+     * cancels any in-flight initialization (switchMap) and loads the new project. May also
+     * be called imperatively with a plain id to force a retry of the same project.
+     */
+        const connectProject = rxMethod<string>(
+            pipe(switchMap((projectId) => _initialize$(projectId)))
+        );
+
+        /** Promise facade over one initialization; used by unit tests and imperative callers. */
+        const initialize = (projectId: string): Promise<DocumentListRoots> =>
+            firstValueFrom(_initialize$(projectId));
 
         /**
      * Apply a folder listing: prune cached direct children no longer present, upsert the
@@ -456,6 +513,7 @@ export const FileSystemStore = signalStore(
         };
 
         return {
+            connectProject,
             initialize,
             loadChildren,
             loadPathListing,
@@ -489,7 +547,9 @@ function fileSystemDevtoolsFeature(): SignalStoreFeature<EmptyFeatureResult, Emp
                     folderIdsWithLoadingChildren: state.folderIdsWithLoadingChildren,
                     folderIdsWithLoadedChildren: state.folderIdsWithLoadedChildren,
                     errorByParentId: compactErrors(state.errorByParentId),
-                    isResolvingPath: state.isResolvingPath
+                    isResolvingPath: state.isResolvingPath,
+                    isInitializing: state.isInitializing,
+                    initializedRoots: state.initializedRoots
                 };
             })
         )

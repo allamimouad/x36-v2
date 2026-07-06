@@ -2,11 +2,12 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    effect,
     HostListener,
     inject,
     input,
-    OnInit,
-    signal
+    signal,
+    untracked
 } from '@angular/core';
 import type { TreeNode } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
@@ -62,7 +63,7 @@ import { NavToolbar } from './components/nav-toolbar/nav-toolbar';
     styleUrl: './project-documents.scss',
     host: { '[style.height]': 'height()' }
 })
-export class ProjectDocuments implements OnInit {
+export class ProjectDocuments {
     public readonly projectId = input.required<string>();
     public readonly projectLabel = input.required<string>();
     /** Fixed component height (any CSS length); the panes scroll within it. */
@@ -79,7 +80,19 @@ export class ProjectDocuments implements OnInit {
     /** Address-bar edit state (owned here; PathBar is a controlled child). */
     protected readonly pathEditing = signal(false);
     protected readonly pathError = signal<string | null>(null);
-    protected readonly bootstrapError = signal<string | null>(null);
+
+    /**
+   * Derived (never imperatively stuck): non-null only when the latest completed
+   * initialization loaded no root at all. Hidden while a (re-)initialization runs.
+   */
+    protected readonly bootstrapError = computed<string | null>(() => {
+        if (this.fileSystem.isInitializing()) { return null; }
+        const roots = this.fileSystem.initializedRoots();
+        if (!roots) { return null; }
+        const anyLoaded = DOCUMENT_LIST_KEYS.some((key) => roots[key].status === 'loaded');
+
+        return anyLoaded ? null : this.bootstrapFailureMessage(roots);
+    });
 
     /** One tree section per document list, each rooted at its list root. */
     protected readonly executionTree = computed(() => this.buildTreeSection('execution'));
@@ -119,8 +132,12 @@ export class ProjectDocuments implements OnInit {
     });
 
     protected readonly currentFolderError = computed<string | null>(() => {
+        // `currentFolder()` (not `currentFolderId()`): after switching to a project with no
+        // roots, navigation may still hold the previous project's id, but its entity is
+        // gone from the wiped cache — the error must show. A later successful typed-path
+        // resolve caches its folder, which suppresses the error again.
         const bootstrapError = this.bootstrapError();
-        if (bootstrapError && !this.navigation.currentFolderId()) { return bootstrapError; }
+        if (bootstrapError && !this.navigation.currentFolder()) { return bootstrapError; }
         const navError = this.navigation.navigationError();
         if (navError) { return navError; }
         const id = this.navigation.currentFolderId();
@@ -142,11 +159,20 @@ export class ProjectDocuments implements OnInit {
         return `${folderCount}, ${fileCount} (${total} total)`;
     });
 
-    protected readonly bootstrapLoading = computed(
-        () => this.isBootstrapping() && !this.navigation.currentFolderId()
-    );
+    protected readonly bootstrapLoading = computed(() => this.fileSystem.isInitializing());
 
-    private readonly isBootstrapping = signal(false);
+    constructor() {
+        // Reactive project connection: the store re-initializes (cancelling any in-flight
+        // load via switchMap) whenever the host rebinds `projectId`.
+        this.fileSystem.connectProject(this.projectId);
+        // React to each completed initialization; `untracked` keeps the effect keyed to
+        // `initializedRoots` alone so store writes inside cannot re-trigger it.
+        effect(() => {
+            const roots = this.fileSystem.initializedRoots();
+            if (!roots) { return; }
+            untracked(() => this.onProjectInitialized(roots));
+        });
+    }
 
     @HostListener('document:keydown.F5', ['$event'])
     protected onF5(event: Event): void {
@@ -154,13 +180,8 @@ export class ProjectDocuments implements OnInit {
         this.onRefresh();
     }
 
-    public ngOnInit(): void {
-        void this.bootstrap(this.projectId());
-    }
-
     protected onTreeNodeSelected(id: string): void {
         this.closePathEditor();
-        this.clearBootstrapError();
         this.navigation.navigateTo(id);
     }
 
@@ -182,21 +203,18 @@ export class ProjectDocuments implements OnInit {
         if (ctx && node.parentId === currentId) {
             const childPath = ctx.path ? `${ctx.path}/${node.name}` : node.name;
             this.closePathEditor();
-            this.clearBootstrapError();
             this.navigation.openResolvedFolder(node.id, { listKey: ctx.listKey, path: childPath });
             void this.fileSystem.loadChildren(node.id);
 
             return;
         }
         this.closePathEditor();
-        this.clearBootstrapError();
         this.navigation.navigateTo(node.id);
     }
 
     protected async onSegmentClicked(seg: PathSegment): Promise<void> {
         if (seg.id) {
             this.closePathEditor();
-            this.clearBootstrapError();
             this.navigation.navigateTo(seg.id);
 
             return;
@@ -254,19 +272,16 @@ export class ProjectDocuments implements OnInit {
             return;
         }
         this.closePathEditor();
-        this.clearBootstrapError();
         this.navigation.up();
     }
 
     protected onBack(): void {
         this.closePathEditor();
-        this.clearBootstrapError();
         this.navigation.back();
     }
 
     protected onForward(): void {
         this.closePathEditor();
-        this.clearBootstrapError();
         this.navigation.forward();
     }
 
@@ -281,8 +296,12 @@ export class ProjectDocuments implements OnInit {
     }
 
     protected onRefresh(): void {
-        if (this.bootstrapError() || !this.navigation.currentFolderId()) {
-            void this.bootstrap(this.projectId());
+        if (this.fileSystem.isInitializing()) { return; }
+        // No valid current folder (failed or empty initialization): retry the whole
+        // project connection. rxMethod accepts an imperative value, so this re-runs
+        // even for the same project id.
+        if (this.bootstrapError() || !this.navigation.currentFolder()) {
+            this.fileSystem.connectProject(this.projectId());
 
             return;
         }
@@ -336,49 +355,34 @@ export class ProjectDocuments implements OnInit {
         return [buildNode(root, true)];
     }
 
-    private async bootstrap(projectId: string): Promise<void> {
-        if (this.isBootstrapping()) { return; }
-        this.isBootstrapping.set(true);
-        this.bootstrapError.set(null);
-        try {
-            const roots = await this.fileSystem.initialize(projectId);
-            const marketingRoot = this.rootFromStatus(roots.marketing);
-            const executionRoot = this.rootFromStatus(roots.execution);
-            const currentRoot = marketingRoot ?? executionRoot;
-            this.logRootLoadErrors(roots);
-            if (!currentRoot) {
-                this.bootstrapError.set(this.bootstrapFailureMessage(roots));
-
-                return;
-            }
-            const expandedRootIds = [marketingRoot?.id, executionRoot?.id].filter(
-                (id): id is string => typeof id === 'string'
-            );
-            this.navigation.initialize({
-                currentFolderId: currentRoot.id,
-                expandedRootIds
-            });
-        } catch (e) {
-            console.error('[project-documents] bootstrap failed', e);
-            this.bootstrapError.set('Documents could not be loaded. Try refreshing.');
-        } finally {
-            this.isBootstrapping.set(false);
-        }
+    /** Runs after every completed initialization (first load, project switch, retry). */
+    private onProjectInitialized(roots: DocumentListRoots): void {
+        this.logRootLoadErrors(roots);
+        this.clipboard.clear();
+        this.closePathEditor();
+        const marketingRoot = this.rootFromStatus(roots.marketing);
+        const executionRoot = this.rootFromStatus(roots.execution);
+        const currentRoot = marketingRoot ?? executionRoot;
+        // No root at all: leave navigation untouched — `bootstrapError` derives the
+        // message from the same roots result.
+        if (!currentRoot) { return; }
+        const expandedRootIds = [marketingRoot?.id, executionRoot?.id].filter(
+            (id): id is string => typeof id === 'string'
+        );
+        this.navigation.initialize({
+            currentFolderId: currentRoot.id,
+            expandedRootIds
+        });
     }
 
     private async resolveAndOpen(listKey: DocumentListKey, path: string): Promise<void> {
         const { folder, canonicalPath } = await this.fileSystem.loadPathListing(listKey, path);
-        this.clearBootstrapError();
         this.navigation.openResolvedFolder(folder.id, { listKey, path: canonicalPath });
     }
 
     private closePathEditor(): void {
         this.pathError.set(null);
         this.pathEditing.set(false);
-    }
-
-    private clearBootstrapError(): void {
-        this.bootstrapError.set(null);
     }
 
     private rootFromStatus(root: DocumentListRootStatus): FolderNode | null {

@@ -1,6 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { throwError } from 'rxjs';
-import type { DocumentListRootStatus } from '../models/document-list.model';
+import { delay, throwError } from 'rxjs';
+import type {
+    DocumentListRoots,
+    DocumentListRootStatus
+} from '../models/document-list.model';
 import { isFolder, type FolderNode } from '../models/file-system-node.model';
 import { FileSystemError } from '../models/file-system-error.model';
 import { FileSystemApi } from '../services/file-system-api';
@@ -51,6 +54,29 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(
             store.entities().filter((node) => node.parentId === executionRoot.id).length
         ).toBe(4);
+    });
+
+    it('connectProject applies only the latest project on a mid-flight switch', async () => {
+        const originalListDocumentRoot = api.listDocumentRoot.bind(api);
+        spyOn(api, 'listDocumentRoot').and.callFake((projectId, listKey) =>
+            projectId === 'slow-project'
+                ? originalListDocumentRoot(projectId, listKey).pipe(delay(150))
+                : originalListDocumentRoot(projectId, listKey)
+        );
+
+        store.connectProject('slow-project');
+        store.connectProject('project-123');
+        const roots = await waitForInitializedRoots(store);
+
+        expect(store.projectId()).toBe('project-123');
+        expect(roots.marketing.status).toBe('loaded');
+        expect(store.isInitializing()).toBeFalse();
+
+        // Give the cancelled slow-project load time to have completed had it survived:
+        // its result must never be applied over the newer project's.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(store.projectId()).toBe('project-123');
+        expect(store.initializedRoots()).toBe(roots);
     });
 
     it('initializes the available root when the other document list is not found', async () => {
@@ -240,6 +266,18 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(store.isResolvingPath()).toBeFalse();
     });
 });
+
+async function waitForInitializedRoots(
+    store: InstanceType<typeof FileSystemStore>
+): Promise<DocumentListRoots> {
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
+        const roots = store.initializedRoots();
+        if (roots) { return roots; }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    throw new Error('initializedRoots was not set within 2s');
+}
 
 function requireRoot(root: DocumentListRootStatus, listName: string): FolderNode {
     if (root.status !== 'loaded') { throw new Error(`Expected ${listName} root`); }
