@@ -72,7 +72,7 @@ feel like a missed click; this is wired into the dialogs/context-menu actions wh
 All stores and services specific to the file manager are provided on `ProjectDocumentsComponent`, not `providedIn: 'root'`. State dies with the component.
 
 ### 2.6 Portable, plan-free source
-The `src/app/file-manager/` folder will be copied verbatim to another machine and pushed to a different repository (with the SharePoint adapter swapped in for the mock). Therefore **no file under `src/app/file-manager/` may reference the internal planning workflow**: no "Phase N" in comments, tooltips, error messages, or identifiers, and no pointers to `SPEC.md` / `PHASES.md` / `PROGRESS.md`. Not-yet-built functionality is worded neutrally ("not available yet", "not implemented yet"). Phase references live only in `docs/`. `TODO` comments are allowed and mark every unimplemented feature, but must be short one-liners referencing the feature / user story that will implement it (e.g. `// TODO: implement with the upload US.`) — never a phase.
+The `src/app/project-documents/` folder will be copied verbatim to another machine and pushed to a different repository (with the SharePoint adapter swapped in for the mock). Therefore **no file under `src/app/project-documents/` may reference the internal planning workflow**: no "Phase N" in comments, tooltips, error messages, or identifiers, and no pointers to `SPEC.md` / `PHASES.md` / `PROGRESS.md`. Not-yet-built functionality is worded neutrally ("not available yet", "not implemented yet"). Phase references live only in `docs/`. `TODO` comments are allowed and mark every unimplemented feature, but must be short one-liners referencing the feature / user story that will implement it (e.g. `// TODO: implement with the upload US.`) — never a phase.
 
 ---
 
@@ -385,7 +385,7 @@ All stores and feature services are provided at `ProjectDocumentsComponent` leve
 ### 8.3 Components
 
 ```
-file-manager/
+project-documents/
   project-documents.component.ts      # container; provides stores; wires events
   components/
     folder-tree/folder-tree.component.ts

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
-import { ProjectDocumentsComponent } from '../file-manager/project-documents.component';
+import { ProjectDocumentsComponent } from '../project-documents/project-documents.component';
 
 @Component({
     selector: 'pr-project-documents-demo',

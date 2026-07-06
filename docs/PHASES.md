@@ -335,7 +335,7 @@
 - Implement chunked upload (`StartUpload` / `ContinueUpload` / `FinishUpload`)
 - In `project-documents.component.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
 - Only after that swap, optionally delete `services/mock/` (mock backend + seed + mock config token) and the two `stores/*.spec.ts` if unit tests aren't kept in that repo
-- Icon swap: after copying `src/app/file-manager/`, update `folder-tree` and `file-table` imports/templates by replacing `pr-file-system-prime-icon` with `pr-file-system-icon` (same API); then delete `shared/file-system-prime-icon/` from the target repo. Ensure the target app serves `assets/file-manager/icons/<name>.svg` for the 8 `FileSystemIconName` values
+- Icon swap: after copying `src/app/project-documents/`, update `folder-tree` and `file-table` imports/templates by replacing `pr-file-system-prime-icon` with `pr-file-system-icon` (same API); then delete `shared/file-system-prime-icon/` from the target repo. Ensure the target app serves `assets/file-manager/icons/<name>.svg` for the 8 `FileSystemIconName` values
 
 ### Acceptance
 - All Phase 1–5 acceptance checks still pass, now against real SharePoint
