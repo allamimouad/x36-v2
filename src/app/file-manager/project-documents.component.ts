@@ -16,6 +16,8 @@ import { TooltipModule } from 'primeng/tooltip';
 import {
     DOCUMENT_LIST_LABELS,
     DOCUMENT_LIST_KEYS,
+    type DocumentListRoots,
+    type DocumentListRootStatus,
     type DocumentListKey
 } from './models/document-list.model';
 import {
@@ -36,7 +38,7 @@ import { PathBarComponent } from './components/path-bar/path-bar.component';
 import { NavToolbarComponent } from './components/nav-toolbar/nav-toolbar.component';
 
 @Component({
-    selector: 'pr-file-manager',
+    selector: 'pr-project-documents',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
@@ -56,11 +58,11 @@ import { NavToolbarComponent } from './components/nav-toolbar/nav-toolbar.compon
         ClipboardService,
         { provide: FileSystemApi, useClass: MockFileSystemApi }
     ],
-    templateUrl: './file-manager.component.html',
-    styleUrl: './file-manager.component.scss',
+    templateUrl: './project-documents.component.html',
+    styleUrl: './project-documents.component.scss',
     host: { '[style.height]': 'height()' }
 })
-export class FileManagerComponent implements OnInit {
+export class ProjectDocumentsComponent implements OnInit {
     public readonly projectId = input.required<string>();
     public readonly projectLabel = input.required<string>();
     /** Fixed component height (any CSS length); the panes scroll within it. */
@@ -77,6 +79,7 @@ export class FileManagerComponent implements OnInit {
     /** Address-bar edit state (owned here; PathBarComponent is a controlled child). */
     protected readonly pathEditing = signal(false);
     protected readonly pathError = signal<string | null>(null);
+    protected readonly bootstrapError = signal<string | null>(null);
 
     /** One tree section per document list, each rooted at its list root. */
     protected readonly executionTree = computed(() => this.buildTreeSection('execution'));
@@ -116,6 +119,8 @@ export class FileManagerComponent implements OnInit {
     });
 
     protected readonly currentFolderError = computed<string | null>(() => {
+        const bootstrapError = this.bootstrapError();
+        if (bootstrapError && !this.navigation.currentFolderId()) { return bootstrapError; }
         const navError = this.navigation.navigationError();
         if (navError) { return navError; }
         const id = this.navigation.currentFolderId();
@@ -137,6 +142,12 @@ export class FileManagerComponent implements OnInit {
         return `${folderCount}, ${fileCount} (${total} total)`;
     });
 
+    protected readonly bootstrapLoading = computed(
+        () => this.isBootstrapping() && !this.navigation.currentFolderId()
+    );
+
+    private readonly isBootstrapping = signal(false);
+
     @HostListener('document:keydown.F5', ['$event'])
     protected onF5(event: Event): void {
         event.preventDefault();
@@ -149,6 +160,7 @@ export class FileManagerComponent implements OnInit {
 
     protected onTreeNodeSelected(id: string): void {
         this.closePathEditor();
+        this.clearBootstrapError();
         this.navigation.navigateTo(id);
     }
 
@@ -170,18 +182,21 @@ export class FileManagerComponent implements OnInit {
         if (ctx && node.parentId === currentId) {
             const childPath = ctx.path ? `${ctx.path}/${node.name}` : node.name;
             this.closePathEditor();
+            this.clearBootstrapError();
             this.navigation.openResolvedFolder(node.id, { listKey: ctx.listKey, path: childPath });
             void this.fileSystem.loadChildren(node.id);
 
             return;
         }
         this.closePathEditor();
+        this.clearBootstrapError();
         this.navigation.navigateTo(node.id);
     }
 
     protected async onSegmentClicked(seg: PathSegment): Promise<void> {
         if (seg.id) {
             this.closePathEditor();
+            this.clearBootstrapError();
             this.navigation.navigateTo(seg.id);
 
             return;
@@ -191,7 +206,7 @@ export class FileManagerComponent implements OnInit {
                 await this.resolveAndOpen(seg.listKey, seg.path);
                 this.closePathEditor();
             } catch (e) {
-                console.error('[file-manager] breadcrumb resolve failed', e);
+                console.error('[project-documents] breadcrumb resolve failed', e);
             }
         }
     }
@@ -233,22 +248,25 @@ export class FileManagerComponent implements OnInit {
                 await this.resolveAndOpen(ctx.listKey, parentPath);
                 this.closePathEditor();
             } catch (e) {
-                console.error('[file-manager] up resolve failed', e);
+                console.error('[project-documents] up resolve failed', e);
             }
 
             return;
         }
         this.closePathEditor();
+        this.clearBootstrapError();
         this.navigation.up();
     }
 
     protected onBack(): void {
         this.closePathEditor();
+        this.clearBootstrapError();
         this.navigation.back();
     }
 
     protected onForward(): void {
         this.closePathEditor();
+        this.clearBootstrapError();
         this.navigation.forward();
     }
 
@@ -263,6 +281,11 @@ export class FileManagerComponent implements OnInit {
     }
 
     protected onRefresh(): void {
+        if (this.bootstrapError() || !this.navigation.currentFolderId()) {
+            void this.bootstrap(this.projectId());
+
+            return;
+        }
         this.navigation.refresh();
     }
 
@@ -314,25 +337,68 @@ export class FileManagerComponent implements OnInit {
     }
 
     private async bootstrap(projectId: string): Promise<void> {
+        if (this.isBootstrapping()) { return; }
+        this.isBootstrapping.set(true);
+        this.bootstrapError.set(null);
         try {
             const roots = await this.fileSystem.initialize(projectId);
+            const marketingRoot = this.rootFromStatus(roots.marketing);
+            const executionRoot = this.rootFromStatus(roots.execution);
+            const currentRoot = marketingRoot ?? executionRoot;
+            this.logRootLoadErrors(roots);
+            if (!currentRoot) {
+                this.bootstrapError.set(this.bootstrapFailureMessage(roots));
+
+                return;
+            }
+            const expandedRootIds = [marketingRoot?.id, executionRoot?.id].filter(
+                (id): id is string => typeof id === 'string'
+            );
             this.navigation.initialize({
-                currentFolderId: roots.marketing.id,
-                expandedRootIds: [roots.marketing.id, roots.execution.id]
+                currentFolderId: currentRoot.id,
+                expandedRootIds
             });
         } catch (e) {
-            console.error('[file-manager] bootstrap failed', e);
+            console.error('[project-documents] bootstrap failed', e);
+            this.bootstrapError.set('Documents could not be loaded. Try refreshing.');
+        } finally {
+            this.isBootstrapping.set(false);
         }
     }
 
     private async resolveAndOpen(listKey: DocumentListKey, path: string): Promise<void> {
         const { folder, canonicalPath } = await this.fileSystem.loadPathListing(listKey, path);
+        this.clearBootstrapError();
         this.navigation.openResolvedFolder(folder.id, { listKey, path: canonicalPath });
     }
 
     private closePathEditor(): void {
         this.pathError.set(null);
         this.pathEditing.set(false);
+    }
+
+    private clearBootstrapError(): void {
+        this.bootstrapError.set(null);
+    }
+
+    private rootFromStatus(root: DocumentListRootStatus): FolderNode | null {
+        return root.status === 'loaded' ? root.root : null;
+    }
+
+    private bootstrapFailureMessage(roots: DocumentListRoots): string {
+        const allNotFound = DOCUMENT_LIST_KEYS.every((key) => roots[key].status === 'not-found');
+
+        return allNotFound
+            ? 'No documents found for this project.'
+            : 'Documents could not be loaded. Try refreshing.';
+    }
+
+    private logRootLoadErrors(roots: DocumentListRoots): void {
+        for (const key of DOCUMENT_LIST_KEYS) {
+            const root = roots[key];
+            if (root.status !== 'error') { continue; }
+            console.error(`[project-documents] ${key} documents could not be loaded`, root.error);
+        }
     }
 
     /** Walk up from `candidateId` via parentId; true if `ancestorId` is hit (or is it). */

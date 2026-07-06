@@ -8,12 +8,17 @@
   border: 0;
   background: transparent;
   height: 100%;
+  padding: 0.35rem 0.5rem;
 }
 
 // The real scroll container inside p-tree. Filling it to full height drops its
 // horizontal scrollbar to the bottom of the pane (instead of under the last node).
 :host ::ng-deep .p-tree-root {
   height: 100%;
+}
+
+:host ::ng-deep .fm-tree .p-tree-node-content {
+  border-radius: 6px;
 }
 
 .fm-tree-node {

@@ -1,3 +1,4 @@
+import type { FileSystemError } from './file-system-error.model';
 import type { FolderNode } from './file-system-node.model';
 
 /**
@@ -14,5 +15,10 @@ export const DOCUMENT_LIST_LABELS: Record<DocumentListKey, string> = {
     marketing: 'Marketing Documents'
 };
 
-/** The root folder of each document list, returned by `FileSystemStore.initialize`. */
-export type DocumentListRoots = Record<DocumentListKey, FolderNode>;
+export type DocumentListRootStatus =
+    | { status: 'loaded'; root: FolderNode }
+    | { status: 'not-found' }
+    | { status: 'error'; error: FileSystemError };
+
+/** The root load result of each document list, returned by `FileSystemStore.initialize`. */
+export type DocumentListRoots = Record<DocumentListKey, DocumentListRootStatus>;

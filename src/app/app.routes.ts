@@ -4,8 +4,8 @@ export const routes: Routes = [
     {
         path: '',
         loadComponent: () =>
-            import('./file-manager-demo/file-manager-demo.component').then(
-                (m) => m.FileManagerDemoComponent
+            import('./project-documents-demo/project-documents-demo.component').then(
+                (m) => m.ProjectDocumentsDemoComponent
             )
     }
 ];

@@ -37,7 +37,8 @@ describe('NavigationStore', () => {
         fs = TestBed.inject(FileSystemStore);
         nav = TestBed.inject(NavigationStore);
         const roots = await fs.initialize('test-project');
-        rootId = roots.execution.id;
+        if (roots.execution.status !== 'loaded') { throw new Error('Expected execution root'); }
+        rootId = roots.execution.root.id;
         docsId = byPath('/execution/Contracts');
         sharedId = byPath('/execution/Schedules');
     });

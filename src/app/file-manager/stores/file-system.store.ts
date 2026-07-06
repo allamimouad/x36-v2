@@ -11,12 +11,16 @@ import {
 import { firstValueFrom } from 'rxjs';
 import {
     removeEntities,
+    setAllEntities,
     setEntities,
     setEntity,
     withEntities
 } from '@ngrx/signals/entities';
 import type { DocumentListing } from '../models/document-listing.model';
-import type { DocumentListRoots } from '../models/document-list.model';
+import type {
+    DocumentListRoots,
+    DocumentListRootStatus
+} from '../models/document-list.model';
 import { DOCUMENT_LIST_KEYS, type DocumentListKey } from '../models/document-list.model';
 import { FileSystemError } from '../models/file-system-error.model';
 import {
@@ -39,6 +43,13 @@ interface FileSystemState {
 
 type FileSystemDevtoolsState = FileSystemState & {
     entityMap: Record<string, FileSystemNode>;
+};
+
+type ListingByDocumentList = Record<DocumentListKey, DocumentListing | null>;
+type RootLoadResult = {
+    listKey: DocumentListKey;
+    listing: DocumentListing | null;
+    root: DocumentListRootStatus;
 };
 
 const initialState: FileSystemState = {
@@ -99,32 +110,52 @@ export const FileSystemStore = signalStore(
         };
 
         const initialize = async (projectId: string): Promise<DocumentListRoots> => {
-            const [execution, marketing] = await Promise.all(
-                DOCUMENT_LIST_KEYS.map((listKey) =>
-                    firstValueFrom(api.listDocumentRoot(projectId, listKey))
-                )
+            const loadRoot = async (listKey: DocumentListKey): Promise<RootLoadResult> => {
+                try {
+                    const listing = await firstValueFrom(api.listDocumentRoot(projectId, listKey));
+
+                    return {
+                        listKey,
+                        listing,
+                        root: { status: 'loaded', root: listing.currentFolder }
+                    };
+                } catch (e) {
+                    const error = toFileSystemError(e);
+                    if (error.code === 'not-found') {
+                        return { listKey, listing: null, root: { status: 'not-found' } };
+                    }
+
+                    return { listKey, listing: null, root: { status: 'error', error } };
+                }
+            };
+            const loadedRoots = await Promise.all(DOCUMENT_LIST_KEYS.map(loadRoot));
+            const listingByList = loadedRoots.reduce<ListingByDocumentList>(
+                (acc, { listKey, listing }) => ({ ...acc, [listKey]: listing }),
+                { execution: null, marketing: null }
             );
-            const nodes: FileSystemNode[] = [
-                execution.currentFolder,
-                ...execution.folders,
-                ...execution.files,
-                marketing.currentFolder,
-                ...marketing.folders,
-                ...marketing.files
-            ];
-            patchState(store, setEntities(nodes), {
+            const roots = loadedRoots.reduce<DocumentListRoots>(
+                (acc, { listKey, root }) => ({ ...acc, [listKey]: root }),
+                { execution: { status: 'not-found' }, marketing: { status: 'not-found' } }
+            );
+            const nodes = DOCUMENT_LIST_KEYS.flatMap((listKey): FileSystemNode[] => {
+                const listing = listingByList[listKey];
+                if (!listing) { return []; }
+
+                return [listing.currentFolder, ...listing.folders, ...listing.files];
+            });
+            const rootIdByList = {
+                execution: rootIdFromStatus(roots.execution),
+                marketing: rootIdFromStatus(roots.marketing)
+            };
+            patchState(store, setAllEntities(nodes), {
                 projectId,
-                rootIdByList: {
-                    execution: execution.currentFolder.id,
-                    marketing: marketing.currentFolder.id
-                },
-                folderIdsWithLoadedChildren: [
-                    execution.currentFolder.id,
-                    marketing.currentFolder.id
-                ]
+                rootIdByList,
+                folderIdsWithLoadedChildren: Object.values(rootIdByList).filter(
+                    (id): id is string => id !== null
+                )
             });
 
-            return { execution: execution.currentFolder, marketing: marketing.currentFolder };
+            return roots;
         };
 
         /**
@@ -480,6 +511,17 @@ function errorMessage(e: unknown): string {
     if (e instanceof Error) { return e.message; }
 
     return 'Unknown error';
+}
+
+function toFileSystemError(e: unknown): FileSystemError {
+    if (e instanceof FileSystemError) { return e; }
+    if (e instanceof Error) { return new FileSystemError('unknown', e.message, e); }
+
+    return new FileSystemError('unknown', 'Unknown error', e);
+}
+
+function rootIdFromStatus(root: DocumentListRootStatus): string | null {
+    return root.status === 'loaded' ? root.root.id : null;
 }
 
 function onlySingleId(ids: string | string[], method: string): string {

@@ -62,13 +62,13 @@
   - Action buttons (new folder, upload) present but disabled with tooltip "Not available yet" (source must stay plan-free — SPEC §2.6)
 
 **Container**
-- `file-manager.component.ts`:
+- `project-documents.component.ts`:
   - Required `projectId` input supplied by its host
   - Provides all three stores + `MockFileSystemApi` as `FileSystemApi`
   - Provides default `MOCK_CONFIG` and `FILE_MANAGER_CONFIG`
   - Builds tree node structure from `FileSystemStore` entities (computed)
   - Wires child outputs to store methods
-  - Initializes root metadata and children in one listing request, then navigation actions trigger later child loads
+  - Loads both document-list roots independently; available roots render, a missing root is hidden, and both missing roots show a table message
   - Template: simple flex layout (tree left, table right, toolbar + path bar on top)
 
 **Testing**
@@ -175,14 +175,14 @@
 
 **Services**
 - `services/concurrency-queue.ts` — generic queue, max N concurrent; returns per-task results with errors isolated
-- `services/clipboard.service.ts` — keep as pure clipboard state (`cut`, `copy`, `clear`, `isEmpty`, `has`). Paste orchestration lives in `file-manager.component.ts` or a dedicated use-case service and dispatches to `fileSystemStore.move` / `.copy`.
+- `services/clipboard.service.ts` — keep as pure clipboard state (`cut`, `copy`, `clear`, `isEmpty`, `has`). Paste orchestration lives in `project-documents.component.ts` or a dedicated use-case service and dispatches to `fileSystemStore.move` / `.copy`.
 
 **Components**
 - `components/file-table/file-table.component.ts`:
   - Multi-select wired (p-table selectionMode="multiple")
   - Cut items render at 50% opacity (read from `ClipboardService`)
   - Context menu adds: Cut, Copy, Paste (if clipboard not empty)
-- `file-manager.component.ts`:
+- `project-documents.component.ts`:
   - `@HostListener` or signal-based key handler for all shortcuts (SPEC §3.8)
   - Handles Escape to clear selection / close menus
   - Handles Ctrl+A, Delete (confirm if bulk), F2, Enter, Backspace, Alt+Left/Right/Up, Ctrl+X/C/V, Ctrl+N
@@ -333,7 +333,7 @@
 - Implement `id` as the SharePoint `UniqueId` (GUID) and `path` as `ServerRelativeUrl`. Source operations address items via `GetFolderById('<id>')` / `GetFileById('<id>')`. The adapter is a thin shim over the auto-generated SharePoint client — every API method takes full `FolderNode` / `FileSystemNode` arguments, so the shim can read whichever fields (`id`, `path`, `name`, `parent.id`, `parent.path`, ...) the generated DTOs require.
 - Error code mapping from SharePoint error codes to `FileSystemError` codes
 - Implement chunked upload (`StartUpload` / `ContinueUpload` / `FinishUpload`)
-- In `file-manager.component.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
+- In `project-documents.component.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
 - Only after that swap, optionally delete `services/mock/` (mock backend + seed + mock config token) and the two `stores/*.spec.ts` if unit tests aren't kept in that repo
 - Icon swap: after copying `src/app/file-manager/`, update `folder-tree` and `file-table` imports/templates by replacing `pr-file-system-prime-icon` with `pr-file-system-icon` (same API); then delete `shared/file-system-prime-icon/` from the target repo. Ensure the target app serves `assets/file-manager/icons/<name>.svg` for the 8 `FileSystemIconName` values
 
