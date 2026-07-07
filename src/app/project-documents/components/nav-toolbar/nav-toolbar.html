@@ -3,7 +3,6 @@
     <button
       pButton
       type="button"
-      icon="pi pi-arrow-left"
       [disabled]="!canGoBack()"
       (click)="back.emit()"
       pTooltip="Back (Alt+Left)"
@@ -12,11 +11,12 @@
       severity="secondary"
       data-testid="fm-btn-back"
       aria-label="Back"
-    ></button>
+    >
+      <span class="material-symbols-outlined fm-btn-symbol" aria-hidden="true">arrow_back</span>
+    </button>
     <button
       pButton
       type="button"
-      icon="pi pi-arrow-right"
       [disabled]="!canGoForward()"
       (click)="forward.emit()"
       pTooltip="Forward (Alt+Right)"
@@ -25,11 +25,12 @@
       severity="secondary"
       data-testid="fm-btn-forward"
       aria-label="Forward"
-    ></button>
+    >
+      <span class="material-symbols-outlined fm-btn-symbol" aria-hidden="true">arrow_forward</span>
+    </button>
     <button
       pButton
       type="button"
-      icon="pi pi-arrow-up"
       [disabled]="!canGoUp()"
       (click)="up.emit()"
       pTooltip="Parent folder (Alt+Up)"
@@ -38,12 +39,13 @@
       severity="secondary"
       data-testid="fm-btn-up"
       aria-label="Parent folder"
-    ></button>
+    >
+      <span class="material-symbols-outlined fm-btn-symbol" aria-hidden="true">arrow_upward</span>
+    </button>
     <span class="fm-divider"></span>
     <button
       pButton
       type="button"
-      icon="pi pi-refresh"
       (click)="refresh.emit()"
       pTooltip="Refresh (F5)"
       tooltipPosition="bottom"
@@ -51,6 +53,8 @@
       severity="secondary"
       data-testid="fm-btn-refresh"
       aria-label="Refresh"
-    ></button>
+    >
+      <span class="material-symbols-outlined fm-btn-symbol" aria-hidden="true">refresh</span>
+    </button>
   </div>
 </div>

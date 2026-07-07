@@ -33,9 +33,9 @@
         <td>
           <span class="fm-name">
             @if (row.kind === 'folder') {
-              <pr-file-system-prime-icon name="folder" />
+              <pr-file-system-symbol-icon name="folder" />
             } @else {
-              <pr-file-system-prime-icon [fileName]="row.node.name" />
+              <pr-file-system-symbol-icon [fileName]="row.node.name" />
             }
             <span class="fm-name-text">{{ row.name }}</span>
           </span>

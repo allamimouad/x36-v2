@@ -9,12 +9,13 @@
     color: var(--p-text-muted-color, #9aa1ac);
 }
 
-.fm-prime-icon {
+.fm-symbol-icon {
     font-size: var(--fm-icon-size);
     line-height: 1;
+    user-select: none;
     color: inherit;
 }
 
-.fm-prime-icon-folder {
+.fm-symbol-icon-folder {
     color: #f0b429;
 }

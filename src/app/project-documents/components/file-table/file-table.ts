@@ -9,8 +9,8 @@ import {
     type FolderNode
 } from '../../models/file-system-node.model';
 import {
-    FileSystemPrimeIcon
-} from '../../shared/file-system-prime-icon/file-system-prime-icon';
+    FileSystemSymbolIcon
+} from '../../shared/file-system-symbol-icon/file-system-symbol-icon';
 
 interface RowVm {
     id: string;
@@ -28,7 +28,7 @@ interface RowVm {
     selector: 'pr-file-table',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [TableModule, ProgressSpinner, DatePipe, FileSystemPrimeIcon],
+    imports: [TableModule, ProgressSpinner, DatePipe, FileSystemSymbolIcon],
     templateUrl: './file-table.html',
     styleUrl: './file-table.scss'
 })

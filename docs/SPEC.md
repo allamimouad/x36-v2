@@ -16,7 +16,7 @@
 - **Angular 20** (standalone components, no `NgModule`)
 - **TypeScript strict mode**
 - **PrimeNG** (latest Angular-20-compatible version)
-- **PrimeIcons**
+- **Material Symbols (Outlined)** via the self-hosted `material-symbols` npm package for all UI icons (no PrimeIcons; the target env is on-prem, so no CDN fonts), rendered as **raw ligature spans** (`<span class="material-symbols-outlined" aria-hidden="true">refresh</span>`) — the target repo's convention, no wrapper component. Each usage site styles its own class (font-size, `line-height: 1`, `user-select: none`). The only exception is the target environment's file-type icon set (`FileSystemIcon`, SVG assets)
 - **@ngrx/signals** (NgRx Signal Store) for state management
 - **RxJS** for the `FileSystemApi` contract (every method returns `Observable`, matching the HttpClient-native SharePoint adapter), plus HTTP and `rxMethod`. Stores that prefer async/await bridge with `firstValueFrom` at the call site.
 - **Angular Signals** API throughout: `signal()`, `computed()`, `effect()`, `input()`, `output()`, `model()`
@@ -399,7 +399,7 @@ project-documents/
       conflict-resolution-dialog.ts
   shared/
     file-system-icon/                  # SVG icon (assets/file-manager/icons/<name>.svg) — the target-environment icon set
-    file-system-prime-icon/            # PrimeIcons stand-in, same API; dev-only, NOT copied to the target repo
+    file-system-symbol-icon/           # Material Symbols stand-in, same API; dev-only, NOT copied to the target repo
   stores/
     file-system.store.ts
     navigation.store.ts

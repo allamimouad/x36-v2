@@ -143,10 +143,25 @@
   overflow: hidden;
 }
 
+// Fixed box so the fitter's cached separator width stays valid regardless of
+// symbol-font load timing (a ligature renders as text until the font arrives).
 .fm-sep {
   color: var(--p-text-muted-color, #9aa1ac);
-  font-size: 0.7rem;
+  font-size: 0.9rem;
+  width: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
   flex: 0 0 auto;
+  line-height: 1;
+  user-select: none;
+}
+
+.fm-ellipsis {
+  font-size: 1rem;
+  line-height: 1;
+  user-select: none;
 }
 
 // Out-of-flow measurement row: every segment at natural width, no truncation, and clipped

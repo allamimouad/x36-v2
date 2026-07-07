@@ -29,7 +29,7 @@
     />
 
     <span class="fm-search">
-      <i class="pi pi-search"></i>
+      <span class="material-symbols-outlined fm-search-icon" aria-hidden="true">search</span>
       <input
         pInputText
         type="text"
@@ -47,28 +47,30 @@
       <button
         pButton
         type="button"
-        icon="pi pi-folder-plus"
-        label="New folder"
         [disabled]="true"
         pTooltip="Not available yet"
         tooltipPosition="bottom"
         severity="secondary"
         [text]="true"
         data-testid="fm-btn-new-folder"
-      ></button>
+      >
+        <span class="material-symbols-outlined fm-btn-symbol" aria-hidden="true">create_new_folder</span>
+        <span class="fm-action-label">New folder</span>
+      </button>
       <!-- TODO: enable with the upload US. -->
       <button
         pButton
         type="button"
-        icon="pi pi-upload"
-        label="Upload file"
         [disabled]="true"
         pTooltip="Not available yet"
         tooltipPosition="bottom"
         severity="secondary"
         [text]="true"
         data-testid="fm-btn-upload"
-      ></button>
+      >
+        <span class="material-symbols-outlined fm-btn-symbol" aria-hidden="true">upload</span>
+        <span class="fm-action-label">Upload file</span>
+      </button>
     </div>
   </div>
 
@@ -113,7 +115,7 @@
       <main class="fm-table-pane" aria-label="Folder contents">
         @if (currentFolderError(); as currentError) {
           <div class="fm-unavailable" role="status">
-            <i class="pi pi-exclamation-triangle"></i>
+            <span class="material-symbols-outlined fm-unavailable-icon" aria-hidden="true">warning</span>
             <p>{{ currentError }}</p>
           </div>
         } @else {

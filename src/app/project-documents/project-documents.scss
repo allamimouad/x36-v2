@@ -59,11 +59,13 @@ $fm-control-height: 2.25rem;
   align-items: center;
   flex: 0 0 auto;
 
-  i {
+  .fm-search-icon {
     position: absolute;
     left: 0.6rem;
     color: var(--p-text-muted-color, #9aa1ac);
-    font-size: 0.85rem;
+    font-size: 1rem;
+    line-height: 1;
+    user-select: none;
     pointer-events: none;
   }
 
@@ -82,10 +84,18 @@ $fm-control-height: 2.25rem;
   gap: 0.5rem;
   flex: 0 0 auto;
 
-  // Match the address bar / search height, with a smaller label
+  // Match the address bar / search height, with a smaller label. Icon + label are
+  // projected content (Material Symbols), so the button provides the gap itself.
   ::ng-deep .p-button {
     height: $fm-control-height;
     font-size: 0.8125rem;
+    gap: 0.4rem;
+  }
+
+  .fm-btn-symbol {
+    font-size: 1.125rem;
+    line-height: 1;
+    user-select: none;
   }
 }
 
@@ -154,8 +164,10 @@ $fm-control-height: 2.25rem;
   text-align: center;
   color: var(--p-text-muted-color, #6b7280);
 
-  i {
+  .fm-unavailable-icon {
     font-size: 1.6rem;
+    line-height: 1;
+    user-select: none;
     color: var(--p-text-muted-color, #9aa1ac);
   }
 

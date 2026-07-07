@@ -35,7 +35,7 @@
     "@ngrx/signals": "^20.1.0",
     "@ngrx/store": "^20.1.0",
     "@primeng/themes": "^20.4.0",
-    "primeicons": "^7.0.0",
+    "material-symbols": "^0.45.6",
     "primeng": "^20.4.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",

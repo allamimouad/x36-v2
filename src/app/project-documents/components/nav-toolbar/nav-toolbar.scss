@@ -15,6 +15,21 @@
   gap: 0.1rem;
 }
 
+// Projected symbol content does not trigger PrimeNG's `p-button-icon-only` sizing,
+// so square the icon-only buttons explicitly.
+.fm-toolbar-left ::ng-deep .p-button {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  justify-content: center;
+}
+
+.fm-btn-symbol {
+  font-size: 1.125rem;
+  line-height: 1;
+  user-select: none;
+}
+
 .fm-divider {
   width: 1px;
   height: 1.25rem;

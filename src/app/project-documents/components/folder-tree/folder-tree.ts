@@ -3,14 +3,14 @@ import { PrimeTemplate, type TreeNode } from 'primeng/api';
 import { Tree, type TreeNodeExpandEvent, type TreeNodeSelectEvent } from 'primeng/tree';
 import type { FolderNode } from '../../models/file-system-node.model';
 import {
-    FileSystemPrimeIcon
-} from '../../shared/file-system-prime-icon/file-system-prime-icon';
+    FileSystemSymbolIcon
+} from '../../shared/file-system-symbol-icon/file-system-symbol-icon';
 
 @Component({
     selector: 'pr-folder-tree',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [Tree, PrimeTemplate, FileSystemPrimeIcon],
+    imports: [Tree, PrimeTemplate, FileSystemSymbolIcon],
     templateUrl: './folder-tree.html',
     styleUrl: './folder-tree.scss'
 })

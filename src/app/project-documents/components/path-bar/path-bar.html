@@ -1,6 +1,6 @@
 <span #prefix class="fm-project-prefix">
   <span class="fm-project-name">{{ projectLabel() }}</span>
-  <i class="pi pi-angle-right fm-sep" aria-hidden="true"></i>
+  <span class="material-symbols-outlined fm-sep" aria-hidden="true">chevron_right</span>
 </span>
 
 @if (editing()) {
@@ -39,9 +39,9 @@
         title="Show hidden folders"
         data-testid="fm-breadcrumb-overflow"
       >
-        <i class="pi pi-ellipsis-h" aria-hidden="true"></i>
+        <span class="material-symbols-outlined fm-ellipsis" aria-hidden="true">more_horiz</span>
       </button>
-      <i class="pi pi-angle-right fm-sep" aria-hidden="true"></i>
+      <span class="material-symbols-outlined fm-sep" aria-hidden="true">chevron_right</span>
       <p-menu
         #overflowMenu
         class="fm-menu-overlay"
@@ -63,7 +63,7 @@
         {{ seg.label }}
       </button>
       @if (!last) {
-        <i class="pi pi-angle-right fm-sep" aria-hidden="true"></i>
+        <span class="material-symbols-outlined fm-sep" aria-hidden="true">chevron_right</span>
       }
     }
   </nav>
@@ -81,7 +81,7 @@
   decide how many full parent names fit. Never painted; excluded from layout and a11y.
 -->
 <div #measure class="fm-measure" aria-hidden="true">
-  <i #measureSep class="pi pi-angle-right fm-sep" aria-hidden="true"></i>
+  <span #measureSep class="material-symbols-outlined fm-sep" aria-hidden="true">chevron_right</span>
   @for (seg of segments(); track $index; let last = $last) {
     <span class="fm-segment fm-measure-seg" [class.fm-current]="last">{{ seg.label }}</span>
   }
@@ -92,5 +92,5 @@
   (the live button only exists while segments are collapsed). Never painted; out of flow.
 -->
 <span #overflowSizer class="fm-overflow fm-offscreen" aria-hidden="true">
-  <i class="pi pi-ellipsis-h" aria-hidden="true"></i>
+  <span class="material-symbols-outlined fm-ellipsis" aria-hidden="true">more_horiz</span>
 </span>
