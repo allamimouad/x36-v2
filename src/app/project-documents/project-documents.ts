@@ -9,6 +9,7 @@ import {
     signal,
     untracked
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import type { TreeNode } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
@@ -43,6 +44,7 @@ import { NavToolbar } from './components/nav-toolbar/nav-toolbar';
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [
+        NgTemplateOutlet,
         FolderTree,
         FileTable,
         PathBar,
@@ -74,9 +76,6 @@ export class ProjectDocuments {
     protected readonly clipboard = inject(ClipboardService);
     protected readonly config = inject(FILE_MANAGER_CONFIG);
 
-    /** Section-header labels for the two tree panes (Marketing rendered first). */
-    protected readonly listLabels = DOCUMENT_LIST_LABELS;
-
     /** Address-bar edit state (owned here; PathBar is a controlled child). */
     protected readonly pathEditing = signal(false);
     protected readonly pathError = signal<string | null>(null);
@@ -97,6 +96,24 @@ export class ProjectDocuments {
     /** One tree section per document list, each rooted at its list root. */
     protected readonly executionTree = computed(() => this.buildTreeSection('execution'));
     protected readonly marketingTree = computed(() => this.buildTreeSection('marketing'));
+
+    /** Both lists available → the tree pane becomes a resizable vertical split. */
+    protected readonly bothTreesVisible = computed(() => {
+        const roots = this.fileSystem.rootIdByList();
+
+        return roots.marketing !== null && roots.execution !== null;
+    });
+
+    /** Context objects for the shared tree-section template (one per list). */
+    protected readonly marketingSectionContext = computed(() => ({
+        label: DOCUMENT_LIST_LABELS.marketing,
+        nodes: this.marketingTree()
+    }));
+
+    protected readonly executionSectionContext = computed(() => ({
+        label: DOCUMENT_LIST_LABELS.execution,
+        nodes: this.executionTree()
+    }));
 
     /** The editable path for the current folder, seeded into the address-bar input. */
     protected readonly currentEditablePath = computed<string>(() => {

@@ -25,12 +25,11 @@
 - **Problem**: the entire partial-root feature — hidden tree sections, "No documents found for this project.", "Documents could not be loaded. Try refreshing.", the retry path — is exercised only by spec spies. No manual browser verification or QA smoke test can reach it; a regression in that UI would pass every manual check.
 - **Suggested fix**: extend `MOCK_CONFIG` with an optional `unavailableListKeys?: readonly DocumentListKey[]` that makes `listDocumentRoot` throw `FileSystemError('not-found')` for the listed keys, mirroring the existing `unavailableFolderPaths` pattern (see the 2026-07-03 session note). Optionally a second option (or an error-code field) to simulate the `error` status too, so the healthy-list-plus-console-error branch is also reachable.
 
-> (A former item here — `initialize`'s reduce-with-spread pipeline — was resolved on
-> 2026-07-06 by the reactive `connectProject` refactor, which rebuilt `initialize` on
-> `forkJoin` + tuple destructuring.)
-
-## 3. Duplicated template tree sections (cleanup, optional)
-
-- **Where**: `src/app/project-documents/project-documents.html:84` and `:97` — the marketing and execution `@if (fileSystem.rootIdByList().<key>)` blocks are ~13-line near-duplicates differing only in key, label, and tree signal.
-- **Problem**: any tree-section change (new input, a11y attribute, loading binding) must be hand-applied to both blocks; duplicated template blocks reliably drift. The presence check also lives at three altitudes (store `rootIdByList`, `buildTreeSection`'s `[]` return, template `@if`).
-- **Suggested fix**: a `@for` over an ordered `[{ key, label, tree }]` array (marketing first, preserving the deliberate ordering), replacing the two per-list computeds with a keyed accessor. Best done together with the Phase 2 template work (context menus touch this template anyway).
+> (Two former items were resolved: `initialize`'s reduce-with-spread pipeline —
+> 2026-07-06, by the reactive `connectProject` refactor — and the duplicated
+> template tree sections — 2026-07-08, by the tree-splitter work plus a
+> follow-up: ONE parameterized `#treeSection` `ng-template` (context: `label`,
+> `nodes`, built by per-list context computeds) placed via `ngTemplateOutlet`
+> in both the split and single-tree arrangements. An initial version kept two
+> near-identical per-list templates; a cross-session review caught that only
+> placement, not definition, had been deduplicated.)

@@ -78,16 +78,19 @@
     class="pd-body"
     [panelSizes]="[24, 76]"
     [minSizes]="[12, 30]"
-    [gutterSize]="6"
+    [gutterSize]="3"
     [style]="{ height: '100%' }"
   >
     <ng-template #panel>
       <aside class="pd-tree-pane" aria-label="Folder trees">
-        @if (fileSystem.rootIdByList().marketing) {
+        <!-- One tree-section template, parameterized per list; the arrangement below
+             picks how to lay the sections out (resizable split when both lists exist,
+             full height otherwise). -->
+        <ng-template #treeSection let-label="label" let-nodes="nodes">
           <section class="pd-tree-section">
-            <h2 class="pd-tree-section-title">{{ projectLabel() }} - {{ listLabels.marketing }}</h2>
+            <h2 class="pd-tree-section-title">{{ projectLabel() }} - {{ label }}</h2>
             <pr-folder-tree
-              [nodes]="marketingTree()"
+              [nodes]="nodes"
               [currentFolderId]="navigation.currentFolderId()"
               [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
               (nodeSelected)="onTreeNodeSelected($event)"
@@ -95,19 +98,42 @@
               (nodeCollapsed)="onTreeNodeCollapsed($event)"
             />
           </section>
-        }
-        @if (fileSystem.rootIdByList().execution) {
-          <section class="pd-tree-section">
-            <h2 class="pd-tree-section-title">{{ projectLabel() }} - {{ listLabels.execution }}</h2>
-            <pr-folder-tree
-              [nodes]="executionTree()"
-              [currentFolderId]="navigation.currentFolderId()"
-              [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
-              (nodeSelected)="onTreeNodeSelected($event)"
-              (nodeExpanded)="onTreeNodeExpanded($event)"
-              (nodeCollapsed)="onTreeNodeCollapsed($event)"
+        </ng-template>
+
+        @if (bothTreesVisible()) {
+          <p-splitter
+            class="pd-tree-splitter"
+            layout="vertical"
+            [panelSizes]="[50, 50]"
+            [minSizes]="[15, 15]"
+            [gutterSize]="2"
+          >
+            <ng-template #panel>
+              <ng-container
+                [ngTemplateOutlet]="treeSection"
+                [ngTemplateOutletContext]="marketingSectionContext()"
+              />
+            </ng-template>
+            <ng-template #panel>
+              <ng-container
+                [ngTemplateOutlet]="treeSection"
+                [ngTemplateOutletContext]="executionSectionContext()"
+              />
+            </ng-template>
+          </p-splitter>
+        } @else {
+          @if (fileSystem.rootIdByList().marketing) {
+            <ng-container
+              [ngTemplateOutlet]="treeSection"
+              [ngTemplateOutletContext]="marketingSectionContext()"
             />
-          </section>
+          }
+          @if (fileSystem.rootIdByList().execution) {
+            <ng-container
+              [ngTemplateOutlet]="treeSection"
+              [ngTemplateOutletContext]="executionSectionContext()"
+            />
+          }
         }
       </aside>
     </ng-template>

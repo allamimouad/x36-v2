@@ -132,6 +132,10 @@ $pd-control-height: 2.25rem;
 }
 
 .pd-tree-pane {
+  // width 100% is required: when the pane hosts the nested splitter, PrimeNG marks
+  // the outer panel `p-splitterpanel-nested` (display: flex), so this aside becomes
+  // a flex item that would otherwise size to content instead of filling the panel.
+  width: 100%;
   height: 100%;
   overflow: auto;
   background: var(--pd-surface);
@@ -215,6 +219,27 @@ $pd-control-height: 2.25rem;
   .p-splitter-gutter:hover,
   .p-splitter-gutter-resizing {
     background: var(--pd-accent);
+  }
+}
+
+/*
+ * Nested tree splitter (Marketing / Execution): each panel scrolls on its own —
+ * unlike the single-scrollbar stacked fallback — because that is what makes the
+ * drag handle meaningful. Declared after the .pd-body block so the panel
+ * overflow override wins at equal specificity.
+ */
+:host ::ng-deep .pd-tree-splitter {
+  // The <p-splitter> host IS the .p-splitter flex container — never change its
+  // display (panel resizing works via flex-basis). Fill the pane height; width
+  // comes from the pane's default cross-axis stretch.
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+
+  .p-splitterpanel {
+    overflow: auto;
   }
 }
 
