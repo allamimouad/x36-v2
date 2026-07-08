@@ -1,6 +1,25 @@
 /* Global styles */
 @use 'material-symbols/outlined.css';
 
+// Corporate typeface — TEMPLATE ONLY, does nothing while commented out.
+// To load "BNPP Type" locally: 1) drop the woff2 files into
+// src/assets/fonts/bnpp-type/ AND 2) uncomment the @font-face blocks below.
+// Until both are done, text renders with the system-font fallbacks.
+// @font-face {
+//   font-family: 'BNPP Type';
+//   src: url('assets/fonts/bnpp-type/BNPPType-Regular.woff2') format('woff2');
+//   font-weight: 400;
+//   font-style: normal;
+//   font-display: swap;
+// }
+// @font-face {
+//   font-family: 'BNPP Type';
+//   src: url('assets/fonts/bnpp-type/BNPPType-Bold.woff2') format('woff2');
+//   font-weight: 700;
+//   font-style: normal;
+//   font-display: swap;
+// }
+
 html,
 body {
   height: 100%;

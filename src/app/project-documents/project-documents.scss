@@ -6,6 +6,15 @@
 
   display: block;
   // Actual height comes from the `height` input (host style binding, default 80vh).
+  // Typeface for the whole feature: declared on the host (not the page body) so the
+  // component brings its own typography wherever it is embedded; children inherit.
+  font-family:
+    'BNPP Type',
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
 }
 
 .pd-root {
@@ -23,18 +32,30 @@
 
 /* Header ───────────────────────────────────────────── */
 .pd-header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0.85rem 1.1rem;
-  border-bottom: 1px solid var(--pd-border);
+
+  // Inset divider: stops short of the frame edges instead of touching them.
+  &::after {
+    content: '';
+    position: absolute;
+    left: 1.1rem;
+    right: 1.1rem;
+    bottom: 0;
+    height: 1px;
+    background: var(--pd-border);
+  }
 }
 
 .pd-title {
   margin: 0;
-  font-size: 1.4rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: 24px;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 32px;
 }
 
 /* Toolbar row ──────────────────────────────────────── */
