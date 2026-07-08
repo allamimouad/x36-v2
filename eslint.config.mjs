@@ -41,6 +41,9 @@ export default tseslint.config(
           next: 'return'
         }
       ],
+      '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
+      'no-shadow': 'off',
+      '@typescript-eslint/no-shadow': 'error',
       '@typescript-eslint/explicit-member-accessibility': [
         'error',
         {

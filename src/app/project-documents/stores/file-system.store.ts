@@ -60,11 +60,11 @@ type FileSystemDevtoolsState = FileSystemState & {
     entityMap: Record<string, FileSystemNode>;
 };
 
-type RootLoadResult = {
+interface RootLoadResult {
     listKey: DocumentListKey;
     listing: DocumentListing | null;
     root: DocumentListRootStatus;
-};
+}
 
 const initialState: FileSystemState = {
     projectId: null,
@@ -312,10 +312,10 @@ export const FileSystemStore = signalStore(
         };
 
         const _cachedSubtree = (id: string): FileSystemNode[] => {
-            const map = store.entityMap();
+            const nodeById = store.entityMap();
 
             return _cachedSubtreeIds(id)
-                .map((nodeId) => map[nodeId])
+                .map((nodeId) => nodeById[nodeId])
                 .filter((node): node is FileSystemNode => node !== undefined);
         };
 
