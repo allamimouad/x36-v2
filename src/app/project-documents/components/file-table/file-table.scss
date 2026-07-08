@@ -4,19 +4,19 @@
   overflow: hidden;
 }
 
-.fm-loading {
+.pd-loading {
   display: flex;
   align-items: center;
   justify-content: center;
   height: 100%;
 }
 
-:host ::ng-deep .fm-spinner {
+:host ::ng-deep .pd-spinner {
   width: 36px;
   height: 36px;
 }
 
-:host ::ng-deep .fm-table {
+:host ::ng-deep .pd-table {
   height: 100%;
 
   .p-datatable-table {
@@ -25,9 +25,9 @@
 
   // Header: light, compact, uppercase-ish enterprise look
   .p-datatable-thead > tr > th {
-    background: var(--p-content-background, #fff);
-    border-bottom: 1px solid var(--p-content-border-color, #e5e7eb);
-    color: var(--p-text-muted-color, #6b7280);
+    background: var(--pd-surface);
+    border-bottom: 1px solid var(--pd-border);
+    color: var(--pd-text-muted);
     font-weight: 600;
     font-size: 0.8125rem;
     padding: 0.6rem 0.85rem;
@@ -36,50 +36,50 @@
 
   .p-datatable-tbody > tr > td {
     padding: 0.625rem 0.85rem;
-    border-bottom: 1px solid var(--p-content-border-color, #f1f2f4);
+    border-bottom: 1px solid var(--pd-border-subtle);
   }
 
   .p-datatable-tbody > tr:hover {
-    background: var(--p-highlight-background, #f3f7ff);
+    background: var(--pd-selection-bg);
   }
 }
 
-.fm-name {
+.pd-name {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
   min-width: 0;
 }
 
-.fm-name-text {
+.pd-name-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.fm-name pr-file-system-symbol-icon {
-  --fm-icon-size: 1rem;
+.pd-name pr-file-system-icon {
+  --pd-icon-size: 1rem;
 }
 
-.fm-muted {
-  color: var(--p-text-muted-color, #6b7280);
+.pd-muted {
+  color: var(--pd-text-muted);
   white-space: nowrap;
 }
 
-.fm-col-size {
+.pd-col-size {
   text-align: right;
 }
 
-.fm-row {
+.pd-row {
   cursor: default;
 }
 
-.fm-row-folder {
+.pd-row-folder {
   cursor: pointer;
 }
 
-.fm-empty {
+.pd-empty {
   text-align: center;
   padding: 2rem;
-  color: var(--p-text-muted-color, #888);
+  color: var(--pd-text-muted);
 }

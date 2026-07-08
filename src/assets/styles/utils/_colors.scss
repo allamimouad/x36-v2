@@ -1,0 +1,59 @@
+// Shared color palette. Mirrors `ibportal-web-ui-commons/lib/styles/utils/colors`
+// (values transcribed 2026-07-08) plus the project-specific additions below.
+// Keep in sync with the library — it is the source of truth for these values.
+
+// ── ibportal-web-ui-commons palette ─────────────────────────────────────────
+$primary-lightest: #e8f4ef;
+$primary-lighter: #5ddead;
+$primary-light: #22bf84;
+$primary: #00915a;
+$primary-dark: #036640;
+$primary-darker: #00472c;
+
+$secondary-lightest: #fafafa;
+$secondary-lighter: #f0f1f2;
+$secondary-light: #dcdee0;
+$secondary: #b4babf;
+$secondary-dark: #858d94;
+$secondary-darker: #5c6166;
+$secondary-darkest: #393d40;
+
+$info-lighter: #e1f5fa;
+$info-light: #59c7e3;
+$info: #26a0be;
+$info-dark: #157f99;
+$info-darker: #0e5f73;
+
+$warning-lighter: #ffebd9;
+$warning-light: #f7a956;
+$warning: #e68217;
+$warning-dark: #cc660c;
+$warning-darker: #a85105;
+
+$success-lighter: #e7f5dc;
+$success-light: #8fd65a;
+$success: #60ad25;
+$success-dark: #498a19;
+$success-darker: #32660a;
+
+$danger-lighter: #fae4e7;
+$danger-light: #eb6d7e;
+$danger: #cc333d;
+$danger-dark: #a6212a;
+$danger-darker: #73161c;
+
+$purple-lighter: #e3e1fa;
+$purple-light: #9e97e8;
+$purple: #6f66cc;
+$purple-dark: #5047a6;
+$purple-darker: #37317a;
+
+$white: #ffffff;
+$black: #000000;
+$steel-gray: #3e4853;
+
+// ── project-specific additions ───────────────────────────────────────────────
+$gray-light: #dcdee0;
+$black-gray: #171d19;
+$black2-gray: #00140d;
+$green-light: #aef2c6;

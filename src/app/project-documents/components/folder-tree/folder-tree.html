@@ -6,12 +6,12 @@
   (onNodeExpand)="handleExpand($event)"
   (onNodeCollapse)="handleCollapse($event)"
   (onNodeSelect)="handleSelect($event)"
-  styleClass="fm-tree"
+  styleClass="pd-tree"
 >
   <ng-template let-node pTemplate="default">
-    <span class="fm-tree-node">
-      <pr-file-system-symbol-icon name="folder" />
-      <span class="fm-tree-label">{{ node.label }}</span>
+    <span class="pd-tree-node">
+      <pr-file-system-icon name="folder" />
+      <span class="pd-tree-label">{{ node.label }}</span>
     </span>
   </ng-template>
 </p-tree>

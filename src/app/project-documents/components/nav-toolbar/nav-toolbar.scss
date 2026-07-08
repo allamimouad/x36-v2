@@ -3,13 +3,13 @@
   align-items: center;
 }
 
-.fm-toolbar {
+.pd-toolbar {
   display: flex;
   align-items: center;
   gap: 0.15rem;
 }
 
-.fm-toolbar-left {
+.pd-toolbar-left {
   display: flex;
   align-items: center;
   gap: 0.1rem;
@@ -17,22 +17,22 @@
 
 // Projected symbol content does not trigger PrimeNG's `p-button-icon-only` sizing,
 // so square the icon-only buttons explicitly.
-.fm-toolbar-left ::ng-deep .p-button {
+.pd-toolbar-left ::ng-deep .p-button {
   width: 2rem;
   height: 2rem;
   padding: 0;
   justify-content: center;
 }
 
-.fm-btn-symbol {
+.pd-btn-symbol {
   font-size: 1.125rem;
   line-height: 1;
   user-select: none;
 }
 
-.fm-divider {
+.pd-divider {
   width: 1px;
   height: 1.25rem;
-  background: var(--p-content-border-color, #e5e7eb);
+  background: var(--pd-border);
   margin: 0 0.3rem;
 }

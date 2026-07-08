@@ -1,9 +1,9 @@
-<div class="fm-root">
-  <header class="fm-header">
-    <h1 class="fm-title">{{ config.libraryRootName }}</h1>
+<div class="pd-root">
+  <header class="pd-header">
+    <h1 class="pd-title">{{ config.libraryRootName }}</h1>
   </header>
 
-  <div class="fm-toolbar-row">
+  <div class="pd-toolbar-row">
     <pr-nav-toolbar
       [canGoBack]="navigation.canGoBack()"
       [canGoForward]="navigation.canGoForward()"
@@ -15,7 +15,7 @@
     />
 
     <pr-path-bar
-      class="fm-breadcrumb"
+      class="pd-breadcrumb"
       [segments]="navigation.pathSegments()"
       [projectLabel]="projectLabel()"
       [editablePath]="currentEditablePath()"
@@ -28,8 +28,8 @@
       (editCancelled)="onEditCancelled()"
     />
 
-    <span class="fm-search">
-      <span class="material-symbols-outlined fm-search-icon" aria-hidden="true">search</span>
+    <span class="pd-search">
+      <span class="material-symbols-outlined pd-search-icon" aria-hidden="true">search</span>
       <input
         pInputText
         type="text"
@@ -38,11 +38,11 @@
         pTooltip="Search coming soon"
         tooltipPosition="bottom"
         aria-label="Search files"
-        data-testid="fm-search"
+        data-testid="pd-search"
       />
     </span>
 
-    <div class="fm-actions">
+    <div class="pd-actions">
       <!-- TODO: enable with the create-folder US. -->
       <button
         pButton
@@ -52,10 +52,10 @@
         tooltipPosition="bottom"
         severity="secondary"
         [text]="true"
-        data-testid="fm-btn-new-folder"
+        data-testid="pd-btn-new-folder"
       >
-        <span class="material-symbols-outlined fm-btn-symbol" aria-hidden="true">create_new_folder</span>
-        <span class="fm-action-label">New folder</span>
+        <span class="material-symbols-outlined pd-btn-symbol" aria-hidden="true">create_new_folder</span>
+        <span class="pd-action-label">New folder</span>
       </button>
       <!-- TODO: enable with the upload US. -->
       <button
@@ -66,26 +66,26 @@
         tooltipPosition="bottom"
         severity="secondary"
         [text]="true"
-        data-testid="fm-btn-upload"
+        data-testid="pd-btn-upload"
       >
-        <span class="material-symbols-outlined fm-btn-symbol" aria-hidden="true">upload</span>
-        <span class="fm-action-label">Upload file</span>
+        <span class="material-symbols-outlined pd-btn-symbol" aria-hidden="true">upload</span>
+        <span class="pd-action-label">Upload file</span>
       </button>
     </div>
   </div>
 
   <p-splitter
-    class="fm-body"
+    class="pd-body"
     [panelSizes]="[24, 76]"
     [minSizes]="[12, 30]"
     [gutterSize]="6"
     [style]="{ height: '100%' }"
   >
     <ng-template #panel>
-      <aside class="fm-tree-pane" aria-label="Folder trees">
+      <aside class="pd-tree-pane" aria-label="Folder trees">
         @if (fileSystem.rootIdByList().marketing) {
-          <section class="fm-tree-section">
-            <h2 class="fm-tree-section-title">{{ projectLabel() }} - {{ listLabels.marketing }}</h2>
+          <section class="pd-tree-section">
+            <h2 class="pd-tree-section-title">{{ projectLabel() }} - {{ listLabels.marketing }}</h2>
             <pr-folder-tree
               [nodes]="marketingTree()"
               [currentFolderId]="navigation.currentFolderId()"
@@ -97,8 +97,8 @@
           </section>
         }
         @if (fileSystem.rootIdByList().execution) {
-          <section class="fm-tree-section">
-            <h2 class="fm-tree-section-title">{{ projectLabel() }} - {{ listLabels.execution }}</h2>
+          <section class="pd-tree-section">
+            <h2 class="pd-tree-section-title">{{ projectLabel() }} - {{ listLabels.execution }}</h2>
             <pr-folder-tree
               [nodes]="executionTree()"
               [currentFolderId]="navigation.currentFolderId()"
@@ -112,10 +112,10 @@
       </aside>
     </ng-template>
     <ng-template #panel>
-      <main class="fm-table-pane" aria-label="Folder contents">
+      <main class="pd-table-pane" aria-label="Folder contents">
         @if (currentFolderError(); as currentError) {
-          <div class="fm-unavailable" role="status">
-            <span class="material-symbols-outlined fm-unavailable-icon" aria-hidden="true">warning</span>
+          <div class="pd-unavailable" role="status">
+            <span class="material-symbols-outlined pd-unavailable-icon" aria-hidden="true">warning</span>
             <p>{{ currentError }}</p>
           </div>
         } @else {
@@ -130,7 +130,7 @@
     </ng-template>
   </p-splitter>
 
-  <footer class="fm-status" aria-live="polite">
+  <footer class="pd-status" aria-live="polite">
     <span>{{ statusText() }}</span>
   </footer>
 </div>

@@ -1,0 +1,40 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// Project-documents color tokens — the single place that decides which palette
+// color fills each semantic slot.
+//
+// Colors come exclusively from the shared palette
+// (`src/assets/styles/utils/_colors.scss`). Every stylesheet in this feature
+// consumes only the `--pd-*` tokens below; no other file may declare a color
+// literal. (File-type icon colors live in the icon SVGs.)
+//
+// Not covered here: the internals of PrimeNG components (buttons, tree rows,
+// table hover, tooltips) are colored by the PrimeNG theme preset, and the
+// file-type icons come from the icon SVGs themselves.
+// ─────────────────────────────────────────────────────────────────────────────
+@use '../../assets/styles/utils/colors' as c;
+
+@mixin color-tokens {
+  // Surfaces
+  --pd-surface: #{c.$white};
+
+  // Borders (strong = frame/control outlines, subtle = row separators)
+  --pd-border: #{c.$secondary-light};
+  --pd-border-strong: #{c.$secondary};
+  --pd-border-subtle: #{c.$secondary-lighter};
+
+  // Text (muted = secondary labels, faint = decorative icons/separators)
+  --pd-text: #{c.$black-gray};
+  --pd-text-muted: #{c.$secondary-darker};
+  --pd-text-faint: #{c.$secondary-dark};
+
+  // Interaction
+  --pd-accent: #{c.$primary};
+  --pd-hover-bg: #{c.$secondary-lightest};
+  --pd-selection-bg: #{c.$primary-lightest};
+  --pd-danger: #{c.$danger};
+
+  // Elevation (not part of the palette)
+  --pd-frame-shadow:
+    0 1px 2px 0 rgb(0 0 0 / 0.3),
+    0 1px 3px 1px rgb(0 0 0 / 0.14);
+}

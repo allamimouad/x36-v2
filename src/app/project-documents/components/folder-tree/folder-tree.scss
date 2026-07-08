@@ -4,7 +4,7 @@
   overflow: hidden;
 }
 
-:host ::ng-deep .fm-tree {
+:host ::ng-deep .pd-tree {
   border: 0;
   background: transparent;
   height: 100%;
@@ -17,22 +17,22 @@
   height: 100%;
 }
 
-:host ::ng-deep .fm-tree .p-tree-node-content {
+:host ::ng-deep .pd-tree .p-tree-node-content {
   border-radius: 6px;
 }
 
-.fm-tree-node {
+.pd-tree-node {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
   min-width: 0;
 }
 
-.fm-tree-node pr-file-system-symbol-icon {
-  --fm-icon-size: 1rem;
+.pd-tree-node pr-file-system-icon {
+  --pd-icon-size: 1rem;
 }
 
-.fm-tree-label {
+.pd-tree-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

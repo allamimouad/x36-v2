@@ -1,9 +1,9 @@
 @if (loading()) {
-  <div class="fm-loading">
-    <p-progressSpinner styleClass="fm-spinner" strokeWidth="3" />
+  <div class="pd-loading">
+    <p-progressSpinner styleClass="pd-spinner" strokeWidth="3" />
   </div>
 } @else {
-  <p-table [value]="rows()" dataKey="id" styleClass="fm-table" [scrollable]="true" scrollHeight="flex">
+  <p-table [value]="rows()" dataKey="id" styleClass="pd-table" [scrollable]="true" scrollHeight="flex">
     <ng-template pTemplate="header">
       <tr>
         <th pSortableColumn="name" style="width: 34%">
@@ -18,37 +18,37 @@
         <th pSortableColumn="modifiedBy" style="width: 20%">
           Last Modified By <p-sortIcon field="modifiedBy" />
         </th>
-        <th pSortableColumn="sortSize" style="width: 14%" class="fm-col-size">
+        <th pSortableColumn="sortSize" style="width: 14%" class="pd-col-size">
           Size <p-sortIcon field="sortSize" />
         </th>
       </tr>
     </ng-template>
     <ng-template pTemplate="body" let-row>
       <tr
-        [attr.data-testid]="'fm-row-' + row.id"
+        [attr.data-testid]="'pd-row-' + row.id"
         (dblclick)="onRowDblClick(row)"
-        class="fm-row"
-        [class.fm-row-folder]="row.kind === 'folder'"
+        class="pd-row"
+        [class.pd-row-folder]="row.kind === 'folder'"
       >
         <td>
-          <span class="fm-name">
+          <span class="pd-name">
             @if (row.kind === 'folder') {
-              <pr-file-system-symbol-icon name="folder" />
+              <pr-file-system-icon name="folder" />
             } @else {
-              <pr-file-system-symbol-icon [fileName]="row.node.name" />
+              <pr-file-system-icon [fileName]="row.node.name" />
             }
-            <span class="fm-name-text">{{ row.name }}</span>
+            <span class="pd-name-text">{{ row.name }}</span>
           </span>
         </td>
-        <td class="fm-muted">{{ row.typeLabel }}</td>
-        <td class="fm-muted">{{ row.modifiedAt | date: 'dd-MM-yyyy HH:mm' }}</td>
-        <td class="fm-muted">{{ row.modifiedBy }}</td>
-        <td class="fm-col-size fm-muted">{{ row.sizeLabel }}</td>
+        <td class="pd-muted">{{ row.typeLabel }}</td>
+        <td class="pd-muted">{{ row.modifiedAt | date: 'dd-MM-yyyy HH:mm' }}</td>
+        <td class="pd-muted">{{ row.modifiedBy }}</td>
+        <td class="pd-col-size pd-muted">{{ row.sizeLabel }}</td>
       </tr>
     </ng-template>
     <ng-template pTemplate="emptymessage">
       <tr>
-        <td colspan="5" class="fm-empty">This folder is empty.</td>
+        <td colspan="5" class="pd-empty">This folder is empty.</td>
       </tr>
     </ng-template>
   </p-table>

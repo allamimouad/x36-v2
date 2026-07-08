@@ -1,14 +1,14 @@
 :host {
-    --fm-icon-size: 1rem;
+    --pd-icon-size: 1rem;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: var(--fm-icon-size);
-    height: var(--fm-icon-size);
+    width: var(--pd-icon-size);
+    height: var(--pd-icon-size);
     flex: 0 0 auto;
 }
 
-.fm-svg-icon {
+.pd-svg-icon {
     display: block;
     width: 100%;
     height: 100%;

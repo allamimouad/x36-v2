@@ -72,7 +72,7 @@ feel like a missed click; this is wired into the dialogs/context-menu actions wh
 All stores and services specific to the file manager are provided on `ProjectDocuments`, not `providedIn: 'root'`. State dies with the component.
 
 ### 2.6 Portable, plan-free source
-The `src/app/project-documents/` folder will be copied verbatim to another machine and pushed to a different repository (with the SharePoint adapter swapped in for the mock). Therefore **no file under `src/app/project-documents/` may reference the internal planning workflow**: no "Phase N" in comments, tooltips, error messages, or identifiers, and no pointers to `SPEC.md` / `PHASES.md` / `PROGRESS.md`. Not-yet-built functionality is worded neutrally ("not available yet", "not implemented yet"). Phase references live only in `docs/`. `TODO` comments are allowed and mark every unimplemented feature, but must be short one-liners referencing the feature / user story that will implement it (e.g. `// TODO: implement with the upload US.`) — never a phase.
+The `src/app/project-documents/` folder will be copied verbatim to another machine and pushed to a different repository (with the SharePoint adapter swapped in for the mock). Therefore **no file under `src/app/project-documents/` may reference the internal planning workflow**: no "Phase N" in comments, tooltips, error messages, or identifiers, and no pointers to `SPEC.md` / `PHASES.md` / `PROGRESS.md`. **The same applies to the cross-repo copy workflow itself**: no comments about a "target repo", "the other laptop", files being "copied", "swapped", or "deleted later", or code being "dev-only" / a "stand-in" for that reason — the copied source must read as if it always lived in its destination. Migration instructions live only in `docs/` (PHASES Phase 6). Not-yet-built functionality is worded neutrally ("not available yet", "not implemented yet"). Phase references live only in `docs/`. `TODO` comments are allowed and mark every unimplemented feature, but must be short one-liners referencing the feature / user story that will implement it (e.g. `// TODO: implement with the upload US.`) — never a phase.
 
 ---
 
@@ -387,6 +387,7 @@ All stores and feature services are provided at `ProjectDocuments` level.
 ```
 project-documents/
   project-documents.ts      # container; provides stores; wires events
+  project-documents-theme.scss  # maps the shared palette (assets/styles/utils/_colors.scss) to the --pd-* tokens all feature styles consume
   components/
     folder-tree/folder-tree.ts
     file-table/file-table.ts
@@ -398,8 +399,7 @@ project-documents/
       rename-dialog.ts
       conflict-resolution-dialog.ts
   shared/
-    file-system-icon/                  # SVG icon (assets/file-manager/icons/<name>.svg) — the target-environment icon set
-    file-system-symbol-icon/           # Material Symbols stand-in, same API; dev-only, NOT copied to the target repo
+    file-system-icon/                  # file-type icon: <img> over assets/icons/sharepoint-file-type-icons/<name>.svg
   stores/
     file-system.store.ts
     navigation.store.ts
@@ -525,7 +525,7 @@ Name collision on create/rename/move/copy/upload:
 
 ## 14. Testing Hooks
 
-- Every major element has `data-testid`: `fm-tree-node-<id>`, `fm-row-<id>`, `fm-btn-back`, `fm-btn-forward`, `fm-btn-up`, `fm-breadcrumb-<index>`, `fm-context-<action>`
+- Every major element has `data-testid`: `pd-tree-node-<id>`, `pd-row-<id>`, `pd-btn-back`, `pd-btn-forward`, `pd-btn-up`, `pd-breadcrumb-<index>`, `pd-context-<action>`
 - One unit test per store (established in Phase 1) showing the pattern
 - `MockFileSystemApi` with `enableErrors: false` is the test double
 

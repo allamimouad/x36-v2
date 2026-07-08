@@ -7,33 +7,33 @@
   min-width: 0;
   height: 2.25rem;
   padding: 0 0.5rem;
-  border: 1px solid var(--p-content-border-color, #d1d5db);
+  border: 1px solid var(--pd-border-strong);
   border-radius: 6px;
-  background: var(--p-content-background, #fff);
+  background: var(--pd-surface);
   overflow: hidden;
 }
 
-.fm-project-prefix {
+.pd-project-prefix {
   flex: 0 0 auto;
   min-width: 0;
   max-width: min(16rem, 40%);
   display: inline-flex;
   align-items: center;
   gap: 0.1rem;
-  color: var(--p-text-muted-color, #6b7280);
+  color: var(--pd-text-muted);
   font-size: 0.8125rem;
   font-weight: 600;
   user-select: none;
   cursor: default;
 }
 
-.fm-project-name {
+.pd-project-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.fm-breadcrumb {
+.pd-breadcrumb {
   display: flex;
   align-items: center;
   gap: 0.1rem;
@@ -51,14 +51,14 @@
 // Clickable empty area that fills the rest of the bar → enters edit mode.
 // Grows to absorb leftover space (so the whole empty bar is clickable) but keeps
 // a minimum strip even when the breadcrumb is wide.
-.fm-edit-zone {
+.pd-edit-zone {
   flex: 1 1 auto;
   align-self: stretch;
   min-width: 1.25rem;
   cursor: text;
 }
 
-.fm-path-input {
+.pd-path-input {
   flex: 1 1 auto;
   min-width: 0;
   border: 0;
@@ -66,23 +66,23 @@
   background: transparent;
   font: inherit;
   font-size: 0.8125rem;
-  color: var(--p-text-color, #111827);
+  color: var(--pd-text);
   padding: 0.2rem 0.3rem;
 }
 
-.fm-path-input--error {
-  color: var(--p-red-600, #dc2626);
+.pd-path-input--error {
+  color: var(--pd-danger);
 }
 
-.fm-path-error {
+.pd-path-error {
   flex: 0 0 auto;
   margin-left: 0.4rem;
   font-size: 0.75rem;
-  color: var(--p-red-600, #dc2626);
+  color: var(--pd-danger);
   white-space: nowrap;
 }
 
-.fm-segment {
+.pd-segment {
   // Parents are shown full-width or collapsed into `…` — never truncated. So they don't
   // shrink: the row then genuinely overflows when too many are shown, which is what the
   // scrollWidth-based fitter detects.
@@ -91,26 +91,26 @@
   border: 0;
   padding: 0.2rem 0.4rem;
   cursor: pointer;
-  color: var(--p-text-muted-color, #6b7280); // gray for parent segments
+  color: var(--pd-text-muted); // gray for parent segments
   font: inherit;
   white-space: nowrap;
   border-radius: 4px;
 }
 
-.fm-segment:hover {
-  background: var(--p-content-hover-background, rgba(0, 0, 0, 0.04));
-  color: var(--p-text-color, #111827);
+.pd-segment:hover {
+  background: var(--pd-hover-bg);
+  color: var(--pd-text);
 }
 
-.fm-current {
-  color: var(--p-text-color, #111827); // current/opened folder: black
+.pd-current {
+  color: var(--pd-text); // current/opened folder: black
   font-weight: 600;
   cursor: default;
 }
 
 // Only the current folder may ellipsis-truncate, and only as a last resort when it is
 // the sole visible segment (all ancestors collapsed into `…`).
-.fm-current-solo {
+.pd-current-solo {
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
@@ -119,7 +119,7 @@
 }
 
 // The `…` button that opens the hidden-segments menu.
-.fm-overflow {
+.pd-overflow {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -127,16 +127,16 @@
   border: 0;
   padding: 0.2rem 0.35rem;
   cursor: pointer;
-  color: var(--p-text-muted-color, #6b7280);
+  color: var(--pd-text-muted);
   border-radius: 4px;
 }
 
-.fm-overflow:hover {
-  background: var(--p-content-hover-background, rgba(0, 0, 0, 0.04));
-  color: var(--p-text-color, #111827);
+.pd-overflow:hover {
+  background: var(--pd-hover-bg);
+  color: var(--pd-text);
 }
 
-.fm-menu-overlay {
+.pd-menu-overlay {
   position: absolute;
   width: 0;
   height: 0;
@@ -145,8 +145,8 @@
 
 // Fixed box so the fitter's cached separator width stays valid regardless of
 // symbol-font load timing (a ligature renders as text until the font arrives).
-.fm-sep {
-  color: var(--p-text-muted-color, #9aa1ac);
+.pd-sep {
+  color: var(--pd-text-faint);
   font-size: 0.9rem;
   width: 0.9rem;
   display: inline-flex;
@@ -158,7 +158,7 @@
   user-select: none;
 }
 
-.fm-ellipsis {
+.pd-ellipsis {
   font-size: 1rem;
   line-height: 1;
   user-select: none;
@@ -166,7 +166,7 @@
 
 // Out-of-flow measurement row: every segment at natural width, no truncation, and clipped
 // by the host so it cannot affect toolbar sizing or page scroll.
-.fm-measure {
+.pd-measure {
   position: absolute;
   top: 0;
   left: 0;
@@ -178,14 +178,14 @@
   gap: 0.1rem;
   overflow: visible;
 
-  .fm-segment {
+  .pd-segment {
     flex: 0 0 auto;
   }
 }
 
 // Off-screen sizer for the `…` button: laid out (so offsetWidth is real) but never painted
 // and removed from flow so it can't affect the bar.
-.fm-offscreen {
+.pd-offscreen {
   position: absolute;
   top: 0;
   left: 0;

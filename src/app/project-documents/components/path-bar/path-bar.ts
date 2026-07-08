@@ -198,7 +198,7 @@ export class PathBar {
     private readNaturalWidths(): boolean {
         const measureEl = this.measureRef()?.nativeElement;
         const segEls = measureEl
-            ? Array.from(measureEl.querySelectorAll<HTMLElement>('.fm-measure-seg'))
+            ? Array.from(measureEl.querySelectorAll<HTMLElement>('.pd-measure-seg'))
             : [];
 
         if (!measureEl || segEls.length !== this.segments().length) { return false; }

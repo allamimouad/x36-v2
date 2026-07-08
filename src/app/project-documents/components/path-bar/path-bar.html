@@ -1,50 +1,50 @@
-<span #prefix class="fm-project-prefix">
-  <span class="fm-project-name">{{ projectLabel() }}</span>
-  <span class="material-symbols-outlined fm-sep" aria-hidden="true">chevron_right</span>
+<span #prefix class="pd-project-prefix">
+  <span class="pd-project-name">{{ projectLabel() }}</span>
+  <span class="material-symbols-outlined pd-sep" aria-hidden="true">chevron_right</span>
 </span>
 
 @if (editing()) {
   <input
     #pathInput
-    class="fm-path-input"
+    class="pd-path-input"
     type="text"
     spellcheck="false"
     autocomplete="off"
     [value]="draft()"
     [disabled]="resolving()"
     [attr.aria-invalid]="pathError() ? 'true' : null"
-    [class.fm-path-input--error]="!!pathError()"
+    [class.pd-path-input--error]="!!pathError()"
     (input)="onDraftInput($any($event.target).value)"
     (keydown.enter)="onSubmit()"
     (keydown.escape)="onCancel()"
     (blur)="onBlur()"
     aria-label="Document path"
-    data-testid="fm-path-input"
+    data-testid="pd-path-input"
   />
   @if (pathError(); as err) {
-    <span class="fm-path-error" role="alert">{{ err }}</span>
+    <span class="pd-path-error" role="alert">{{ err }}</span>
   }
 } @else {
   <nav
     #breadcrumb
-    class="fm-breadcrumb"
+    class="pd-breadcrumb"
     aria-label="Folder path"
   >
     @if (overflowSegments().length > 0) {
       <button
         type="button"
-        class="fm-overflow"
+        class="pd-overflow"
         (click)="overflowMenu.toggle($event)"
         aria-label="Show hidden folders"
         title="Show hidden folders"
-        data-testid="fm-breadcrumb-overflow"
+        data-testid="pd-breadcrumb-overflow"
       >
-        <span class="material-symbols-outlined fm-ellipsis" aria-hidden="true">more_horiz</span>
+        <span class="material-symbols-outlined pd-ellipsis" aria-hidden="true">more_horiz</span>
       </button>
-      <span class="material-symbols-outlined fm-sep" aria-hidden="true">chevron_right</span>
+      <span class="material-symbols-outlined pd-sep" aria-hidden="true">chevron_right</span>
       <p-menu
         #overflowMenu
-        class="fm-menu-overlay"
+        class="pd-menu-overlay"
         [model]="overflowMenuItems()"
         [popup]="true"
         appendTo="body"
@@ -53,26 +53,26 @@
     @for (seg of visibleSegments(); track $index; let last = $last; let idx = $index) {
       <button
         type="button"
-        class="fm-segment"
-        [class.fm-current]="last"
-        [class.fm-current-solo]="last && visibleSegments().length === 1"
-        [attr.data-testid]="'fm-breadcrumb-' + (visibleStartIndex() + idx)"
+        class="pd-segment"
+        [class.pd-current]="last"
+        [class.pd-current-solo]="last && visibleSegments().length === 1"
+        [attr.data-testid]="'pd-breadcrumb-' + (visibleStartIndex() + idx)"
         [title]="seg.label"
         (click)="segmentClicked.emit(seg)"
       >
         {{ seg.label }}
       </button>
       @if (!last) {
-        <span class="material-symbols-outlined fm-sep" aria-hidden="true">chevron_right</span>
+        <span class="material-symbols-outlined pd-sep" aria-hidden="true">chevron_right</span>
       }
     }
   </nav>
   <span
     #editZone
-    class="fm-edit-zone"
+    class="pd-edit-zone"
     (click)="onEnterEdit()"
     title="Edit path"
-    data-testid="fm-path-edit-zone"
+    data-testid="pd-path-edit-zone"
   ></span>
 }
 
@@ -80,10 +80,10 @@
   Out-of-flow measurement row: renders every segment at natural width so the fitter can
   decide how many full parent names fit. Never painted; excluded from layout and a11y.
 -->
-<div #measure class="fm-measure" aria-hidden="true">
-  <span #measureSep class="material-symbols-outlined fm-sep" aria-hidden="true">chevron_right</span>
+<div #measure class="pd-measure" aria-hidden="true">
+  <span #measureSep class="material-symbols-outlined pd-sep" aria-hidden="true">chevron_right</span>
   @for (seg of segments(); track $index; let last = $last) {
-    <span class="fm-segment fm-measure-seg" [class.fm-current]="last">{{ seg.label }}</span>
+    <span class="pd-segment pd-measure-seg" [class.pd-current]="last">{{ seg.label }}</span>
   }
 </div>
 
@@ -91,6 +91,6 @@
   Off-screen sizer: a copy of the `…` button so its real width can be measured and cached
   (the live button only exists while segments are collapsed). Never painted; out of flow.
 -->
-<span #overflowSizer class="fm-overflow fm-offscreen" aria-hidden="true">
-  <span class="material-symbols-outlined fm-ellipsis" aria-hidden="true">more_horiz</span>
+<span #overflowSizer class="pd-overflow pd-offscreen" aria-hidden="true">
+  <span class="material-symbols-outlined pd-ellipsis" aria-hidden="true">more_horiz</span>
 </span>

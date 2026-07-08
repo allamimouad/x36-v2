@@ -47,7 +47,7 @@ const FILE_EXTENSION_ICONS: Readonly<Record<string, FileExtensionIconName>> = {
     styleUrl: './file-system-icon.scss'
 })
 export class FileSystemIcon {
-    private static readonly iconBasePath = 'assets/file-manager/icons';
+    private static readonly iconBasePath = 'assets/icons/sharepoint-file-type-icons';
 
     public readonly name = input<FileSystemIconName>(DEFAULT_FILE_ICON);
     public readonly fileName = input<string | null>(null);
