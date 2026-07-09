@@ -7,19 +7,19 @@
     <ng-template pTemplate="header">
       <tr>
         <th pSortableColumn="name" style="width: 34%">
-          File Name <p-sortIcon field="name" />
+          <div class="pd-th"><span class="pd-th-label">File Name</span> <p-sortIcon field="name" /></div>
         </th>
         <th pSortableColumn="typeLabel" style="width: 14%">
-          Type <p-sortIcon field="typeLabel" />
+          <div class="pd-th"><span class="pd-th-label">Type</span> <p-sortIcon field="typeLabel" /></div>
         </th>
         <th pSortableColumn="modifiedAt" style="width: 18%">
-          Last Modified <p-sortIcon field="modifiedAt" />
+          <div class="pd-th"><span class="pd-th-label">Last Modified</span> <p-sortIcon field="modifiedAt" /></div>
         </th>
         <th pSortableColumn="modifiedBy" style="width: 20%">
-          Last Modified By <p-sortIcon field="modifiedBy" />
+          <div class="pd-th"><span class="pd-th-label">Last Modified By</span> <p-sortIcon field="modifiedBy" /></div>
         </th>
         <th pSortableColumn="sortSize" style="width: 14%" class="pd-col-size">
-          Size <p-sortIcon field="sortSize" />
+          <div class="pd-th"><span class="pd-th-label">Size</span> <p-sortIcon field="sortSize" /></div>
         </th>
       </tr>
     </ng-template>
@@ -37,12 +37,54 @@
             } @else {
               <pr-file-system-icon [fileName]="row.node.name" />
             }
-            <span class="pd-name-text">{{ row.name }}</span>
+            <span
+              class="pd-name-text"
+              [pTooltip]="row.name"
+              tooltipPosition="top"
+              tooltipStyleClass="pd-cell-tooltip"
+              [showDelay]="300"
+              [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':name'"
+              (mouseenter)="onCellMouseEnter($event, row.id + ':name')"
+              >{{ row.name }}</span
+            >
           </span>
         </td>
-        <td class="pd-muted">{{ row.typeLabel }}</td>
-        <td class="pd-muted">{{ row.modifiedAt | date: 'dd-MM-yyyy HH:mm' }}</td>
-        <td class="pd-muted">{{ row.modifiedBy }}</td>
+        <td class="pd-muted">
+          <span
+            class="pd-cell-text"
+            [pTooltip]="row.typeLabel"
+            tooltipPosition="top"
+            tooltipStyleClass="pd-cell-tooltip"
+            [showDelay]="300"
+            [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':type'"
+            (mouseenter)="onCellMouseEnter($event, row.id + ':type')"
+            >{{ row.typeLabel }}</span
+          >
+        </td>
+        <td class="pd-muted">
+          <span
+            class="pd-cell-text"
+            [pTooltip]="(row.modifiedAt | date: 'dd-MM-yyyy HH:mm') ?? ''"
+            tooltipPosition="top"
+            tooltipStyleClass="pd-cell-tooltip"
+            [showDelay]="300"
+            [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':modified'"
+            (mouseenter)="onCellMouseEnter($event, row.id + ':modified')"
+            >{{ row.modifiedAt | date: 'dd-MM-yyyy HH:mm' }}</span
+          >
+        </td>
+        <td class="pd-muted">
+          <span
+            class="pd-cell-text"
+            [pTooltip]="row.modifiedBy"
+            tooltipPosition="top"
+            tooltipStyleClass="pd-cell-tooltip"
+            [showDelay]="300"
+            [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':modifiedBy'"
+            (mouseenter)="onCellMouseEnter($event, row.id + ':modifiedBy')"
+            >{{ row.modifiedBy }}</span
+          >
+        </td>
         <td class="pd-col-size pd-muted">{{ row.sizeLabel }}</td>
       </tr>
     </ng-template>

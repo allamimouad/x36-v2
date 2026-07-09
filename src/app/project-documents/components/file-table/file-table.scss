@@ -21,6 +21,10 @@
 
   .p-datatable-table {
     font-size: 0.875rem;
+    // Make the header percentage widths hard caps so a long file name truncates
+    // inside its cell instead of stretching the Name column.
+    table-layout: fixed;
+    width: 100%;
   }
 
   // Header: light, compact, uppercase-ish enterprise look
@@ -39,30 +43,66 @@
     border-bottom: 1px solid var(--pd-border-subtle);
   }
 
+  // Shared hover color with the folder tree (see folder-tree.scss).
   .p-datatable-tbody > tr:hover {
-    background: var(--pd-selection-bg);
+    background: var(--pd-hover-bg);
   }
 }
 
 .pd-name {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.55rem;
   min-width: 0;
 }
 
 .pd-name-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .pd-name pr-file-system-icon {
+  flex: 0 0 auto;
   --pd-icon-size: 1rem;
+}
+
+/*
+ * Header cell content. The flex wrapper lives INSIDE the th (a flex th would stop
+ * being display: table-cell and break the fixed column layout); the label shrinks
+ * with ellipsis while the sort icon keeps its space at any column width.
+ */
+.pd-th {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.pd-th-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pd-th p-sorticon {
+  flex: 0 0 auto;
+}
+
+.pd-col-size .pd-th {
+  justify-content: flex-end;
 }
 
 .pd-muted {
   color: var(--pd-text-muted);
+}
+
+// Muted-column text. Ellipsis + truncation measurement live on this padding-less
+// span (not the padded td) so `scrollWidth > clientWidth` trips exactly when clipped.
+.pd-cell-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -82,4 +122,11 @@
   text-align: center;
   padding: 2rem;
   color: var(--pd-text-muted);
+}
+
+// Full file names need more room than the theme's 12.5rem tooltip cap. Unscoped on
+// purpose (tooltips attach to <body>), bounded by the .pd-cell-tooltip class only
+// this component's tooltips carry.
+::ng-deep .p-tooltip.pd-cell-tooltip {
+  max-width: min(40rem, 90vw);
 }

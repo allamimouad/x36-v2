@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { TableModule } from 'primeng/table';
 import { ProgressSpinner } from 'primeng/progressspinner';
+import { Tooltip } from 'primeng/tooltip';
 import {
     isFolder,
     type FileNode,
@@ -28,7 +29,7 @@ interface RowVm {
     selector: 'pr-file-table',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [TableModule, ProgressSpinner, DatePipe, FileSystemIcon],
+    imports: [TableModule, ProgressSpinner, Tooltip, DatePipe, FileSystemIcon],
     templateUrl: './file-table.html',
     styleUrl: './file-table.scss'
 })
@@ -72,8 +73,22 @@ export class FileTable {
         return out;
     });
 
+    /**
+     * Cell (row id + column key) whose tooltip is suppressed because its text fully
+     * fits. Truncation is measured at hover time (it depends on the live column width),
+     * and the tooltip is disabled-on-demand rather than enabled-on-demand: pTooltip's
+     * `tooltipDisabled` setter cancels its own pending delayed show whenever the value
+     * changes mid-hover, so flipping it to "enabled" during the hover would never show.
+     */
+    protected readonly tooltipSuppressedCellId = signal<string | null>(null);
+
     protected onRowDblClick(row: RowVm): void {
         this.itemDoubleClicked.emit(row.node);
+    }
+
+    protected onCellMouseEnter(event: MouseEvent, cellId: string): void {
+        const el = event.currentTarget as HTMLElement;
+        this.tooltipSuppressedCellId.set(el.scrollWidth > el.clientWidth ? null : cellId);
     }
 }
 

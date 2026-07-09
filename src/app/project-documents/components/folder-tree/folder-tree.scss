@@ -21,6 +21,13 @@
   border-radius: 6px;
 }
 
+// Drive the node hover off the shared feature token so the tree and the file
+// table hover in the same color. Overriding the component token (not the rule)
+// keeps PrimeNG's selected-node handling intact.
+:host ::ng-deep .pd-tree {
+  --p-tree-node-hover-background: var(--pd-hover-bg);
+}
+
 .pd-tree-node {
   display: inline-flex;
   align-items: center;
