@@ -164,10 +164,22 @@ describe('FileSystemStore project-scoped API contract', () => {
 
         await store.loadChildren(unavailable.id);
 
-        expect(store.errorByParentId()[unavailable.id]).toContain(
-            'Folder is no longer available'
-        );
+        expect(store.errorByParentId()[unavailable.id]?.code).toBe('not-found');
         expect(store.folderIdsWithLoadingChildren()).not.toContain(unavailable.id);
+    });
+
+    it('keeps a typed transient error while retaining an already-loaded listing', async () => {
+        const roots = await store.initialize('project-123');
+        const executionRoot = requireRoot(roots.execution, 'execution');
+        spyOn(api, 'listDocuments').and.returnValue(
+            throwError(() => new FileSystemError('network', 'Technical transport details'))
+        );
+
+        await store.loadChildren(executionRoot.id);
+
+        expect(store.errorByParentId()[executionRoot.id]?.code).toBe('network');
+        expect(store.folderIdsWithLoadedChildren()).toContain(executionRoot.id);
+        expect(store.entities().some((node) => node.parentId === executionRoot.id)).toBeTrue();
     });
 
     it('passes the initialized project id to mutation operations', async () => {

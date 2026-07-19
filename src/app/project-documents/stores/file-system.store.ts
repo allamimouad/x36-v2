@@ -45,7 +45,7 @@ import { FileSystemApi } from '../services/file-system-api';
 interface FileSystemState {
     projectId: string | null;
     folderIdsWithLoadingChildren: string[];
-    errorByParentId: Record<string, string | undefined>;
+    errorByParentId: Record<string, FileSystemError | undefined>;
     folderIdsWithLoadedChildren: string[];
     rootIdByList: Record<DocumentListKey, string | null>;
     /** True while a typed-path / breadcrumb-path resolve is in flight. */
@@ -96,7 +96,7 @@ export const FileSystemStore = signalStore(
                     .filter((id) => id !== folderId)
             });
         };
-        const _setError = (parentId: string, error: string | undefined): void => {
+        const _setError = (parentId: string, error: FileSystemError | undefined): void => {
             patchState(store, {
                 errorByParentId: { ...store.errorByParentId(), [parentId]: error }
             });
@@ -259,8 +259,7 @@ export const FileSystemStore = signalStore(
                 );
                 _applyListing(listing);
             } catch (e) {
-                // TODO: map the error code to an exact user message with the error-handling US.
-                _setError(parentId, errorMessage(e));
+                _setError(parentId, toFileSystemError(e));
             } finally {
                 _unmarkLoading(parentId);
             }
@@ -558,19 +557,24 @@ function fileSystemDevtoolsFeature(): SignalStoreFeature<EmptyFeatureResult, Emp
 
 export type FileSystemStoreInstance = InstanceType<typeof FileSystemStore>;
 
-function compactErrors(errors: Record<string, string | undefined>): Record<string, string> {
-    return Object.entries(errors).reduce<Record<string, string>>((acc, [id, message]) => {
-        if (message !== undefined) { acc[id] = message; }
-
-        return acc;
-    }, {});
+interface DevtoolsFileSystemError {
+    code: FileSystemError['code'];
+    message: string;
 }
 
-function errorMessage(e: unknown): string {
-    if (e instanceof FileSystemError) { return e.message; }
-    if (e instanceof Error) { return e.message; }
+function compactErrors(
+    errors: Record<string, FileSystemError | undefined>
+): Record<string, DevtoolsFileSystemError> {
+    return Object.entries(errors).reduce<Record<string, DevtoolsFileSystemError>>(
+        (acc, [id, error]) => {
+            if (error !== undefined) {
+                acc[id] = { code: error.code, message: error.message };
+            }
 
-    return 'Unknown error';
+            return acc;
+        },
+        {}
+    );
 }
 
 function toFileSystemError(e: unknown): FileSystemError {

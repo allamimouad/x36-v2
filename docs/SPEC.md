@@ -354,7 +354,7 @@ export abstract class FileSystemApi {
 
 **`FileSystemStore`** (entity cache, keyed by `id`):
 - Entities: `FileSystemNode`
-- State: `projectId: string | null`, `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, string | undefined>`, `folderIdsWithLoadedChildren: string[]`, `rootIdByList: Record<DocumentListKey, string | null>`, `isInitializing: boolean`, `initializedRoots: DocumentListRoots | null`
+- State: `projectId: string | null`, `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, FileSystemError | undefined>`, `folderIdsWithLoadedChildren: string[]`, `rootIdByList: Record<DocumentListKey, string | null>`, `isInitializing: boolean`, `initializedRoots: DocumentListRoots | null`
 - Methods: `connectProject(projectId)` (reactive `rxMethod`: the container passes its `projectId` input signal once; every change resets project state and re-initializes, with `switchMap` cancelling any in-flight load; imperative calls with a plain id retry the same project), `initialize(projectId)` (promise facade over one initialization — returns `DocumentListRoots` with each list marked `loaded`, `not-found`, or `error`; used by unit tests), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(id, newName)`, `delete(ids)`, `move(ids, targetParentId)`, `copy(ids, targetParentId)`, `invalidate(parentId)`, `upload(parentId, files)`
 - Depends on `FileSystemApi` (injected), not on a concrete class
 
@@ -381,7 +381,7 @@ All stores and feature services are provided at `ProjectDocuments` level.
 - **`UploadService`** — upload queue with concurrency limit; exposes task signals for the panel
 - **`ClipboardService`** — small signal-based clipboard state holder
 - **`ConcurrencyQueue`** — generic promise-based queue, max N concurrent; used for bulk ops and uploads
-- **`NotificationService`** — wraps `MessageService` (p-toast); centralizes success/error messages
+- **`NotificationService`** — component-scoped wrapper around `MessageService` (`p-toast`); centralizes severity/lifetime defaults, safe `FileSystemError.code` → user-message mapping, technical console logging, and optional Retry actions. `ProjectDocuments` owns the decision to notify; stores and dumb components do not inject it.
 
 ### 8.3 Components
 
@@ -507,9 +507,11 @@ Name collision on create/rename/move/copy/upload:
 ## 12. Error Handling
 
 - All `FileSystemError` codes map to user-friendly messages via `NotificationService`
+- Persistent states that prevent the current folder from displaying (`not-found`, permission, or a first load with no usable cache) render in the table area. Transient revalidation failures keep cached rows visible and use a toast. Never show the same failure in both places.
+- `FileSystemStore.errorByParentId` retains typed `FileSystemError` values so the container can make that inline-vs-toast decision without parsing backend text.
 - All mutations show toast on error (and success for bulk)
 - A failed write applied nothing to the store (pessimistic), so the toast is the whole recovery — no rollback
-- Network errors offer Retry action in toast
+- Only typed `FileSystemError('network')` failures offer a Retry action in the custom toast template. Unknown/untyped errors may indicate a programming defect and must not be retried blindly; deterministic failures such as `not-found` and permission errors also have no Retry action.
 - Never swallow errors silently
 
 ---

@@ -123,7 +123,7 @@
 - `stores/navigation.store.ts` — add `startRename`, `endRename`
 
 **Services**
-- `services/notification.service.ts` — wraps `MessageService`, methods: `success(message)`, `error(message, retry?)`, `warning(message)`, `info(message)`
+- `services/notification.service.ts` — component-scoped wrapper around `MessageService`; methods: `success(message)`, `error(error, retry?)`, `warning(message)`, `info(message)`, `userMessageFor(error)`, `clear()`. `ProjectDocuments` decides inline state vs toast from typed store errors; retry actions use the custom `p-toast` template.
 
 **Components**
 - `components/dialogs/create-folder-dialog.ts` — reactive form, name validation, disabled submit on invalid

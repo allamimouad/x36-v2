@@ -10,10 +10,11 @@ import {
     untracked
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import type { TreeNode } from 'primeng/api';
+import { MessageService, type ToastMessageOptions, type TreeNode } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { SplitterModule } from 'primeng/splitter';
+import { Toast } from 'primeng/toast';
 import { TooltipModule } from 'primeng/tooltip';
 import {
     DOCUMENT_LIST_LABELS,
@@ -27,9 +28,14 @@ import {
     type FileSystemNode,
     type FolderNode
 } from './models/file-system-node.model';
+import { FileSystemError } from './models/file-system-error.model';
 import { FileSystemApi } from './services/file-system-api';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
 import { ClipboardService } from './services/clipboard.service';
+import {
+    NotificationService,
+    PROJECT_DOCUMENTS_TOAST_KEY
+} from './services/notification.service';
 import { FileSystemReader } from './stores/file-system-reader';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore, type PathSegment } from './stores/navigation.store';
@@ -52,6 +58,7 @@ import { NavToolbar } from './components/nav-toolbar/nav-toolbar';
         ButtonModule,
         InputTextModule,
         SplitterModule,
+        Toast,
         TooltipModule
     ],
     providers: [
@@ -59,6 +66,8 @@ import { NavToolbar } from './components/nav-toolbar/nav-toolbar';
         { provide: FileSystemReader, useExisting: FileSystemStore },
         NavigationStore,
         ClipboardService,
+        MessageService,
+        NotificationService,
         { provide: FileSystemApi, useClass: MockFileSystemApi }
     ],
     templateUrl: './project-documents.html',
@@ -74,7 +83,9 @@ export class ProjectDocuments {
     protected readonly fileSystem = inject(FileSystemStore);
     protected readonly navigation = inject(NavigationStore);
     protected readonly clipboard = inject(ClipboardService);
+    protected readonly notifications = inject(NotificationService);
     protected readonly config = inject(FILE_MANAGER_CONFIG);
+    protected readonly notificationKey = PROJECT_DOCUMENTS_TOAST_KEY;
 
     /** Address-bar edit state (owned here; PathBar is a controlled child). */
     protected readonly pathEditing = signal(false);
@@ -148,6 +159,13 @@ export class ProjectDocuments {
         return this.fileSystem.folderIdsWithLoadingChildren().includes(id);
     });
 
+    protected readonly currentFolderReadError = computed<FileSystemError | null>(() => {
+        const id = this.navigation.currentFolderId();
+        if (!id) { return null; }
+
+        return this.fileSystem.errorByParentId()[id] ?? null;
+    });
+
     protected readonly currentFolderError = computed<string | null>(() => {
         // `currentFolder()` (not `currentFolderId()`): after switching to a project with no
         // roots, navigation may still hold the previous project's id, but its entity is
@@ -159,8 +177,15 @@ export class ProjectDocuments {
         if (navError) { return navError; }
         const id = this.navigation.currentFolderId();
         if (!id) { return null; }
+        const readError = this.currentFolderReadError();
+        if (!readError) { return null; }
+        const hasUsableCache = this.fileSystem.folderIdsWithLoadedChildren().includes(id);
+        const blocksContent =
+            readError.code === 'not-found' ||
+            readError.code === 'permission-denied' ||
+            !hasUsableCache;
 
-        return this.fileSystem.errorByParentId()[id] ?? null;
+        return blocksContent ? this.notifications.userMessageFor(readError) : null;
     });
 
     protected readonly statusText = computed(() => {
@@ -188,6 +213,29 @@ export class ProjectDocuments {
             const roots = this.fileSystem.initializedRoots();
             if (!roots) { return; }
             untracked(() => this.onProjectInitialized(roots));
+        });
+        const notifiedReadErrors = new Map<string, FileSystemError>();
+        effect(() => {
+            const errors = this.fileSystem.errorByParentId();
+            const currentFolderId = this.navigation.currentFolderId();
+            const currentFolderError = this.currentFolderError();
+            untracked(() => {
+                for (const id of notifiedReadErrors.keys()) {
+                    if (!errors[id]) { notifiedReadErrors.delete(id); }
+                }
+                for (const [parentId, readError] of Object.entries(errors)) {
+                    if (!readError || notifiedReadErrors.get(parentId) === readError) { continue; }
+                    notifiedReadErrors.set(parentId, readError);
+                    const isInlineCurrentError =
+                        parentId === currentFolderId && currentFolderError !== null;
+                    if (isInlineCurrentError) { continue; }
+                    const retry = this.retryForReadError(
+                        readError,
+                        () => void this.fileSystem.loadChildren(parentId)
+                    );
+                    this.notifications.error(readError, retry);
+                }
+            });
         });
     }
 
@@ -241,7 +289,10 @@ export class ProjectDocuments {
                 await this.resolveAndOpen(seg.listKey, seg.path);
                 this.closePathEditor();
             } catch (e) {
-                console.error('[project-documents] breadcrumb resolve failed', e);
+                this.notifications.error(
+                    e,
+                    this.retryForReadError(e, () => void this.onSegmentClicked(seg))
+                );
             }
         }
     }
@@ -264,8 +315,17 @@ export class ProjectDocuments {
             await this.resolveAndOpen(listKey, segments.slice(1).join('/'));
             this.pathError.set(null);
             this.pathEditing.set(false);
-        } catch {
-            this.pathError.set('No folder matches that path.');
+        } catch (e) {
+            if (e instanceof FileSystemError && e.code === 'not-found') {
+                this.pathError.set('No folder matches that path.');
+
+                return;
+            }
+            this.pathError.set(null);
+            this.notifications.error(
+                e,
+                this.retryForReadError(e, () => void this.onPathSubmitted(raw))
+            );
         }
     }
 
@@ -283,7 +343,10 @@ export class ProjectDocuments {
                 await this.resolveAndOpen(ctx.listKey, parentPath);
                 this.closePathEditor();
             } catch (e) {
-                console.error('[project-documents] up resolve failed', e);
+                this.notifications.error(
+                    e,
+                    this.retryForReadError(e, () => void this.onUp())
+                );
             }
 
             return;
@@ -310,6 +373,10 @@ export class ProjectDocuments {
     protected onEditCancelled(): void {
         this.pathError.set(null);
         this.pathEditing.set(false);
+    }
+
+    protected runNotificationRetry(message: ToastMessageOptions): void {
+        this.notifications.runRetry(message);
     }
 
     protected onRefresh(): void {
@@ -374,12 +441,13 @@ export class ProjectDocuments {
 
     /** Runs after every completed initialization (first load, project switch, retry). */
     private onProjectInitialized(roots: DocumentListRoots): void {
-        this.logRootLoadErrors(roots);
+        this.notifications.clear();
         this.clipboard.clear();
         this.closePathEditor();
         const marketingRoot = this.rootFromStatus(roots.marketing);
         const executionRoot = this.rootFromStatus(roots.execution);
         const currentRoot = marketingRoot ?? executionRoot;
+        this.notifyRootLoadErrors(roots, currentRoot !== null);
         // No root at all: leave navigation untouched — `bootstrapError` derives the
         // message from the same roots result.
         if (!currentRoot) { return; }
@@ -414,12 +482,26 @@ export class ProjectDocuments {
             : 'Documents could not be loaded. Try refreshing.';
     }
 
-    private logRootLoadErrors(roots: DocumentListRoots): void {
+    private notifyRootLoadErrors(roots: DocumentListRoots, hasUsableRoot: boolean): void {
         for (const key of DOCUMENT_LIST_KEYS) {
             const root = roots[key];
             if (root.status !== 'error') { continue; }
+            if (hasUsableRoot) {
+                this.notifications.error(
+                    root.error,
+                    this.retryForReadError(root.error, () => {
+                        this.fileSystem.connectProject(this.projectId());
+                    })
+                );
+
+                continue;
+            }
             console.error(`[project-documents] ${key} documents could not be loaded`, root.error);
         }
+    }
+
+    private retryForReadError(error: unknown, retry: () => void): (() => void) | undefined {
+        return error instanceof FileSystemError && error.code === 'network' ? retry : undefined;
     }
 
     /** Walk up from `candidateId` via parentId; true if `ancestorId` is hit (or is it). */

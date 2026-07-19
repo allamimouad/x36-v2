@@ -1,4 +1,44 @@
 <div class="pd-root">
+  <p-toast [key]="notificationKey" position="top-right" styleClass="pd-notifications">
+    <ng-template #message let-message>
+      <div class="pd-toast-layout">
+        @switch (message.severity) {
+          @case ('success') {
+            <span class="material-symbols-outlined pd-toast-symbol" aria-hidden="true">check_circle</span>
+          }
+          @case ('warn') {
+            <span class="material-symbols-outlined pd-toast-symbol" aria-hidden="true">warning</span>
+          }
+          @case ('error') {
+            <span class="material-symbols-outlined pd-toast-symbol" aria-hidden="true">error</span>
+          }
+          @default {
+            <span class="material-symbols-outlined pd-toast-symbol" aria-hidden="true">info</span>
+          }
+        }
+        <div class="pd-toast-copy">
+          <strong class="pd-toast-summary">{{ message.summary }}</strong>
+          <span class="pd-toast-detail">{{ message.detail }}</span>
+          @if (notifications.hasRetry(message)) {
+            <button
+              pButton
+              type="button"
+              class="pd-toast-retry"
+              severity="secondary"
+              [text]="true"
+              aria-label="Retry operation"
+              data-testid="pd-toast-retry"
+              (click)="runNotificationRetry(message)"
+            >
+              <span class="material-symbols-outlined pd-toast-retry-symbol" aria-hidden="true">refresh</span>
+              <span>Retry</span>
+            </button>
+          }
+        </div>
+      </div>
+    </ng-template>
+  </p-toast>
+
   <header class="pd-header">
     <h1 class="pd-title">{{ config.libraryRootName }}</h1>
   </header>
