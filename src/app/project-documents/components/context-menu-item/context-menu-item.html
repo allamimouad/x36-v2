@@ -1,0 +1,17 @@
+<button
+  type="button"
+  tabindex="-1"
+  class="pd-context-item"
+  [disabled]="item().disabled"
+  [attr.data-testid]="item()['data']?.testId"
+>
+  <span class="material-symbols-outlined pd-context-symbol" aria-hidden="true">
+    {{ item()['data']?.symbol }}
+  </span>
+  <span class="pd-context-label">{{ item().label }}</span>
+  @if (item().items?.length) {
+    <span class="material-symbols-outlined pd-context-chevron" aria-hidden="true">
+      chevron_right
+    </span>
+  }
+</button>

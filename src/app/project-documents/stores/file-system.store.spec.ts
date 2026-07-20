@@ -196,6 +196,20 @@ describe('FileSystemStore project-scoped API contract', () => {
         );
     });
 
+    it('keeps the canonical unique folder name returned by the backend', async () => {
+        const roots = await store.initialize('project-123');
+        const executionRoot = requireRoot(roots.execution, 'execution');
+
+        const first = await store.createFolder(executionRoot.id, 'New folder');
+        const second = await store.createFolder(executionRoot.id, 'New folder');
+        const third = await store.createFolder(executionRoot.id, 'New folder');
+
+        expect(first.name).toBe('New folder');
+        expect(second.name).toBe('New folder (1)');
+        expect(third.name).toBe('New folder (2)');
+        expect(store.entityMap()[second.id]?.name).toBe('New folder (1)');
+    });
+
     it('leaves the store unchanged when a write fails', async () => {
         const { execution: root } = await store.initialize('project-123');
         const executionRoot = requireRoot(root, 'execution');

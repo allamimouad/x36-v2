@@ -10,9 +10,39 @@
   styleClass="pd-tree"
 >
   <ng-template let-node pTemplate="default">
-    <span class="pd-tree-node">
+    <span
+      class="pd-tree-node"
+      [class.pd-tree-node-writing]="writingIds().has(node.key)"
+      (contextmenu)="handleContextMenu($event, node)"
+    >
       <pr-file-system-icon name="folder" />
-      <span class="pd-tree-label">{{ node.label }}</span>
+      @if (renamingId() === node.key) {
+        <span class="pd-tree-inline-rename">
+          <input
+            pInputText
+            #renameInput
+            type="text"
+            class="pd-tree-inline-rename-input"
+            [value]="inlineRenameValue()"
+            [disabled]="writingIds().has(node.key)"
+            [attr.aria-invalid]="renameError() ? 'true' : null"
+            aria-label="Rename folder"
+            (click)="$event.stopPropagation()"
+            (dblclick)="$event.stopPropagation()"
+            (input)="onInlineRenameInput($event)"
+            (keydown)="onInlineRenameKeydown($event, node)"
+            (blur)="onInlineRenameBlur(node)"
+          />
+          @if (renameError(); as error) {
+            <small class="pd-tree-inline-rename-error" role="alert">{{ error }}</small>
+          }
+        </span>
+      } @else {
+        <span class="pd-tree-label">{{ node.label }}</span>
+      }
+      @if (writingIds().has(node.key)) {
+        <span class="material-symbols-outlined pd-write-spinner" aria-hidden="true">progress_activity</span>
+      }
     </span>
   </ng-template>
 </p-tree>

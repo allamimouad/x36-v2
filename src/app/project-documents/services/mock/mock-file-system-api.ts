@@ -10,7 +10,7 @@ import {
     type FolderNode
 } from '../../models/file-system-node.model';
 import { joinPath } from '../../utils/path.utils';
-import { validateName } from '../../utils/naming.utils';
+import { resolveNameCollision, validateName } from '../../utils/naming.utils';
 import { FileSystemApi } from '../file-system-api';
 import { MOCK_CONFIG, type MockConfig } from './mock-config.token';
 import { buildSeed } from './mock-seed';
@@ -84,14 +84,21 @@ export class MockFileSystemApi extends FileSystemApi {
         return this.write(() => {
             const parentNode = this.requireFolder(parent.id);
             this.assertValidName(name);
-            this.assertNameAvailable(parentNode.id, name);
+            const requestedName = name.trim();
+            const canonicalName = resolveNameCollision(
+                requestedName,
+                [...this.nodes.values()]
+                    .filter((node) => node.parentId === parentNode.id)
+                    .map((node) => node.name),
+                1
+            );
 
             const now = nowIso();
             const folder: FolderNode = {
                 kind: 'folder',
                 id: crypto.randomUUID(),
-                path: joinPath(parentNode.path, name.trim()),
-                name: name.trim(),
+                path: joinPath(parentNode.path, canonicalName),
+                name: canonicalName,
                 parentId: parentNode.id,
                 itemCount: 0,
                 createdAt: now,

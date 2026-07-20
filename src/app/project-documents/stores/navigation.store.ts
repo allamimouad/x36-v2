@@ -314,6 +314,10 @@ export const NavigationStore = signalStore(
             patchState(store, { expandedTreeIds: new Set(ids) });
         };
 
+        const focus = (id: string | null): void => {
+            patchState(store, { focusedId: id });
+        };
+
         const startRename = (id: string): void => {
             patchState(store, { focusedId: id, renamingId: id });
         };
@@ -333,6 +337,7 @@ export const NavigationStore = signalStore(
             expand,
             collapse,
             setExpanded,
+            focus,
             pruneReferences,
             // TODO: implement with the multi-select US.
             select(_id: string, _mode: 'single' | 'toggle' | 'range'): void {

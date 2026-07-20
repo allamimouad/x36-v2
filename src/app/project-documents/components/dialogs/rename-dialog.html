@@ -1,0 +1,39 @@
+<p-dialog
+  header="Rename file"
+  appendTo="body"
+  styleClass="pd-action-dialog"
+  [modal]="true"
+  [draggable]="false"
+  [resizable]="false"
+  [closable]="!submitting()"
+  [closeOnEscape]="!submitting()"
+  [visible]="visible()"
+  (visibleChange)="onVisibleChange($event)"
+  (onShow)="onShow()"
+>
+  <form class="pd-action-form" [formGroup]="form" (ngSubmit)="submit()">
+    <label for="pd-rename-name">New name</label>
+    <input
+      pInputText
+      #nameInput
+      id="pd-rename-name"
+      type="text"
+      formControlName="name"
+      autocomplete="off"
+      [attr.aria-invalid]="validationError() ? 'true' : null"
+      [attr.aria-describedby]="validationError() ? 'pd-rename-error' : null"
+      (input)="onNameInput()"
+    />
+    @if (validationError(); as error) {
+      <small id="pd-rename-error" class="pd-action-error" role="alert">{{ error }}</small>
+    }
+    <div class="pd-action-footer">
+      <button pButton type="button" severity="secondary" [outlined]="true" [disabled]="submitting()" (click)="cancel()">
+        Cancel
+      </button>
+      <button pButton type="submit" [disabled]="form.invalid || submitting()" data-testid="pd-rename-submit">
+        {{ submitting() ? 'Renaming…' : 'Rename' }}
+      </button>
+    </div>
+  </form>
+</p-dialog>

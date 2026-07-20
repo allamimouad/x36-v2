@@ -133,6 +133,9 @@ describe('NavigationStore', () => {
     });
 
     it('startRename tracks the focused and renaming item, and endRename clears rename mode', () => {
+        nav.focus(sharedId);
+        expect(nav.focusedId()).toBe(sharedId);
+
         nav.startRename(docsId);
         expect(nav.focusedId()).toBe(docsId);
         expect(nav.renamingId()).toBe(docsId);

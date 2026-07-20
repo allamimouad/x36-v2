@@ -51,10 +51,10 @@
  *                                     Files/UniqueId,Files/Name,
  *                                     Files/ServerRelativeUrl,Files/Length,
  *                                     Files/TimeCreated,Files/TimeLastModified
- *   createFolder    POST   /_api/web/Folders
- *                            body: { '__metadata': { type: 'SP.Folder' },
- *                                    ServerRelativeUrl: '<parent.path>/<name>' }
- *                            Extract UniqueId from the response to set the new node's id.
+ *   createFolder    POST   the generated backend operation that creates a folder with
+ *                            unique-name behavior. Return its canonical Name,
+ *                            ServerRelativeUrl, and UniqueId; collision resolution must
+ *                            be atomic on the backend side.
  *   rename          POST   /_api/web/GetFolderById('<node.id>')/MoveTo (or GetFileById)
  *                            newurl = `${parentOf(node.path)}/${newName}`
  *   move            POST   .../GetFolderById('<node.id>')/MoveTo
@@ -146,8 +146,9 @@ export class SharePointFileSystemApi extends FileSystemApi {
     }
 
     /**
-   * POST /_api/web/Folders with ServerRelativeUrl=`${parent.path}/${name}`.
-   * Extract UniqueId from the response to set the new FolderNode.id.
+   * Request creation with `name`, using the backend's unique-name behavior when the
+   * requested name already exists. Return the canonical persisted name/path and extract
+   * UniqueId from the response to set the new FolderNode.id.
    */
     public override createFolder(
         _projectId: string,

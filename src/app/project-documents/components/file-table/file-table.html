@@ -1,9 +1,10 @@
-@if (loading()) {
-  <div class="pd-loading">
-    <p-progressSpinner styleClass="pd-spinner" strokeWidth="3" />
-  </div>
-} @else {
-  <p-table [value]="rows()" dataKey="id" styleClass="pd-table" [scrollable]="true" scrollHeight="flex">
+<div class="pd-table-surface" (contextmenu)="onEmptyContextMenu($event)">
+  @if (loading()) {
+    <div class="pd-loading">
+      <p-progressSpinner styleClass="pd-spinner" strokeWidth="3" />
+    </div>
+  } @else {
+    <p-table [value]="rows()" dataKey="id" styleClass="pd-table" [scrollable]="true" scrollHeight="flex">
     <ng-template pTemplate="header">
       <tr>
         <th pSortableColumn="name" style="width: 34%">
@@ -26,28 +27,60 @@
     <ng-template pTemplate="body" let-row>
       <tr
         [attr.data-testid]="'pd-row-' + row.id"
+        [class.pd-row-focused]="focusedId() === row.id"
+        [class.pd-row-writing]="writingIds().has(row.id)"
+        tabindex="0"
+        (click)="onRowClick(row)"
+        (keydown)="onRowKeydown($event, row)"
         (dblclick)="onRowDblClick(row)"
+        (contextmenu)="onRowContextMenu($event, row)"
         class="pd-row"
         [class.pd-row-folder]="row.kind === 'folder'"
       >
         <td>
-          <span class="pd-name">
-            @if (row.kind === 'folder') {
-              <pr-file-system-icon name="folder" />
-            } @else {
-              <pr-file-system-icon [fileName]="row.node.name" />
-            }
-            <span
-              class="pd-name-text"
-              [pTooltip]="row.name"
-              tooltipPosition="top"
-              tooltipStyleClass="pd-cell-tooltip"
-              [showDelay]="300"
-              [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':name'"
-              (mouseenter)="onCellMouseEnter($event, row.id + ':name')"
-              >{{ row.name }}</span
-            >
-          </span>
+          @if (renamingId() === row.id) {
+            <div class="pd-inline-rename">
+              <input
+                pInputText
+                #renameInput
+                type="text"
+                class="pd-inline-rename-input"
+                [value]="inlineRenameValue()"
+                [disabled]="writingIds().has(row.id)"
+                [attr.aria-invalid]="renameError() ? 'true' : null"
+                aria-label="Rename item"
+                (click)="$event.stopPropagation()"
+                (dblclick)="$event.stopPropagation()"
+                (input)="onInlineRenameInput($event)"
+                (keydown)="onInlineRenameKeydown($event, row)"
+                (blur)="onInlineRenameBlur(row)"
+              />
+              @if (renameError(); as error) {
+                <small class="pd-inline-rename-error" role="alert">{{ error }}</small>
+              }
+            </div>
+          } @else {
+            <span class="pd-name">
+              @if (row.kind === 'folder') {
+                <pr-file-system-icon name="folder" />
+              } @else {
+                <pr-file-system-icon [fileName]="row.node.name" />
+              }
+              <span
+                class="pd-name-text"
+                [pTooltip]="row.name"
+                tooltipPosition="top"
+                tooltipStyleClass="pd-cell-tooltip"
+                [showDelay]="300"
+                [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':name'"
+                (mouseenter)="onCellMouseEnter($event, row.id + ':name')"
+                >{{ row.name }}</span
+              >
+              @if (writingIds().has(row.id)) {
+                <span class="material-symbols-outlined pd-write-spinner" aria-hidden="true">progress_activity</span>
+              }
+            </span>
+          }
         </td>
         <td class="pd-muted">
           <span
@@ -93,5 +126,6 @@
         <td colspan="5" class="pd-empty">This folder is empty.</td>
       </tr>
     </ng-template>
-  </p-table>
-}
+    </p-table>
+  }
+</div>

@@ -1,5 +1,5 @@
 <div class="pd-root">
-  <p-toast [key]="notificationKey" position="top-right" styleClass="pd-notifications">
+  <p-toast [key]="notificationKey" position="bottom-center" styleClass="pd-notifications">
     <ng-template #message let-message>
       <div class="pd-toast-layout">
         @switch (message.severity) {
@@ -17,24 +17,23 @@
           }
         }
         <div class="pd-toast-copy">
-          <strong class="pd-toast-summary">{{ message.summary }}</strong>
           <span class="pd-toast-detail">{{ message.detail }}</span>
-          @if (notifications.hasRetry(message)) {
-            <button
-              pButton
-              type="button"
-              class="pd-toast-retry"
-              severity="secondary"
-              [text]="true"
-              aria-label="Retry operation"
-              data-testid="pd-toast-retry"
-              (click)="runNotificationRetry(message)"
-            >
-              <span class="material-symbols-outlined pd-toast-retry-symbol" aria-hidden="true">refresh</span>
-              <span>Retry</span>
-            </button>
-          }
         </div>
+        @if (notifications.hasRetry(message)) {
+          <button
+            pButton
+            type="button"
+            class="pd-toast-retry"
+            severity="secondary"
+            [text]="true"
+            aria-label="Retry operation"
+            data-testid="pd-toast-retry"
+            (click)="runNotificationRetry(message)"
+          >
+            <span class="material-symbols-outlined pd-toast-retry-symbol" aria-hidden="true">refresh</span>
+            <span>Retry</span>
+          </button>
+        }
       </div>
     </ng-template>
   </p-toast>
@@ -83,16 +82,17 @@
     </span>
 
     <div class="pd-actions">
-      <!-- TODO: enable with the create-folder US. -->
       <button
         pButton
         type="button"
-        [disabled]="true"
-        pTooltip="Not available yet"
+        [disabled]="!navigation.currentFolder() || creatingFolder()"
+        [loading]="creatingFolder()"
+        pTooltip="Create a folder"
         tooltipPosition="bottom"
         severity="secondary"
         [text]="true"
         data-testid="pd-btn-new-folder"
+        (click)="createFolder()"
       >
         <span class="material-symbols-outlined pd-btn-symbol" aria-hidden="true">create_new_folder</span>
         <span class="pd-action-label">New folder</span>
@@ -133,9 +133,16 @@
               [nodes]="nodes"
               [currentFolderId]="navigation.currentFolderId()"
               [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
+              [writingIds]="writingIds()"
+              [renamingId]="inlineRenameSurface() === 'tree' ? navigation.renamingId() : null"
+              [renameError]="inlineRenameError()"
               (nodeSelected)="onTreeNodeSelected($event)"
               (nodeExpanded)="onTreeNodeExpanded($event)"
               (nodeCollapsed)="onTreeNodeCollapsed($event)"
+              (contextMenuRequested)="onNodeContextMenu($event)"
+              (renameSubmitted)="onInlineRenameRequested($event)"
+              (renameCancelled)="cancelInlineRename()"
+              (renameEdited)="inlineRenameError.set(null)"
             />
           </section>
         </ng-template>
@@ -189,7 +196,17 @@
             [folders]="navigation.currentFolderChildren().folders"
             [files]="navigation.currentFolderChildren().files"
             [loading]="isCurrentLoading() || fileSystem.isResolvingPath() || bootstrapLoading()"
+            [focusedId]="navigation.focusedId()"
+            [renamingId]="inlineRenameSurface() === 'table' ? navigation.renamingId() : null"
+            [renameError]="inlineRenameError()"
+            [writingIds]="writingIds()"
             (itemDoubleClicked)="onItemDoubleClicked($event)"
+            (itemFocused)="onItemFocused($event)"
+            (itemContextMenuRequested)="onNodeContextMenu($event)"
+            (emptyContextMenuRequested)="onEmptyContextMenu($event)"
+            (renameSubmitted)="onInlineRenameRequested($event)"
+            (renameCancelled)="cancelInlineRename()"
+            (renameEdited)="inlineRenameError.set(null)"
           />
         }
       </main>
@@ -199,4 +216,26 @@
   <footer class="pd-status" aria-live="polite">
     <span>{{ statusText() }}</span>
   </footer>
+
+  <p-contextMenu #contextMenu appendTo="body" styleClass="pd-context-menu">
+    <ng-template #item let-item>
+      <pr-context-menu-item [item]="item" />
+    </ng-template>
+  </p-contextMenu>
+
+  <pr-rename-dialog
+    [visible]="renameDialogVisible()"
+    [node]="renameDialogNode()"
+    [submitting]="renameDialogSubmitting()"
+    [serverError]="renameDialogError()"
+    (visibleChange)="renameDialogVisible.set($event)"
+    (nameEdited)="renameDialogError.set(null)"
+    (renameRequested)="onRenameDialogRequested($event)"
+  />
+
+  <p-confirmDialog
+    [key]="deleteConfirmationKey"
+    appendTo="body"
+    styleClass="pd-delete-dialog"
+  />
 </div>

@@ -1,0 +1,61 @@
+@use '../../project-documents-theme' as theme;
+
+.pd-action-form {
+  // Body-attached overlays no longer descend from ProjectDocuments' host, so restore
+  // the feature color tokens on the projected form itself.
+  @include theme.color-tokens;
+
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+
+  label {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  input {
+    width: 100%;
+    font: inherit;
+  }
+}
+
+.pd-action-error {
+  color: var(--pd-danger);
+  font-size: 0.75rem;
+}
+
+.pd-action-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.pd-conflict-copy {
+  p {
+    margin: 0 0 0.5rem;
+  }
+}
+
+.pd-apply-all {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 1rem;
+  font-size: 0.875rem;
+}
+
+.pd-conflict-actions {
+  flex-wrap: wrap;
+}
+
+// Dialog overlays attach to body; keep the rule unscoped but tightly bounded to
+// the feature-owned style class.
+::ng-deep .p-dialog.pd-action-dialog {
+  width: min(28rem, calc(100vw - 2rem));
+}
+
+::ng-deep .p-dialog.pd-conflict-dialog {
+  width: min(36rem, calc(100vw - 2rem));
+}

@@ -17,7 +17,7 @@
 - **TypeScript strict mode**
 - **PrimeNG** (latest Angular-20-compatible version)
 - **Material Symbols (Outlined)** via the self-hosted `material-symbols` npm package for all UI icons (no PrimeIcons; the target env is on-prem, so no CDN fonts), rendered as **raw ligature spans** (`<span class="material-symbols-outlined" aria-hidden="true">refresh</span>`) — the target repo's convention, no wrapper component. Each usage site styles its own class (font-size, `line-height: 1`, `user-select: none`). The only exception is the target environment's file-type icon set (`FileSystemIcon`, SVG assets)
-- **Typography: "BNPP Type"** — declared once on the `ProjectDocuments` host (`:host` in project-documents.scss) with system-font fallbacks, so the feature carries its own typeface wherever it is embedded; all children inherit (`font: inherit` where a form-control reset is needed). No other component may declare a text font family (the `material-symbols-outlined` icon-font class is the only exception). Caveat: overlays attached to `body` (tooltips, the breadcrumb overflow `p-menu` with `appendTo="body"`) inherit the page font, not the host's — the embedding app is expected to set the same font globally
+- **Typography: "BNPP Type"** — declared once on the `ProjectDocuments` host (`:host` in project-documents.scss) with system-font fallbacks, so the feature carries its own typeface wherever it is embedded; all children inherit (`font: inherit` where a form-control reset is needed). No other component may declare a text font family (the `material-symbols-outlined` icon-font class is the only exception). Caveat: overlays attached to `body` (tooltips, context menus, dialogs, and the breadcrumb overflow `p-menu`) inherit the page font, not the host's — the embedding app is expected to set the same font globally
 - **@ngrx/signals** (NgRx Signal Store) for state management
 - **RxJS** for the `FileSystemApi` contract (every method returns `Observable`, matching the HttpClient-native SharePoint adapter), plus HTTP and `rxMethod`. Stores that prefer async/await bridge with `firstValueFrom` at the call site.
 - **Angular Signals** API throughout: `signal()`, `computed()`, `effect()`, `input()`, `output()`, `model()`
@@ -89,8 +89,8 @@ The `src/app/project-documents/` folder will be copied verbatim to another machi
 
 ### 3.2 Core operations
 
-- Create folder (dialog)
-- Rename folder or file (inline on F2, or dialog via context menu)
+- Create folder server-first with the default name `New folder`, then immediately enter inline rename
+- Rename folders inline from the table/tree; rename files inline on F2 or via a context-menu dialog
 - Delete folder or file (confirmation; bulk-aware)
 - Move / copy (drag-and-drop, or cut/copy/paste)
 - Upload files (drag-and-drop from OS + upload button)
@@ -136,10 +136,11 @@ All scenarios must work:
 
 ### 3.5 Right-click context menus
 
-- **Tree folder node**: Open, New folder, Rename, Delete, Copy path
-- **Right-pane folder**: Open, New folder (inside), Rename, Delete, Cut, Copy, Paste (if clipboard has items), Copy path
-- **Right-pane file**: Open/Download, Rename, Delete, Cut, Copy, Copy path
-- **Right-pane empty area**: New folder, Paste, Upload, Refresh
+- **Folder** (tree or right pane): Open Folder; separator; Rename Folder, Copy Folder, Delete Folder; separator; Upload within folder
+- **File**: Open File in → Local application / Online Application; separator; Rename File, Copy File, Delete File; separator; Download File
+- **Right-pane empty area**: Create new Folder; separator; Paste; Upload → Folder / File
+- Nested menus open on hover. Paste is a direct command, not a submenu.
+- Root folders cannot be renamed or deleted. Actions whose workflows are not implemented yet remain visible but disabled, preserving the final menu structure.
 
 ### 3.6 Cut / copy / paste clipboard
 
@@ -259,7 +260,7 @@ export abstract class FileSystemApi {
   abstract resolveDocumentPath(projectId: string, listKey: DocumentListKey, path: string):
     Observable<{ canonicalPath: string; listing: { currentFolder: FolderNode; folders: FolderNode[]; files: FileNode[] } }>;
 
-  /** Create a new folder under `parent`. Throws on name collision. */
+  /** Create under `parent`; backend resolves collisions and returns the persisted name. */
   abstract createFolder(projectId: string, parent: FolderNode, name: string): Observable<FolderNode>;
 
   /** Rename a folder or file. Throws on name collision or invalid name. */
@@ -308,7 +309,8 @@ export abstract class FileSystemApi {
 - **Simulated latency**: 150–400ms random for reads, 250–600ms for writes, 300–1500ms for uploads (proportional to file size)
 - **Simulated errors**: 5% random failure rate on writes, configurable via `MOCK_CONFIG.errorRate` token; errors throw `FileSystemError('network', ...)`. `MOCK_CONFIG.unavailableFolderPaths` can also force deterministic `not-found` reads for specific list-relative paths.
 - **Constraint enforcement** (mandatory — the mock behaves like real SharePoint):
-  - Name collision check on create/rename/move/copy (throw `name-collision`)
+  - Create resolves the requested default name to a unique canonical name (`New folder`, `New folder (1)`, …)
+  - Name collision check on rename/move/copy (throw `name-collision`)
   - Descendant guard on move (throw `descendant-move`)
   - Invalid-name check: empty, `.`, `..`, chars in `\/:*?"<>|`, length > 128 (throw `invalid-name`)
   - Non-existent `id` (throw `not-found`)
@@ -396,7 +398,6 @@ project-documents/
     nav-toolbar/nav-toolbar.ts
     upload-panel/upload-panel.ts
     dialogs/
-      create-folder-dialog.ts
       rename-dialog.ts
       conflict-resolution-dialog.ts
   shared/
@@ -482,7 +483,7 @@ canDropOn(targetId: string): boolean {
 
 | Operation | Mode | Behavior |
 |---|---|---|
-| Create folder | Pessimistic | Await server, insert the returned node, bump parent `itemCount` |
+| Create folder | Pessimistic | Request `New folder`; await the server-selected unique name, insert the returned node, bump parent `itemCount`, then enter inline rename |
 | Rename | Pessimistic | Await server, apply the returned node, repath cached descendants |
 | Single delete | Pessimistic | Await server, then remove the cached subtree |
 | Single move | Pessimistic | Await server; drop the moved subtree and insert only the returned node (collapsed/unloaded), adjust both parent counts, prune dangling refs (replace-on-success) |
@@ -497,7 +498,8 @@ applied, so the store is already consistent and the failure surfaces as a toast.
 
 ## 11. Conflict Resolution
 
-Name collision on create/rename/move/copy/upload:
+Name collision on rename/move/copy/upload:
+- **Initial folder creation**: the backend returns a unique persisted default name before inline editing starts
 - **Rename same parent**: inline error "A file/folder with that name already exists."
 - **Move / copy / upload**: `ConflictResolutionDialog` with options: Replace / Keep both (auto-suffix) / Skip / Cancel; bulk ops show "Apply to all" checkbox
 - `naming.utils.ts` provides `resolveNameCollision(baseName, existingNames)` → `"file (2).txt"`, `"file (3).txt"`, etc.

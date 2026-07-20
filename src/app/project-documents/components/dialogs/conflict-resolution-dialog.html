@@ -1,0 +1,34 @@
+<p-dialog
+  header="Item already exists"
+  appendTo="body"
+  styleClass="pd-action-dialog pd-conflict-dialog"
+  [modal]="true"
+  [draggable]="false"
+  [resizable]="false"
+  [closable]="!submitting()"
+  [visible]="visible()"
+  (visibleChange)="visible.set($event)"
+  (onShow)="onShow()"
+>
+  <div class="pd-conflict-copy">
+    <p>An item named “{{ itemName() }}” already exists.</p>
+    <p>Choose how to continue.</p>
+  </div>
+  @if (showApplyToAll()) {
+    <label class="pd-apply-all" for="pd-conflict-apply-all">
+      <p-checkbox
+        inputId="pd-conflict-apply-all"
+        [binary]="true"
+        [ngModel]="applyToAll()"
+        (ngModelChange)="applyToAll.set($event)"
+      />
+      <span>Apply this choice to all conflicts</span>
+    </label>
+  }
+  <div class="pd-action-footer pd-conflict-actions">
+    <button pButton type="button" severity="secondary" [outlined]="true" (click)="choose('cancel')">Cancel</button>
+    <button pButton type="button" severity="secondary" [outlined]="true" (click)="choose('skip')">Skip</button>
+    <button pButton type="button" severity="secondary" [outlined]="true" (click)="choose('keep-both')">Keep both</button>
+    <button pButton type="button" (click)="choose('replace')">Replace</button>
+  </div>
+</p-dialog>

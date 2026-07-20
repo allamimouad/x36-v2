@@ -7,11 +7,20 @@ import {
     inject,
     input,
     signal,
-    untracked
+    untracked,
+    viewChild
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { MessageService, type ToastMessageOptions, type TreeNode } from 'primeng/api';
+import {
+    ConfirmationService,
+    MessageService,
+    type MenuItem,
+    type ToastMessageOptions,
+    type TreeNode
+} from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
+import { ConfirmDialog } from 'primeng/confirmdialog';
+import { ContextMenu } from 'primeng/contextmenu';
 import { InputTextModule } from 'primeng/inputtext';
 import { SplitterModule } from 'primeng/splitter';
 import { Toast } from 'primeng/toast';
@@ -25,6 +34,7 @@ import {
 } from './models/document-list.model';
 import {
     isFolder,
+    type FileNode,
     type FileSystemNode,
     type FolderNode
 } from './models/file-system-node.model';
@@ -44,6 +54,25 @@ import { FolderTree } from './components/folder-tree/folder-tree';
 import { FileTable } from './components/file-table/file-table';
 import { PathBar } from './components/path-bar/path-bar';
 import { NavToolbar } from './components/nav-toolbar/nav-toolbar';
+import { ContextMenuItem } from './components/context-menu-item/context-menu-item';
+import {
+    RenameDialog,
+    type RenameRequest
+} from './components/dialogs/rename-dialog';
+import type {
+    ItemRenameRequest,
+    NodeContextMenuRequest
+} from './models/context-menu-request.model';
+
+const DELETE_CONFIRMATION_KEY = 'project-documents-delete';
+const DEFAULT_FOLDER_NAME = 'New folder';
+
+interface ProjectDocumentsMenuData {
+    symbol: string;
+    testId: string;
+}
+
+type InlineRenameSurface = 'tree' | 'table';
 
 @Component({
     selector: 'pr-project-documents',
@@ -55,7 +84,11 @@ import { NavToolbar } from './components/nav-toolbar/nav-toolbar';
         FileTable,
         PathBar,
         NavToolbar,
+        ContextMenuItem,
+        RenameDialog,
         ButtonModule,
+        ConfirmDialog,
+        ContextMenu,
         InputTextModule,
         SplitterModule,
         Toast,
@@ -67,6 +100,7 @@ import { NavToolbar } from './components/nav-toolbar/nav-toolbar';
         NavigationStore,
         ClipboardService,
         MessageService,
+        ConfirmationService,
         NotificationService,
         { provide: FileSystemApi, useClass: MockFileSystemApi }
     ],
@@ -84,8 +118,21 @@ export class ProjectDocuments {
     protected readonly navigation = inject(NavigationStore);
     protected readonly clipboard = inject(ClipboardService);
     protected readonly notifications = inject(NotificationService);
+    protected readonly confirmation = inject(ConfirmationService);
     protected readonly config = inject(FILE_MANAGER_CONFIG);
     protected readonly notificationKey = PROJECT_DOCUMENTS_TOAST_KEY;
+    protected readonly deleteConfirmationKey = DELETE_CONFIRMATION_KEY;
+    protected readonly contextMenu = viewChild<ContextMenu>('contextMenu');
+
+    protected readonly writingIds = signal<ReadonlySet<string>>(new Set<string>());
+    protected readonly inlineRenameError = signal<string | null>(null);
+    protected readonly inlineRenameSurface = signal<InlineRenameSurface | null>(null);
+    protected readonly focusedSurface = signal<InlineRenameSurface>('table');
+    protected readonly creatingFolder = signal(false);
+    protected readonly renameDialogVisible = signal(false);
+    protected readonly renameDialogNode = signal<FileNode | null>(null);
+    protected readonly renameDialogSubmitting = signal(false);
+    protected readonly renameDialogError = signal<string | null>(null);
 
     /** Address-bar edit state (owned here; PathBar is a controlled child). */
     protected readonly pathEditing = signal(false);
@@ -245,7 +292,207 @@ export class ProjectDocuments {
         this.onRefresh();
     }
 
+    @HostListener('document:keydown.F2', ['$event'])
+    protected onF2(event: Event): void {
+        if (this.pathEditing() || this.renameDialogVisible()) {
+            return;
+        }
+        const id = this.navigation.focusedId();
+        const node = id ? this.fileSystem.entityMap()[id] : undefined;
+        if (!node || node.parentId === null || this.isWriting(node.id)) { return; }
+        event.preventDefault();
+        if (isFolder(node)) {
+            const surface = this.focusedSurface() === 'table' &&
+                node.parentId === this.navigation.currentFolderId()
+                ? 'table'
+                : 'tree';
+            this.startInlineRename(node, surface);
+
+            return;
+        }
+        if (node.parentId === this.navigation.currentFolderId()) {
+            this.startInlineRename(node, 'table');
+
+            return;
+        }
+        this.openRenameDialog(node);
+    }
+
+    protected onItemFocused(id: string): void {
+        this.inlineRenameError.set(null);
+        this.focusedSurface.set('table');
+        this.navigation.focus(id);
+    }
+
+    protected onNodeContextMenu(request: NodeContextMenuRequest): void {
+        this.focusedSurface.set(request.source);
+        this.navigation.focus(request.node.id);
+        this.showContextMenu(
+            request.event,
+            isFolder(request.node)
+                ? this.folderContextMenu(request.node, request.source)
+                : this.fileContextMenu(request.node)
+        );
+    }
+
+    protected onEmptyContextMenu(event: MouseEvent): void {
+        this.focusedSurface.set('table');
+        this.navigation.focus(null);
+        this.showContextMenu(event, this.emptyContextMenu());
+    }
+
+    protected async createFolder(parentId = this.navigation.currentFolderId()): Promise<void> {
+        if (this.creatingFolder()) { return; }
+        const parent = parentId ? this.fileSystem.entityMap()[parentId] : undefined;
+        if (!parent || !isFolder(parent)) { return; }
+        this.creatingFolder.set(true);
+        try {
+            const created = await this.fileSystem.createFolder(parent.id, DEFAULT_FOLDER_NAME);
+            this.navigation.focus(created.id);
+            if (this.navigation.currentFolderId() === parent.id) {
+                this.startInlineRename(created, 'table');
+            } else {
+                this.notifications.success(`Folder “${created.name}” was created.`);
+            }
+        } catch (error) {
+            this.notifications.error(
+                error,
+                this.retryForReadError(error, () => void this.createFolder(parent.id))
+            );
+        } finally {
+            this.creatingFolder.set(false);
+        }
+    }
+
+    protected openRenameDialog(node: FileSystemNode): void {
+        if (node.parentId === null || this.isWriting(node.id)) { return; }
+        if (isFolder(node)) {
+            this.startInlineRename(node, this.focusedSurface());
+
+            return;
+        }
+        this.navigation.endRename();
+        this.inlineRenameSurface.set(null);
+        this.navigation.focus(node.id);
+        this.renameDialogNode.set(node);
+        this.renameDialogError.set(null);
+        this.renameDialogVisible.set(true);
+    }
+
+    protected async onRenameDialogRequested(request: RenameRequest): Promise<void> {
+        if (this.renameDialogSubmitting() || this.isWriting(request.node.id)) { return; }
+        const name = request.name.trim();
+        if (name === request.node.name) {
+            this.renameDialogVisible.set(false);
+
+            return;
+        }
+        this.renameDialogSubmitting.set(true);
+        this.renameDialogError.set(null);
+        this.setWriting(request.node.id, true);
+        try {
+            const renamed = await this.fileSystem.rename(request.node.id, name);
+            this.renameDialogVisible.set(false);
+            this.notifications.success(`“${request.node.name}” was renamed to “${renamed.name}”.`);
+        } catch (error) {
+            const fieldError = this.mutationFieldError(error);
+            if (fieldError) {
+                this.renameDialogError.set(fieldError);
+            } else {
+                this.notifications.error(
+                    error,
+                    this.retryForReadError(
+                        error,
+                        () => void this.onRenameDialogRequested({ ...request, name })
+                    )
+                );
+            }
+        } finally {
+            this.setWriting(request.node.id, false);
+            this.renameDialogSubmitting.set(false);
+        }
+    }
+
+    protected async onInlineRenameRequested(request: ItemRenameRequest): Promise<void> {
+        if (this.isWriting(request.node.id)) { return; }
+        const name = request.name.trim();
+        if (name === request.node.name) {
+            this.cancelInlineRename();
+
+            return;
+        }
+        this.inlineRenameError.set(null);
+        this.setWriting(request.node.id, true);
+        try {
+            const renamed = await this.fileSystem.rename(request.node.id, name);
+            this.navigation.endRename();
+            this.inlineRenameSurface.set(null);
+            this.notifications.success(`“${request.node.name}” was renamed to “${renamed.name}”.`);
+        } catch (error) {
+            const fieldError = this.mutationFieldError(error);
+            if (fieldError) {
+                this.inlineRenameError.set(fieldError);
+            } else {
+                this.notifications.error(
+                    error,
+                    this.retryForReadError(
+                        error,
+                        () => void this.onInlineRenameRequested({ ...request, name })
+                    )
+                );
+            }
+        } finally {
+            this.setWriting(request.node.id, false);
+        }
+    }
+
+    protected cancelInlineRename(): void {
+        this.inlineRenameError.set(null);
+        this.inlineRenameSurface.set(null);
+        this.navigation.endRename();
+    }
+
+    protected requestDelete(node: FileSystemNode): void {
+        if (node.parentId === null || this.isWriting(node.id)) { return; }
+        const kind = isFolder(node) ? 'folder' : 'file';
+        this.confirmation.confirm({
+            key: DELETE_CONFIRMATION_KEY,
+            header: `Delete ${kind}`,
+            message: `Delete “${node.name}”? This action cannot be undone.`,
+            acceptLabel: 'Delete',
+            rejectLabel: 'Cancel',
+            defaultFocus: 'reject',
+            acceptButtonProps: { severity: 'danger' },
+            rejectButtonProps: { severity: 'secondary', outlined: true },
+            accept: () => void this.deleteNode(node)
+        });
+    }
+
+    protected async deleteNode(node: FileSystemNode): Promise<void> {
+        if (this.isWriting(node.id)) { return; }
+        const removedIds = this.cachedSubtreeIds(node.id);
+        const currentId = this.navigation.currentFolderId();
+        const removesCurrent = currentId !== null && removedIds.includes(currentId);
+        const parentId = node.parentId;
+        this.setWriting(node.id, true);
+        try {
+            await this.fileSystem.delete(node.id);
+            this.navigation.pruneReferences(removedIds);
+            this.clipboard.pruneReferences(removedIds);
+            if (removesCurrent && parentId) { this.navigation.navigateTo(parentId); }
+            this.notifications.success(`“${node.name}” was deleted.`);
+        } catch (error) {
+            this.notifications.error(
+                error,
+                this.retryForReadError(error, () => void this.deleteNode(node))
+            );
+        } finally {
+            this.setWriting(node.id, false);
+        }
+    }
+
     protected onTreeNodeSelected(id: string): void {
+        this.focusedSurface.set('tree');
         this.closePathEditor();
         this.navigation.navigateTo(id);
     }
@@ -407,6 +654,165 @@ export class ProjectDocuments {
         const removed = await this.fileSystem.move(sourceId, targetParentId);
         this.navigation.pruneReferences(removed);
         this.clipboard.pruneReferences(removed);
+    }
+
+    private folderContextMenu(
+        folder: FolderNode,
+        source: InlineRenameSurface
+    ): MenuItem[] {
+        const locked = this.isWriting(folder.id);
+        const root = folder.parentId === null;
+
+        return [
+            this.menuItem('Open Folder', 'folder_open', 'pd-menu-open-folder', () => {
+                this.onItemDoubleClicked(folder);
+            }),
+            { separator: true },
+            this.menuItem('Rename Folder', 'edit', 'pd-menu-rename-folder', () => {
+                this.startInlineRename(folder, source);
+            }, root || locked),
+            // TODO: enable with the copy/paste US.
+            this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', undefined, true),
+            this.menuItem('Delete Folder', 'delete', 'pd-menu-delete-folder', () => {
+                this.requestDelete(folder);
+            }, root || locked),
+            { separator: true },
+            // TODO: enable with the upload US.
+            this.menuItem(
+                'Upload within folder',
+                'upload',
+                'pd-menu-upload-within-folder',
+                undefined,
+                true
+            )
+        ];
+    }
+
+    private fileContextMenu(file: FileSystemNode): MenuItem[] {
+        const locked = this.isWriting(file.id);
+
+        return [
+            // TODO: enable with the open-file US.
+            this.menuItem('Open File in', 'file_open', 'pd-menu-open-file-in', undefined, false, [
+                this.menuItem(
+                    'Local application',
+                    'grid_view',
+                    'pd-menu-open-local',
+                    undefined,
+                    true
+                ),
+                this.menuItem(
+                    'Online Application',
+                    'language',
+                    'pd-menu-open-online',
+                    undefined,
+                    true
+                )
+            ]),
+            { separator: true },
+            this.menuItem('Rename File', 'edit', 'pd-menu-rename-file', () => {
+                this.openRenameDialog(file);
+            }, locked),
+            // TODO: enable with the copy/paste US.
+            this.menuItem('Copy File', 'content_copy', 'pd-menu-copy-file', undefined, true),
+            this.menuItem('Delete File', 'delete', 'pd-menu-delete-file', () => {
+                this.requestDelete(file);
+            }, locked),
+            { separator: true },
+            // TODO: enable with the download-file US.
+            this.menuItem('Download File', 'download', 'pd-menu-download-file', undefined, true)
+        ];
+    }
+
+    private emptyContextMenu(): MenuItem[] {
+        const canCreate = this.navigation.currentFolder() !== null && !this.creatingFolder();
+
+        return [
+            this.menuItem('Create new Folder', 'create_new_folder', 'pd-menu-create-folder', () => {
+                void this.createFolder();
+            }, !canCreate),
+            { separator: true },
+            // TODO: enable with the copy/paste US.
+            this.menuItem('Paste', 'content_paste', 'pd-menu-paste', undefined, true),
+            // TODO: enable with the upload US.
+            this.menuItem('Upload', 'upload', 'pd-menu-upload', undefined, false, [
+                this.menuItem(
+                    'Folder',
+                    'drive_folder_upload',
+                    'pd-menu-upload-folder',
+                    undefined,
+                    true
+                ),
+                this.menuItem('File', 'upload_file', 'pd-menu-upload-file', undefined, true)
+            ])
+        ];
+    }
+
+    private menuItem(
+        label: string,
+        symbol: string,
+        testId: string,
+        action?: () => void,
+        disabled = false,
+        items?: MenuItem[]
+    ): MenuItem {
+        return {
+            label,
+            disabled,
+            items,
+            data: { symbol, testId } satisfies ProjectDocumentsMenuData,
+            command: action ? () => action() : undefined
+        };
+    }
+
+    private showContextMenu(event: MouseEvent, items: MenuItem[]): void {
+        const menu = this.contextMenu();
+        if (!menu) { return; }
+        menu.model = items;
+        menu.show(event);
+    }
+
+    private mutationFieldError(error: unknown): string | null {
+        if (!(error instanceof FileSystemError)) { return null; }
+        if (error.code !== 'name-collision' && error.code !== 'invalid-name') { return null; }
+
+        return this.notifications.userMessageFor(error);
+    }
+
+    private startInlineRename(
+        node: FileSystemNode,
+        surface: InlineRenameSurface
+    ): void {
+        if (node.parentId === null || this.isWriting(node.id)) { return; }
+        this.renameDialogVisible.set(false);
+        this.inlineRenameError.set(null);
+        this.inlineRenameSurface.set(surface);
+        this.focusedSurface.set(surface);
+        this.navigation.startRename(node.id);
+    }
+
+    private isWriting(id: string): boolean {
+        return this.writingIds().has(id);
+    }
+
+    private setWriting(id: string, writing: boolean): void {
+        const next = new Set(this.writingIds());
+        if (writing) {
+            next.add(id);
+        } else {
+            next.delete(id);
+        }
+        this.writingIds.set(next);
+    }
+
+    private cachedSubtreeIds(id: string): string[] {
+        const result = [id];
+        for (const node of this.fileSystem.entities()) {
+            if (node.parentId !== id) { continue; }
+            result.push(...(isFolder(node) ? this.cachedSubtreeIds(node.id) : [node.id]));
+        }
+
+        return result;
     }
 
     /** Build the `p-tree` nodes for one list, traversing from its root id. */

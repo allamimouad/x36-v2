@@ -1,0 +1,38 @@
+:host {
+  display: block;
+}
+
+.pd-context-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 13rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.2;
+  text-align: left;
+  cursor: inherit;
+}
+
+.pd-context-symbol,
+.pd-context-chevron {
+  flex: 0 0 auto;
+  font-size: 1.2rem;
+  line-height: 1;
+  user-select: none;
+}
+
+.pd-context-label {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+.pd-context-chevron {
+  margin-left: auto;
+  font-size: 1rem;
+}

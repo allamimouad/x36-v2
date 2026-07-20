@@ -15,12 +15,16 @@ export function validateName(name: string): NameValidationResult {
     return { valid: true };
 }
 
-export function resolveNameCollision(baseName: string, existingNames: Iterable<string>): string {
+export function resolveNameCollision(
+    baseName: string,
+    existingNames: Iterable<string>,
+    firstSuffix = 2
+): string {
     const existing = new Set(Array.from(existingNames, (name) => name.toLocaleLowerCase()));
     if (!existing.has(baseName.toLocaleLowerCase())) { return baseName; }
 
     const { stem, extension } = splitExtension(baseName);
-    let suffix = 2;
+    let suffix = firstSuffix;
     while (true) {
         const candidate = `${stem} (${suffix})${extension}`;
         if (!existing.has(candidate.toLocaleLowerCase())) { return candidate; }

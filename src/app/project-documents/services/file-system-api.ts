@@ -41,7 +41,10 @@ export abstract class FileSystemApi {
         path: string,
     ): Observable<ResolvedDocumentPath>;
 
-    /** Create a new folder under `parent`. Throws on name collision. */
+    /**
+     * Create a new folder under `parent`. The backend owns collision resolution and
+     * returns the canonical name that was actually persisted.
+     */
     public abstract createFolder(
         projectId: string,
         parent: FolderNode,

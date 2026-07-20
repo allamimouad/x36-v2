@@ -44,3 +44,41 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.pd-tree-inline-rename {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 10rem;
+}
+
+.pd-tree-inline-rename-input {
+  width: 12rem;
+  height: 2rem;
+  font: inherit;
+}
+
+.pd-tree-inline-rename-error {
+  max-width: 14rem;
+  color: var(--pd-danger);
+  font-size: 0.75rem;
+  white-space: normal;
+}
+
+.pd-tree-node-writing {
+  opacity: 0.65;
+}
+
+.pd-write-spinner {
+  flex: 0 0 auto;
+  font-size: 1rem;
+  line-height: 1;
+  user-select: none;
+  animation: pd-spin 0.9s linear infinite;
+}
+
+@keyframes pd-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -104,7 +104,7 @@
 
 ## Phase 2 — Mutations (Create / Rename / Delete / Move via buttons)
 
-**Goal**: user can do full CRUD through buttons, context menus, and dialogs. No drag-and-drop, no multi-select yet.
+**Goal**: user can create, rename, and delete through context menus, inline editing, and dialogs where appropriate. No drag-and-drop, clipboard, upload, or multi-select yet.
 
 ### Entry criteria
 - Phase 1 acceptance checks pass
@@ -119,33 +119,32 @@
 - Complete all remaining `MockFileSystemApi` methods: `createFolder`, `rename`, `move`, `copy`, `delete`. Upload stays stubbed.
 
 **Stores**
-- `stores/file-system.store.ts` — implement `createFolder`, `rename`, `delete` (single id only — bulk in Phase 3), `move` (single id), `copy` (single id). Optimistic for single ops per SPEC §10.
+- `stores/file-system.store.ts` — implement `createFolder`, `rename`, `delete` (single id only — bulk in Phase 3), `move` (single id), `copy` (single id). Writes are pessimistic per SPEC §2.4 and §10.
 - `stores/navigation.store.ts` — add `startRename`, `endRename`
 
 **Services**
 - `services/notification.service.ts` — component-scoped wrapper around `MessageService`; methods: `success(message)`, `error(error, retry?)`, `warning(message)`, `info(message)`, `userMessageFor(error)`, `clear()`. `ProjectDocuments` decides inline state vs toast from typed store errors; retry actions use the custom `p-toast` template.
 
 **Components**
-- `components/dialogs/create-folder-dialog.ts` — reactive form, name validation, disabled submit on invalid
-- `components/dialogs/rename-dialog.ts` — same pattern
+- `components/dialogs/rename-dialog.ts` — file rename dialog with name validation
 - `components/dialogs/conflict-resolution-dialog.ts` — shell only (used in Phase 4 for bulk move/copy; for Phase 2 single ops, errors show as toast)
-- `components/folder-tree/folder-tree.ts` — add context menu with p-contextMenu: Open, New folder, Rename, Delete
+- `components/folder-tree/folder-tree.ts` — emit folder context-menu requests; the container supplies the shared menu from SPEC §3.5
 - `components/file-table/file-table.ts` — add:
   - Context menu per row
   - Context menu on empty area
   - Inline rename (when `focusedId === row.id` and rename mode active)
-- `components/nav-toolbar/nav-toolbar.ts` — enable new folder button (opens dialog), upload button still disabled
+- `components/nav-toolbar/nav-toolbar.ts` — enable new folder button (server-first create followed by inline rename), upload button still disabled
 
 **Container**
 - Wires context menu actions to store methods
-- Opens dialogs, handles dialog results
+- Starts inline rename after the backend confirms folder creation; opens rename/delete dialogs and handles results
 - Shows `p-toast` and `p-confirmDialog` at top level
 
 ### Acceptance checks
-- [ ] Create folder via button or context menu works; collision shows inline error
-- [ ] Rename via F2 (inline) or context menu (dialog) works
+- [ ] Create via button or context menu persists a unique default name, then opens inline rename
+- [ ] Folder rename stays inline in the table/tree; file rename works through F2 or its dialog
 - [ ] Delete via context menu shows confirmation, deletes on confirm
-- [ ] Optimistic updates: new folder appears instantly; on simulated error, it disappears with an error toast
+- [ ] Pessimistic writes show an in-flight affordance and update the cache only after the API confirms success
 - [ ] Error messages are user-friendly (no raw error codes)
 - [ ] Tree and table stay in sync — rename a folder in the tree, the table reflects it (if visible)
 - [ ] All changes refresh the tree node's children cache correctly
