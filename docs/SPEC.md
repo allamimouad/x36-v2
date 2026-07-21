@@ -39,7 +39,7 @@ Stores **MUST NOT know about SharePoint**. They depend on an abstract `FileSyste
 
 `services/mock/` contains the mock/dev backend and unit-test double (`mock-file-system-api.ts`, `mock-seed.ts`, `mock-config.token.ts`). It is used by the default local `ProjectDocuments` provider until the SharePoint laptop swaps that provider to `SharePointFileSystemApi` — after which the directory (plus the two store specs, if tests aren't kept) can be deleted in one go. (Named `mock`, not `testing`: the target repo's `eslint-plugin-boundaries` config classifies `testing` folders as shared test utilities forbidden from importing feature code.)
 
-The interface uses generic terminology (`projectId`, `listKey`, `id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. A project has **two document lists**, selected by the domain `listKey` (`'execution' | 'marketing'`); the backend maps each to one of the project's SharePoint document libraries. `id` is a stable, opaque UUID for the entity's lifetime, unique within the project's SharePoint site. `path` is the mutable, human-readable backend path. In the mock, `id` is a `crypto.randomUUID()` value; in the SharePoint adapter, `id = UniqueId` (the GUID SharePoint exposes per list item) and `path = ServerRelativeUrl`. Retrieval is split: `listDocumentRoot(projectId, listKey)` returns a list's root (the only operation that needs `listKey`, since a root has no parent id), and `listDocuments(projectId, parentId)` returns a folder's direct children addressed by id. Nodes stay generic — they do **not** carry `listKey`; a node's list is derived by walking to its root. Root-list load status is handled per list: a loaded root renders; a `not-found` root is hidden; any other root-load error does not discard the other loaded list. If both roots are `not-found`, the table area shows "No documents found for this project." Mutations take full `FolderNode` / `FileSystemNode` arguments so each implementation can read whatever fields it needs. No internal id↔url mapping cache.
+The interface uses generic terminology (`projectId`, `listKey`, `id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. A project has **two document lists**, selected by the domain `listKey` (`'execution' | 'marketing'`); the backend maps each to one of the project's SharePoint document libraries. The lists may live on the same SharePoint site or on different sites. `id` is a stable, opaque UUID for the entity's lifetime within its list context. `path` is the mutable, human-readable backend path. In the mock, `id` is a `crypto.randomUUID()` value; in the SharePoint adapter, `id = UniqueId` and `path = ServerRelativeUrl`. Every node carries its domain `listKey`, allowing the adapter to resolve `(projectId, listKey)` to the correct backend-owned site/library configuration without exposing that configuration to the frontend. Retrieval is split: `listDocumentRoot(projectId, listKey)` returns a list's root, and `listDocuments(projectId, parent)` returns a folder's direct children; the adapter extracts `parent.listKey` and `parent.id` for the list-scoped backend route. Root-list load status is handled per list: a loaded root renders; a `not-found` root is hidden; any other root-load error does not discard the other loaded list. If both roots are `not-found`, the table area shows "No documents found for this project." Mutations take full `FolderNode` / `FileSystemNode` arguments so adapters obtain the source list from `node.listKey` and the destination list for move/copy from `newParent.listKey`. No internal id↔url mapping cache.
 
 ### 2.3 Signal Store for entities, plain signals for simple state
 `FileSystemStore` uses `withEntities` because folders and files are viewed in multiple places (tree + table) and must stay in sync. `NavigationStore` uses Signal Store because it owns navigation history, expansion, focus, selection, rename state, and file-system-derived computeds. Small command-style state uses plain signal services; `ClipboardService` is a plain injectable service with `signal()` / `computed()`, not a Signal Store. Simple component-local state stays as plain `signal()` inside the component — don't over-store.
@@ -198,6 +198,7 @@ export type FileSystemNode = FolderNode | FileNode;
 
 export interface FolderNode {
   kind: 'folder';
+  listKey: DocumentListKey; // domain list/site routing context
   id: string;              // stable, opaque UUID (SharePoint UniqueId); never the path
   path: string;            // full path from root, e.g. "/Documents/Reports/2026"
   name: string;
@@ -209,6 +210,7 @@ export interface FolderNode {
 
 export interface FileNode {
   kind: 'file';
+  listKey: DocumentListKey;
   id: string;
   path: string;
   name: string;
@@ -225,7 +227,7 @@ export function isFolder(n: FileSystemNode): n is FolderNode {
 }
 ```
 
-**Why `id` AND `path`**: `id` is a stable, opaque UUID used everywhere for store lookups, drag targets, selection, clipboard, and navigation. It does not change for the lifetime of the entity. `path` is the mutable, human-readable backend path used for display and (in the SharePoint adapter) for constructing URLs on write operations. **Rename** updates `path` for the item and any loaded descendants but leaves `id` untouched, so references survive without remapping. **Move** is replace-on-success: it drops the moved node's cached subtree and re-inserts only the server-returned node (still the same `id`), so references to the moved item itself survive, but stale *descendant* references are pruned rather than preserved (navigation/expansion/selection/clipboard are pruned, and stale Back/Forward history entries become "unavailable" tombstones — see §10).
+**Why `listKey`, `id`, AND `path`**: `listKey` is stable domain routing context used with `projectId` to select the backend-owned SharePoint site/library. `id` is an opaque UUID used for store lookups, drag targets, selection, clipboard, and navigation; it is never treated as globally unique without its list context. `path` is the mutable, human-readable backend path used for display and for operations that require a URL. **Rename** updates `path` for the item and any loaded descendants but leaves `id` and `listKey` untouched. **Move** is replace-on-success: it drops the moved node's cached subtree and re-inserts only the server-returned node. A same-list move retains `listKey`; a cross-list move returns the destination `listKey`. Stale descendant references are pruned rather than preserved (see §10).
 
 ---
 
@@ -245,8 +247,8 @@ export abstract class FileSystemApi {
     files: FileNode[];
   }>;
 
-  /** List the direct children of a folder, addressed by its id alone. */
-  abstract listDocuments(projectId: string, parentId: string): Observable<{
+  /** List direct children; the adapter extracts `parent.listKey` and `parent.id`. */
+  abstract listDocuments(projectId: string, parent: FolderNode): Observable<{
     currentFolder: FolderNode;
     folders: FolderNode[];
     files: FileNode[];
@@ -356,7 +358,7 @@ export abstract class FileSystemApi {
 
 **`FileSystemStore`** (entity cache, keyed by `id`):
 - Entities: `FileSystemNode`
-- State: `projectId: string | null`, `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, FileSystemError | undefined>`, `folderIdsWithLoadedChildren: string[]`, `rootIdByList: Record<DocumentListKey, string | null>`, `isInitializing: boolean`, `initializedRoots: DocumentListRoots | null`
+- State: `projectId: string | null`, `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, FileSystemError | undefined>`, `folderIdsWithLoadedChildren: string[]`, `isInitializing: boolean`, `initializedRoots: DocumentListRoots | null`
 - Methods: `connectProject(projectId)` (reactive `rxMethod`: the container passes its `projectId` input signal once; every change resets project state and re-initializes, with `switchMap` cancelling any in-flight load; imperative calls with a plain id retry the same project), `initialize(projectId)` (promise facade over one initialization — returns `DocumentListRoots` with each list marked `loaded`, `not-found`, or `error`; used by unit tests), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(id, newName)`, `delete(ids)`, `move(ids, targetParentId)`, `copy(ids, targetParentId)`, `invalidate(parentId)`, `upload(parentId, files)`
 - Depends on `FileSystemApi` (injected), not on a concrete class
 

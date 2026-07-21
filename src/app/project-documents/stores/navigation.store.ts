@@ -9,7 +9,7 @@ import {
     type EmptyFeatureResult,
     type SignalStoreFeature
 } from '@ngrx/signals';
-import { DOCUMENT_LIST_KEYS, type DocumentListKey } from '../models/document-list.model';
+import type { DocumentListKey } from '../models/document-list.model';
 import {
     isFolder,
     type FileNode,
@@ -96,12 +96,6 @@ export const NavigationStore = signalStore(
             return entry?.breadcrumb ?? null;
         });
 
-        const _listKeyOfRoot = (rootId: string): DocumentListKey | null => {
-            const roots = fsReader.rootIdByList();
-
-            return DOCUMENT_LIST_KEYS.find((key) => roots[key] === rootId) ?? null;
-        };
-
         const pathSegments = computed<PathSegment[]>(() => {
             const id = store.currentFolderId();
             if (!id) { return []; }
@@ -109,7 +103,7 @@ export const NavigationStore = signalStore(
 
             return ctx
                 ? buildResolvedSegments(ctx, id)
-                : buildCachedSegments(id, entityMap(), _listKeyOfRoot);
+                : buildCachedSegments(id, entityMap());
         });
 
         const currentFolderChildren = computed<FolderChildren>(() => {
@@ -379,19 +373,14 @@ function buildResolvedSegments(ctx: ResolvedBreadcrumbContext, currentId: string
 /** Cached parent chain (id-based); the root segment's label is its list key. */
 function buildCachedSegments(
     currentId: string,
-    map: Record<string, FileSystemNode>,
-    listKeyOfRoot: (rootId: string) => DocumentListKey | null
+    map: Record<string, FileSystemNode>
 ): PathSegment[] {
     const segs: PathSegment[] = [];
     let n: FileSystemNode | undefined = map[currentId];
     while (n) {
         if (!isFolder(n)) { break; }
         if (n.parentId === null) {
-            const listKey = listKeyOfRoot(n.id);
-            const rootSegment: PathSegment = listKey
-                ? { label: listKey, id: n.id, listKey, path: '' }
-                : { label: n.name, id: n.id };
-            segs.unshift(rootSegment);
+            segs.unshift({ label: n.listKey, id: n.id, listKey: n.listKey, path: '' });
             break;
         }
         segs.unshift({ label: n.name, id: n.id });

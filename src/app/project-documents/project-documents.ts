@@ -154,13 +154,17 @@ export class ProjectDocuments {
     /** One tree section per document list, each rooted at its list root. */
     protected readonly executionTree = computed(() => this.buildTreeSection('execution'));
     protected readonly marketingTree = computed(() => this.buildTreeSection('marketing'));
+    protected readonly executionRootAvailable = computed(
+        () => this.fileSystem.initializedRoots()?.execution.status === 'loaded'
+    );
+    protected readonly marketingRootAvailable = computed(
+        () => this.fileSystem.initializedRoots()?.marketing.status === 'loaded'
+    );
 
     /** Both lists available → the tree pane becomes a resizable vertical split. */
-    protected readonly bothTreesVisible = computed(() => {
-        const roots = this.fileSystem.rootIdByList();
-
-        return roots.marketing !== null && roots.execution !== null;
-    });
+    protected readonly bothTreesVisible = computed(
+        () => this.marketingRootAvailable() && this.executionRootAvailable()
+    );
 
     /** Context objects for the shared tree-section template (one per list). */
     protected readonly marketingSectionContext = computed(() => ({
@@ -177,24 +181,21 @@ export class ProjectDocuments {
     protected readonly currentEditablePath = computed<string>(() => {
         const ctx = this.navigation.currentBreadcrumb();
         if (ctx) { return ctx.path ? `${ctx.listKey}/${ctx.path}` : ctx.listKey; }
-        // Cached navigation: derive listKey from the root walk + ancestor folder names.
+        // Cached navigation: every node carries its document-list context.
         const id = this.navigation.currentFolderId();
         const map = this.fileSystem.entityMap();
         if (!id) { return ''; }
         const names: string[] = [];
         let cursor: FileSystemNode | undefined = map[id];
-        let rootId: string | undefined;
+        const listKey = cursor?.listKey;
         while (cursor) {
             if (!isFolder(cursor)) { break; }
             if (cursor.parentId === null) {
-                rootId = cursor.id;
                 break;
             }
             names.unshift(cursor.name);
             cursor = map[cursor.parentId];
         }
-        const roots = this.fileSystem.rootIdByList();
-        const listKey = DOCUMENT_LIST_KEYS.find((key) => roots[key] === rootId);
 
         return listKey ? [listKey, ...names].join('/') : '';
     });
@@ -815,11 +816,13 @@ export class ProjectDocuments {
         return result;
     }
 
-    /** Build the `p-tree` nodes for one list, traversing from its root id. */
+    /** Build the `p-tree` nodes for one loaded document-list root. */
     private buildTreeSection(listKey: DocumentListKey): TreeNode<FolderNode>[] {
-        const rootId = this.fileSystem.rootIdByList()[listKey];
-        if (!rootId) { return []; }
-        const root = this.fileSystem.entityMap()[rootId];
+        const roots = this.fileSystem.initializedRoots();
+        if (!roots) { return []; }
+        const initializedRoot = this.rootFromStatus(roots[listKey]);
+        if (!initializedRoot) { return []; }
+        const root = this.fileSystem.entityMap()[initializedRoot.id];
         if (!root || !isFolder(root)) { return []; }
         const all = this.fileSystem.entities();
         const expanded = this.navigation.expandedTreeIds();

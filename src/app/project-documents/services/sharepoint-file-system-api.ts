@@ -8,37 +8,33 @@
  * ───────────────────────────────────────────────────────────────────────────
  *
  * Generated client
- *   The SharePoint REST surface is consumed via an auto-generated client built
- *   from the OpenAPI/Swagger spec for the on-prem site. This file is a thin
- *   adapter that maps our domain methods to the generated client and converts
- *   its DTOs into our `FolderNode` / `FileNode` shapes. Do NOT hand-write HTTP
- *   calls here — call the generated client.
+ *   Angular calls the application's backend through its auto-generated client.
+ *   This file maps domain methods to that client and converts its DTOs into our
+ *   `FolderNode` / `FileNode` shapes. It never calls SharePoint directly.
  *
- * Base URL pattern
- *   `${siteUrl}/_api/web/`
- *   `siteUrl` is injected via `FILE_MANAGER_CONFIG` (or a dedicated SP token)
- *   and used by the generated client.
+ * Backend site/list routing
+ *   `projectId` + `node.listKey` resolve the SharePoint site and document library.
+ *   Execution and marketing may live on different sites, so no operation may infer
+ *   site context from a GUID or path alone.
  *
  * Authentication
- *   On-prem typically uses NTLM/Kerberos via the browser. The generated client
- *   should be configured with `withCredentials: true`. No bearer token needed.
+ *   Use the application's existing frontend-to-backend authentication. SharePoint
+ *   credentials and site URLs remain backend-only.
  *
- * Form digest
- *   POST/MERGE/DELETE requests require an `X-RequestDigest` header. Cache the
- *   digest from `POST /_api/contextinfo` (FormDigestValue) until ~30s before
- *   `FormDigestTimeoutSeconds` expires. On 403 with `-2130575252` (digest
- *   expired), refresh once and retry — implement in `digest.interceptor.ts`.
+ * Backend form digest
+ *   The backend caches digests per resolved SharePoint site and refreshes/retries
+ *   an expired digest once. No digest or SharePoint credential reaches Angular.
  *
  * id / path mapping
  *   `node.id` = SharePoint `UniqueId` (a GUID; stable across rename/move).
  *   `node.path` = `ServerRelativeUrl` (mutable; used as the URL fragment for
  *   write operations).
  *
- *   Every operation is scoped by `projectId`. The adapter/backend resolves that
- *   project to its SharePoint document library and verifies supplied node ids
- *   belong to it. Full node arguments provide fields needed by write operations.
+ *   Every operation is scoped by `projectId` and `listKey`. Each returned node keeps
+ *   its list key. Full node arguments provide source context; `newParent.listKey`
+ *   provides destination context for move/copy.
  *
- * Endpoints per method (logical — actual calls go through the generated client)
+ * Backend mappings per method (logical — Angular calls the generated backend client)
  *   listDocumentRoot GET   the `listKey` document library's root folder
  *                            (resolve listKey → SharePoint list, then its RootFolder)
  *                            ?$expand=Folders,Files (same $select as below)
@@ -65,8 +61,9 @@
  *                            newurl = `${newParent.path}/${node.name}`
  *                   POST   recursive copy for folders (no native API; iterate)
  *                   Response gives a new UniqueId for the copy.
- *   delete          POST   /_api/web/GetFolderById('<node.id>') (or GetFileById)
- *                            with X-HTTP-Method: DELETE
+ *   delete          DELETE backend /projects/{projectId}/document-lists/{node.listKey}
+ *                            /documents/{node.id}?kind=file|folder
+ *                            Backend calls GetFileById or GetFolderById in that list's site.
  *   upload (small)  POST   /_api/web/GetFolderByServerRelativeUrl('<parent.path>')
  *                            /Files/add(url='<file.name>',overwrite=false)
  *   upload (large)  StartUpload    POST .../StartUpload(uploadId='<guid>')
@@ -118,12 +115,12 @@ export class SharePointFileSystemApi extends FileSystemApi {
     }
 
     /**
-   * GET /_api/web/GetFolderById('<parentId>')?$expand=Folders,Files and map into a
-   * DocumentListing. Addressed by id alone — UniqueId is unique within the site.
+   * Send `parent.listKey` and `parent.id` to the list-scoped backend children route,
+   * then map the response into a DocumentListing.
    */
     public override listDocuments(
         _projectId: string,
-        _parentId: string
+        _parent: FolderNode
     ): Observable<DocumentListing> {
     // TODO: implement with the SharePoint integration US.
         return throwError(() => new Error(IMPLEMENTATION_PENDING));
@@ -199,7 +196,7 @@ export class SharePointFileSystemApi extends FileSystemApi {
         return throwError(() => new Error(IMPLEMENTATION_PENDING));
     }
 
-    /** POST .../GetFolderById('<node.id>') (or GetFileById) with X-HTTP-Method: DELETE. */
+    /** Call the list-scoped backend DELETE route using `node.listKey`, `node.id`, and kind. */
     public override delete(_projectId: string, _node: FileSystemNode): Observable<void> {
     // TODO: implement with the SharePoint integration US.
         return throwError(() => new Error(IMPLEMENTATION_PENDING));

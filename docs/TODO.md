@@ -12,11 +12,11 @@
 
 ## 1. Address bar accepts list keys whose root is unavailable
 
-- **Where**: `src/app/project-documents/project-documents.ts:222` — `onPathSubmitted` validates the typed key with `DOCUMENT_LIST_KEYS.find((key) => key === first)` only; it never checks `fileSystem.rootIdByList()[listKey]`.
+- **Where**: `src/app/project-documents/project-documents.ts` — `onPathSubmitted` validates the typed key with `DOCUMENT_LIST_KEYS.find((key) => key === first)` only; it never checks the corresponding `initializedRoots()[listKey]` status.
 - **Problem**: when a root failed to load (`not-found` or `error` status), its tree section is hidden, but the user can still type e.g. `execution/Contracts` into the address bar.
   - Against the **mock**: the path resolves anyway (the seed always contains both roots), so the user lands in a folder of a list the UI presents as nonexistent — table and breadcrumb show an "execution" location with no matching tree pane.
   - Against the **real backend**: the resolve would fail and surface the misleading generic "No folder matches that path." instead of saying the list itself is unavailable.
-- **Suggested fix (small)**: in `onPathSubmitted`, after resolving `listKey`, if `this.fileSystem.rootIdByList()[listKey] === null` set a path error like "That document list is not available." and return. A few lines; no store change.
+- **Suggested fix (small)**: in `onPathSubmitted`, after resolving `listKey`, require `this.fileSystem.initializedRoots()?.[listKey].status === 'loaded'`; otherwise set a path error like "That document list is not available." and return. A few lines; no store change.
 - **Priority**: do first among these — it is the only remaining user-facing inconsistency.
 
 ## 2. Missing/errored document root cannot be simulated in the mock

@@ -1,5 +1,4 @@
 import type { Signal } from '@angular/core';
-import type { DocumentListKey } from '../models/document-list.model';
 import type { FileSystemNode } from '../models/file-system-node.model';
 
 /**
@@ -16,8 +15,6 @@ export abstract class FileSystemReader {
     public abstract readonly entities: Signal<FileSystemNode[]>;
     public abstract readonly folderIdsWithLoadedChildren: Signal<string[]>;
     public abstract readonly folderIdsWithLoadingChildren: Signal<string[]>;
-    /** The root folder id of each document list (for mapping a root back to its list key). */
-    public abstract readonly rootIdByList: Signal<Record<DocumentListKey, string | null>>;
 
     /** Fetch (or refetch) the children of `parentId` and cache them. */
     public abstract loadChildren(parentId: string): Promise<void>;

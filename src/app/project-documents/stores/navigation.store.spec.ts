@@ -1,6 +1,5 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import type { DocumentListKey } from '../models/document-list.model';
 import type { FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { FileSystemApi } from '../services/file-system-api';
 import { MockFileSystemApi } from '../services/mock/mock-file-system-api';
@@ -163,6 +162,7 @@ describe('NavigationStore', () => {
 
 const fakeRoot: FolderNode = {
     kind: 'folder',
+    listKey: 'execution',
     id: 'root',
     path: '/',
     name: '',
@@ -174,6 +174,7 @@ const fakeRoot: FolderNode = {
 
 const fakeDocs: FolderNode = {
     kind: 'folder',
+    listKey: 'execution',
     id: 'docs',
     path: '/Documents',
     name: 'Documents',
@@ -185,6 +186,7 @@ const fakeDocs: FolderNode = {
 
 const fakeShared: FolderNode = {
     kind: 'folder',
+    listKey: 'execution',
     id: 'shared',
     path: '/Shared',
     name: 'Shared',
@@ -204,10 +206,6 @@ class FakeFileSystemReader extends FileSystemReader {
     public readonly entities = signal<FileSystemNode[]>(this.nodes);
     public readonly folderIdsWithLoadedChildren = signal<string[]>([]);
     public readonly folderIdsWithLoadingChildren = signal<string[]>([]);
-    public readonly rootIdByList = signal<Record<DocumentListKey, string | null>>({
-        execution: fakeRoot.id,
-        marketing: null
-    });
     public readonly loadChildrenSpy = jasmine.createSpy('loadChildren');
     public readonly invalidateSpy = jasmine.createSpy('invalidate');
 

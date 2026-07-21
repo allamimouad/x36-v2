@@ -4,7 +4,8 @@ import type { FolderNode } from './file-system-node.model';
 /**
  * The two fixed project document lists. Domain concept (not SharePoint-specific):
  * each maps, in the backend, to one of the project's SharePoint document libraries.
- * Used only to select and label the two roots — nodes themselves stay generic.
+ * Every node carries its list key so the backend can resolve the correct site and
+ * document library even when the two lists do not share a SharePoint site.
  */
 export type DocumentListKey = 'execution' | 'marketing';
 

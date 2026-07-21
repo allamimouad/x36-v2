@@ -47,12 +47,11 @@ interface FileSystemState {
     folderIdsWithLoadingChildren: string[];
     errorByParentId: Record<string, FileSystemError | undefined>;
     folderIdsWithLoadedChildren: string[];
-    rootIdByList: Record<DocumentListKey, string | null>;
     /** True while a typed-path / breadcrumb-path resolve is in flight. */
     isResolvingPath: boolean;
     /** True from the start of a project (re-)initialization until its roots are applied. */
     isInitializing: boolean;
-    /** Per-list result of the most recent completed initialization; null before the first. */
+    /** Per-list result for the current project; null until its initialization completes. */
     initializedRoots: DocumentListRoots | null;
 }
 
@@ -71,7 +70,6 @@ const initialState: FileSystemState = {
     folderIdsWithLoadingChildren: [],
     errorByParentId: {},
     folderIdsWithLoadedChildren: [],
-    rootIdByList: { execution: null, marketing: null },
     isResolvingPath: false,
     isInitializing: false,
     initializedRoots: null
@@ -152,12 +150,12 @@ export const FileSystemStore = signalStore(
         const _beginInitialize = (projectId: string): void => {
             patchState(store, setAllEntities<FileSystemNode>([]), {
                 projectId,
-                rootIdByList: { execution: null, marketing: null },
                 folderIdsWithLoadingChildren: [],
                 folderIdsWithLoadedChildren: [],
                 errorByParentId: {},
                 isResolvingPath: false,
-                isInitializing: true
+                isInitializing: true,
+                initializedRoots: null
             });
         };
 
@@ -171,15 +169,13 @@ export const FileSystemStore = signalStore(
             const nodes = loadedRoots.flatMap(({ listing }): FileSystemNode[] =>
                 listing ? [listing.currentFolder, ...listing.folders, ...listing.files] : []
             );
-            const rootIdByList = {
-                execution: rootIdFromStatus(roots.execution),
-                marketing: rootIdFromStatus(roots.marketing)
-            };
+            const loadedRootIds = DOCUMENT_LIST_KEYS.flatMap((listKey) => {
+                const root = roots[listKey];
+
+                return root.status === 'loaded' ? [root.root.id] : [];
+            });
             patchState(store, setAllEntities(nodes), {
-                rootIdByList,
-                folderIdsWithLoadedChildren: Object.values(rootIdByList).filter(
-                    (id): id is string => id !== null
-                ),
+                folderIdsWithLoadedChildren: loadedRootIds,
                 isInitializing: false,
                 initializedRoots: roots
             });
@@ -255,7 +251,7 @@ export const FileSystemStore = signalStore(
                     );
                 }
                 const listing = await firstValueFrom(
-                    api.listDocuments(_requireProjectId(), parent.id)
+                    api.listDocuments(_requireProjectId(), parent)
                 );
                 _applyListing(listing);
             } catch (e) {
@@ -357,22 +353,15 @@ export const FileSystemStore = signalStore(
             return nodes.map((node): FileSystemNode => {
                 const isRoot = node.id === id;
                 const path = isRoot ? newPath : node.path.replace(`${oldPath}/`, `${newPath}/`);
+                if (!isRoot) { return { ...node, path }; }
 
-                return isFolder(node)
-                    ? {
-                        ...node,
-                        path,
-                        name: isRoot ? newName : node.name,
-                        parentId: isRoot ? newParentId : node.parentId,
-                        modifiedAt: isRoot ? now : node.modifiedAt
-                    }
-                    : {
-                        ...node,
-                        path,
-                        name: isRoot ? newName : node.name,
-                        parentId: isRoot ? newParentId : node.parentId,
-                        modifiedAt: isRoot ? now : node.modifiedAt
-                    };
+                return {
+                    ...node,
+                    path,
+                    name: newName,
+                    parentId: newParentId,
+                    modifiedAt: now
+                };
             });
         };
 
@@ -540,7 +529,6 @@ function fileSystemDevtoolsFeature(): SignalStoreFeature<EmptyFeatureResult, Emp
 
                 return {
                     projectId: state.projectId,
-                    rootIdByList: state.rootIdByList,
                     entityCount: entities.length,
                     entities,
                     folderIdsWithLoadingChildren: state.folderIdsWithLoadingChildren,
@@ -582,10 +570,6 @@ function toFileSystemError(e: unknown): FileSystemError {
     if (e instanceof Error) { return new FileSystemError('unknown', e.message, e); }
 
     return new FileSystemError('unknown', 'Unknown error', e);
-}
-
-function rootIdFromStatus(root: DocumentListRootStatus): string | null {
-    return root.status === 'loaded' ? root.root.id : null;
 }
 
 function onlySingleId(ids: string | string[], method: string): string {

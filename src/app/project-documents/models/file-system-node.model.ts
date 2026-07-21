@@ -1,7 +1,10 @@
+import type { DocumentListKey } from './document-list.model';
+
 export type FileSystemNode = FolderNode | FileNode;
 
 export interface FolderNode {
     kind: 'folder';
+    listKey: DocumentListKey;
     id: string;
     path: string;
     name: string;
@@ -14,6 +17,7 @@ export interface FolderNode {
 
 export interface FileNode {
     kind: 'file';
+    listKey: DocumentListKey;
     id: string;
     path: string;
     name: string;

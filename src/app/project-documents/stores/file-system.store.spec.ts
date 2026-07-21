@@ -47,13 +47,19 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(listDocumentRoot).toHaveBeenCalledWith('project-123', 'execution');
         expect(listDocumentRoot).toHaveBeenCalledWith('project-123', 'marketing');
         expect(store.projectId()).toBe('project-123');
-        expect(store.rootIdByList().execution).toBe(executionRoot.id);
-        expect(store.rootIdByList().marketing).toBe(marketingRoot.id);
+        expect(store.initializedRoots()).toBe(roots);
+        expect(executionRoot.listKey).toBe('execution');
+        expect(marketingRoot.listKey).toBe('marketing');
         expect(store.folderIdsWithLoadedChildren()).toContain(executionRoot.id);
         expect(store.folderIdsWithLoadedChildren()).toContain(marketingRoot.id);
         expect(
             store.entities().filter((node) => node.parentId === executionRoot.id).length
         ).toBe(4);
+        expect(
+            store.entities()
+                .filter((node) => node.parentId === executionRoot.id)
+                .every((node) => node.listKey === 'execution')
+        ).toBeTrue();
     });
 
     it('connectProject applies only the latest project on a mid-flight switch', async () => {
@@ -92,8 +98,6 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(roots.execution.status).toBe('not-found');
         const marketingRoot = requireRoot(roots.marketing, 'marketing');
         expect(store.projectId()).toBe('project-123');
-        expect(store.rootIdByList().execution).toBeNull();
-        expect(store.rootIdByList().marketing).toBe(marketingRoot.id);
         expect(store.folderIdsWithLoadedChildren()).toEqual([marketingRoot.id]);
         expect(store.entities()).toContain(marketingRoot);
         expect(store.entities().some((node) => node.path.startsWith('/execution'))).toBeFalse();
@@ -116,8 +120,6 @@ describe('FileSystemStore project-scoped API contract', () => {
             expect(roots.execution.error.code).toBe('network');
             const marketingRoot = requireRoot(roots.marketing, 'marketing');
             expect(store.projectId()).toBe('project-123');
-            expect(store.rootIdByList().execution).toBeNull();
-            expect(store.rootIdByList().marketing).toBe(marketingRoot.id);
             expect(store.folderIdsWithLoadedChildren()).toEqual([marketingRoot.id]);
             expect(store.entities()).toContain(marketingRoot);
             expect(store.entities().some((node) => node.path.startsWith('/execution'))).toBeFalse();
@@ -136,23 +138,29 @@ describe('FileSystemStore project-scoped API contract', () => {
             expect(roots.execution.status).toBe('not-found');
             expect(roots.marketing.status).toBe('not-found');
             expect(store.projectId()).toBe('project-123');
-            expect(store.rootIdByList()).toEqual({ execution: null, marketing: null });
+            expect(store.initializedRoots()).toBe(roots);
             expect(store.folderIdsWithLoadedChildren()).toEqual([]);
             expect(store.entities()).toEqual([]);
         }
     );
 
-    it('loads nested content by parent id using the initialized project', async () => {
+    it('loads nested content using project, list, and parent identity', async () => {
         await store.initialize('project-123');
         const contracts = store
             .entities()
-            .find((node) => isFolder(node) && node.path === '/execution/Contracts');
+            .find(
+                (node): node is FolderNode =>
+                    isFolder(node) && node.path === '/execution/Contracts'
+            );
         if (!contracts) { throw new Error('Expected Contracts folder'); }
         const listDocuments = spyOn(api, 'listDocuments').and.callThrough();
 
         await store.loadChildren(contracts.id);
 
-        expect(listDocuments).toHaveBeenCalledOnceWith('project-123', contracts.id);
+        expect(listDocuments).toHaveBeenCalledOnceWith(
+            'project-123',
+            contracts
+        );
     });
 
     it('records an error when a configured unavailable folder is opened', async () => {
@@ -205,6 +213,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         const third = await store.createFolder(executionRoot.id, 'New folder');
 
         expect(first.name).toBe('New folder');
+        expect(first.listKey).toBe('execution');
         expect(second.name).toBe('New folder (1)');
         expect(third.name).toBe('New folder (2)');
         expect(store.entityMap()[second.id]?.name).toBe('New folder (1)');
@@ -225,6 +234,21 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect((store.entityMap()[executionRoot.id] as FolderNode).itemCount).toBe(
             itemCountBefore
         );
+    });
+
+    it('passes the selected node list context to delete', async () => {
+        const roots = await store.initialize('project-123');
+        const executionRoot = requireRoot(roots.execution, 'execution');
+        const source = store.entities().find(
+            (node) => isFolder(node) && node.parentId === executionRoot.id
+        );
+        if (!source) { throw new Error('Expected execution source folder'); }
+        const deleteNode = spyOn(api, 'delete').and.callThrough();
+
+        await store.delete(source.id);
+
+        expect(source.listKey).toBe('execution');
+        expect(deleteNode).toHaveBeenCalledOnceWith('project-123', source);
     });
 
     it('move replaces the cached subtree with the returned node and removed ids', async () => {
@@ -257,6 +281,41 @@ describe('FileSystemStore project-scoped API contract', () => {
         // ...and the removed subtree ids (source + its cached descendants) are returned.
         expect(removed).toContain(source.id);
         expect(removed.length).toBe(directChildren.length + 1);
+    });
+
+    it('uses the destination list context when moving across document lists', async () => {
+        const roots = await store.initialize('project-123');
+        const executionRoot = requireRoot(roots.execution, 'execution');
+        const marketingRoot = requireRoot(roots.marketing, 'marketing');
+        const source = store.entities().find(
+            (node) => isFolder(node) && node.parentId === executionRoot.id
+        );
+        if (!source) { throw new Error('Expected execution source folder'); }
+
+        await store.move(source.id, marketingRoot.id);
+
+        const moved = store.entityMap()[source.id];
+        expect(moved?.parentId).toBe(marketingRoot.id);
+        expect(moved?.listKey).toBe('marketing');
+    });
+
+    it('uses the destination list context when copying across document lists', async () => {
+        const roots = await store.initialize('project-123');
+        const executionRoot = requireRoot(roots.execution, 'execution');
+        const marketingRoot = requireRoot(roots.marketing, 'marketing');
+        const source = store.entities().find(
+            (node) => isFolder(node) && node.parentId === executionRoot.id
+        );
+        if (!source) { throw new Error('Expected execution source folder'); }
+
+        await store.copy(source.id, marketingRoot.id);
+
+        const copied = store.entities().find(
+            (node) => node.id !== source.id &&
+                node.parentId === marketingRoot.id &&
+                node.name === source.name
+        );
+        expect(copied?.listKey).toBe('marketing');
     });
 
     it('loadPathListing resolves a typed path and returns canonical casing', async () => {

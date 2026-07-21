@@ -20,15 +20,18 @@ import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system
 export abstract class FileSystemApi {
     /**
    * List the root of one document list (`listKey`) with its direct children.
-   * `listKey` is the only place a list key is needed — a root has no parent id.
+   * A root has no parent id, so its list context is supplied directly.
    */
     public abstract listDocumentRoot(
         projectId: string,
         listKey: DocumentListKey,
     ): Observable<DocumentListing>;
 
-    /** List the direct children of a folder, addressed by its id alone. */
-    public abstract listDocuments(projectId: string, parentId: string): Observable<DocumentListing>;
+    /** List direct children of `parent`; adapters extract its list key and id. */
+    public abstract listDocuments(
+        projectId: string,
+        parent: FolderNode,
+    ): Observable<DocumentListing>;
 
     /**
    * Resolve a list-relative path (real folder names, case-insensitive) to its target

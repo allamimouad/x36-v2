@@ -69,8 +69,8 @@ design is agreed. The overview remains a compact route/index document.
 
 ## Frontend mapping
 - `FileSystemApi.listDocumentRoot(projectId, listKey)` → the root GET;
-  the child-listing adapter must also send `listKey` so the backend selects the correct
-  SharePoint site before resolving `parentId`.
+  `FileSystemApi.listDocuments(projectId, parent)` → the children GET, with the adapter
+  extracting `parent.listKey` and `parent.id` for the list-scoped route.
 - Nodes will carry the domain `listKey`; they still do not expose SharePoint site URLs
   or list GUIDs.
 - Mutations stay node-based; the adapter extracts source/target list keys and ids from

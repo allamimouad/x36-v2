@@ -30,7 +30,7 @@
   - Error simulation (rate configurable, defaults ON)
   - Constraint enforcement (name, descendant, collision, not-found)
   - Deep clone on return
-  - **For Phase 1, only the read operations need to be correct**: `listDocumentRoot(projectId, listKey)` (a document list's root) and `listDocuments(projectId, parentId)` (a folder's direct children, addressed by id), each returning the current folder plus its direct files/folders.
+  - **For Phase 1, only the read operations need to be correct**: `listDocumentRoot(projectId, listKey)` (a document list's root) and `listDocuments(projectId, parent)` (a folder's direct children; adapter extracts list key + id), each returning the current folder plus its direct files/folders.
 - `services/mock/mock-seed.ts` — realistic seed with Execution + Marketing roots, nested folders, mixed files, and one mock-only unavailable folder for stale-navigation testing
 - `services/sharepoint-file-system-api.ts` — stub per SPEC §7 (all methods throw)
 - `services/mock/mock-config.token.ts` — `MOCK_CONFIG` InjectionToken

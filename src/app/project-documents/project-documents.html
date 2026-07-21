@@ -169,13 +169,13 @@
             </ng-template>
           </p-splitter>
         } @else {
-          @if (fileSystem.rootIdByList().marketing) {
+          @if (marketingRootAvailable()) {
             <ng-container
               [ngTemplateOutlet]="treeSection"
               [ngTemplateOutletContext]="marketingSectionContext()"
             />
           }
-          @if (fileSystem.rootIdByList().execution) {
+          @if (executionRootAvailable()) {
             <ng-container
               [ngTemplateOutlet]="treeSection"
               [ngTemplateOutletContext]="executionSectionContext()"

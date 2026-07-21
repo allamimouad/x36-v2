@@ -1,6 +1,6 @@
 # DELETE Document
 
-> **Status: contract agreed; frontend/backend implementation pending.** This is the
+> **Status: contract agreed; frontend alignment implemented, backend pending.** This is the
 > operation-specific companion to the [backend endpoint overview](../backend-endpoints.md).
 
 ## Domain endpoint
@@ -73,10 +73,10 @@ delete response to the domain API's empty `204 No Content`.
   technical details in backend logs, not in the user-facing message.
 - On every failure, return no success response and leave frontend state unchanged.
 
-## Frontend mapping (required alignment, not implemented yet)
+## Frontend mapping
 
-The eventual frontend adapter obtains all routing values from the project and selected
-node:
+The frontend domain model now carries `listKey` on every file/folder node. The adapter
+obtains all routing values from the project and selected node:
 
     projectId  <- ProjectDocuments input
     listKey    <- node.listKey
@@ -84,6 +84,6 @@ node:
     kind       <- node.kind
 
 `FileSystemStore` remains pessimistic: it removes the cached node/subtree and decrements
-the parent count only after the backend returns 204. Adding `listKey` to returned nodes
-and updating the frontend API adapter are separate implementation changes; this file
-records the backend contract first.
+the parent count only after the backend returns 204. The real HTTP call in
+`SharePointFileSystemApi` remains pending; its node-based delete signature already has
+the required values.

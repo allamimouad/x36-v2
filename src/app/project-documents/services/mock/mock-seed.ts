@@ -369,6 +369,7 @@ export function buildSeed(): SeedResult {
         const rootPath = `${ROOT_PATH}${listKey}`;
         const root: FolderNode = {
             kind: 'folder',
+            listKey,
             id: rootId,
             path: rootPath,
             name: '',
@@ -380,7 +381,7 @@ export function buildSeed(): SeedResult {
         };
         nodes.set(root.id, root);
         for (const spec of seed) {
-            addFolder(nodes, spec, rootId, rootPath);
+            addFolder(nodes, spec, listKey, rootId, rootPath);
         }
         rootIdByList[listKey] = rootId;
     }
@@ -391,6 +392,7 @@ export function buildSeed(): SeedResult {
 function addFolder(
     nodes: Map<string, FileSystemNode>,
     spec: SeedFolderSpec,
+    listKey: DocumentListKey,
     parentId: string,
     parentPath: string
 ): void {
@@ -398,6 +400,7 @@ function addFolder(
     const itemCount = (spec.folders?.length ?? 0) + (spec.files?.length ?? 0);
     const folder: FolderNode = {
         kind: 'folder',
+        listKey,
         id: crypto.randomUUID(),
         path,
         name: spec.name,
@@ -409,22 +412,24 @@ function addFolder(
     };
     nodes.set(folder.id, folder);
     for (const sub of spec.folders ?? []) {
-        addFolder(nodes, sub, folder.id, path);
+        addFolder(nodes, sub, listKey, folder.id, path);
     }
     for (const fileSpec of spec.files ?? []) {
-        addFile(nodes, fileSpec, folder.id, path);
+        addFile(nodes, fileSpec, listKey, folder.id, path);
     }
 }
 
 function addFile(
     nodes: Map<string, FileSystemNode>,
     spec: SeedFileSpec,
+    listKey: DocumentListKey,
     parentId: string,
     parentPath: string
 ): void {
     const path = parentPath === ROOT_PATH ? `/${spec.name}` : `${parentPath}/${spec.name}`;
     const file: FileNode = {
         kind: 'file',
+        listKey,
         id: crypto.randomUUID(),
         path,
         name: spec.name,
