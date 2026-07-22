@@ -46,8 +46,8 @@ The interface uses generic terminology (`projectId`, `listKey`, `id`, `path`, `n
 
 ### 2.4 Pessimistic writes
 All mutations wait for the API result before touching the store — no optimistic apply,
-no rollback. Reason: the SharePoint backend is both slow (form digest + round-trip) and
-fallible (throttling, digest expiry, permission, name collision). Optimistic apply would
+no rollback. Reason: the SharePoint backend is both slow (network + backend round-trips) and
+fallible (throttling, token expiry, permission, name collision). Optimistic apply would
 show a state that does not exist yet and flicker the item away on rollback.
 
 We **apply exactly what the server returns for the affected node**, and never fabricate the
@@ -340,9 +340,10 @@ export abstract class FileSystemApi {
 - Class implements `FileSystemApi` with every method present
 - Each method body: `return throwError(() => new Error('SharePointFileSystemApi is not implemented yet'));` (error on the Observable channel, per §5)
 - File contains a detailed comment block at the top listing:
-  - Base URL pattern (`{siteUrl}/_api/web/`)
-  - Auth assumption (NTLM/Kerberos, `withCredentials: true`)
-  - Form digest requirement
+  - The generated Angular client routes operations through the application backend
+  - The backend reuses its existing authenticated Feign client and cached per-user
+    certificate-backed OAuth bearer token; the feature adds no authentication or
+    form-digest infrastructure
   - `id` ↔ `serverRelativeUrl` mapping strategy
   - Endpoints needed per method (e.g., for `createFolder`: `POST /_api/web/Folders`)
   - Error code mapping (SharePoint `-2147024713` → `'name-collision'`, etc.)

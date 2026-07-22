@@ -327,8 +327,10 @@
 
 ### Work to do
 - Implement each method in `sharepoint-file-system-api.ts` per the stub's JSDoc comments
-- Add `interceptors/digest.interceptor.ts` — injects `X-RequestDigest`, catches 403, refreshes, retries once
-- Add form digest caching (singleton service, expires with safety margin)
+- Use the application's existing generated backend client. The backend already routes
+  SharePoint calls through an authenticated Feign client whose interceptor supplies the
+  cached per-user certificate-backed OAuth bearer token. Do not add a frontend token
+  cache, form-digest interceptor, `X-RequestDigest`, or `_api/contextinfo` calls.
 - Implement `id` as the SharePoint `UniqueId` (GUID) and `path` as `ServerRelativeUrl`. Source operations address items via `GetFolderById('<id>')` / `GetFileById('<id>')`. The adapter is a thin shim over the auto-generated SharePoint client — every API method takes full `FolderNode` / `FileSystemNode` arguments, so the shim can read whichever fields (`id`, `path`, `name`, `parent.id`, `parent.path`, ...) the generated DTOs require.
 - Error code mapping from SharePoint error codes to `FileSystemError` codes
 - Implement chunked upload (`StartUpload` / `ContinueUpload` / `FinishUpload`)
@@ -343,7 +345,7 @@
 - Component code changes are limited to the documented provider swap and icon-component swap
 
 ### Risks to watch for
-- Form digest expiry under load
+- OAuth token expiry/refresh remains owned by the existing backend authentication layer
 - 429 throttling on bulk ops (even with concurrency 4)
 - Permission errors surfacing as generic 401/403 — need careful mapping
 - Timezone handling: SharePoint returns UTC, ensure `createdAt` / `modifiedAt` are parsed correctly

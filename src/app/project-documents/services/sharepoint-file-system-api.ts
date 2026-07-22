@@ -19,11 +19,10 @@
  *
  * Authentication
  *   Use the application's existing frontend-to-backend authentication. SharePoint
- *   credentials and site URLs remain backend-only.
- *
- * Backend form digest
- *   The backend caches digests per resolved SharePoint site and refreshes/retries
- *   an expired digest once. No digest or SharePoint credential reaches Angular.
+ *   credentials, access tokens, and site URLs remain backend-only. The backend reuses
+ *   its existing authenticated Feign client; its interceptor supplies the cached
+ *   per-user certificate-backed OAuth bearer token. Do not add token or form-digest
+ *   handling to this Angular adapter.
  *
  * id / path mapping
  *   `node.id` = SharePoint `UniqueId` (a GUID; stable across rename/move).
@@ -74,7 +73,6 @@
  *   -2147024713  →  'name-collision'    (object already exists)
  *   -2147024894  →  'not-found'         (file/folder not found)
  *   -2147024891  →  'permission-denied' (access denied)
- *   -2130575252  →  'unknown'           (digest expired — auto-retry, then surface)
  *   HTTP 401/403 →  'permission-denied'
  *   HTTP 404     →  'not-found'
  *   HTTP 409     →  'name-collision'
@@ -83,7 +81,7 @@
  *   AbortError   →  'cancelled'
  *
  * Risks to watch
- *   - Form digest expiry under load
+ *   - OAuth token expiry/refresh is owned by the backend authentication layer
  *   - 429 throttling on bulk ops (concurrency 4 may still be too aggressive)
  *   - Permission errors masked as generic 401/403
  *   - Timezone: SP returns UTC; ensure ISO strings round-trip correctly

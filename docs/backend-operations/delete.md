@@ -36,35 +36,44 @@ against both `GetFileById` and `GetFolderById`.
 File:
 
     DELETE {siteUrl}/_api/web/GetFileById('{documentId}')
+    Authorization: Bearer {cached access token}
     Accept: application/json
     If-Match: *
-    X-RequestDigest: {cached digest for siteUrl}
 
 Folder (SharePoint deletes the folder subtree; the backend must not walk it itself):
 
     DELETE {siteUrl}/_api/web/GetFolderById('{documentId}')
+    Authorization: Bearer {cached access token}
     Accept: application/json
     If-Match: *
-    X-RequestDigest: {cached digest for siteUrl}
 
-Use the generated SharePoint client operation corresponding to those requests rather
-than hand-writing HTTP in the Angular feature. Normalize any successful SharePoint
-delete response to the domain API's empty `204 No Content`.
+Implement these requests through the backend's existing authenticated Feign client,
+the same client and configuration already used by the working SharePoint copy operation.
+The existing Feign authentication interceptor supplies the cached per-user OAuth bearer
+token. Do not hand-write SharePoint HTTP or authentication in the Angular feature.
+Normalize any successful SharePoint delete response to the domain API's empty
+`204 No Content`.
 
-## Form digest and call count
+## Existing authentication and call count
 
-- Cache form digests **per `siteUrl`**, since Execution and Marketing may point at
-  different sites.
-- A normal delete performs exactly **one SharePoint request**: the DELETE above.
-- A cold/expired cache adds `POST {siteUrl}/_api/contextinfo` to acquire a digest.
-- If SharePoint rejects a cached digest as expired, refresh it and retry the DELETE once.
-- Do not fetch `contextinfo` before every delete and do not perform a metadata lookup.
+- Authentication and token caching are existing backend infrastructure, not part of the
+  delete implementation. Reuse the configured Feign client and its bearer-token
+  interceptor; do not add another token cache or authentication flow.
+- The working copy operation is the reference implementation for Feign client selection
+  and authentication behavior.
+- Do not add form-digest caching, an `X-RequestDigest` header, or calls to
+  `POST {siteUrl}/_api/contextinfo`. The target environment's certificate-backed OAuth
+  bearer flow already authorizes SharePoint mutations.
+- A delete performs exactly **one backend-to-SharePoint request**: the direct DELETE
+  above. The frontend-to-backend domain request is outside this SharePoint call count.
+- Do not perform a preliminary metadata lookup. `kind` already selects the file or
+  folder endpoint.
 
 ## Error mapping
 
 - Invalid route/query input -> HTTP 400.
-- SharePoint 401/403 -> HTTP 403 / `permission-denied`, except the recognized expired
-  digest case, which is refreshed and retried once.
+- SharePoint 401/403 -> HTTP 403 / `permission-denied`. Existing authentication
+  infrastructure owns token acquisition and refresh behavior.
 - SharePoint not-found (`-2147024894` or HTTP 404) -> HTTP 404 / `not-found`.
 - SharePoint 429 -> propagate retry timing where available and map to the frontend's
   retryable `network` failure.

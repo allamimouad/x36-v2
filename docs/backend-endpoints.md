@@ -11,7 +11,7 @@
   different SharePoint sites, so `projectId + listKey` selects the backend's configured
   `siteUrl` and document library before any SharePoint request is made.
 - `listKey` is the domain key `'execution' | 'marketing'`; the frontend never receives
-  SharePoint site URLs, list GUIDs, credentials, or form digests.
+  SharePoint site URLs, list GUIDs, credentials, or backend access tokens.
 - Documents are addressed by SharePoint `UniqueId`. `kind` is additionally supplied for
   operations such as delete where SharePoint exposes separate file and folder APIs.
 - Mutations return the canonical affected node (Option A); delete returns 204.
