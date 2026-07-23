@@ -32,23 +32,25 @@
   404 ⇒ `not-found`.
 
 ## Mutations (list-scoped route summary)
-    POST   /projects/{projectId}/document-lists/{listKey}/documents/folders
+    POST   /projects/{projectId}/document-lists/{listKey}/documents/{parentFolderId}/folders
     PATCH  /projects/{projectId}/document-lists/{listKey}/documents/{documentId}
     POST   /projects/{projectId}/document-lists/{sourceListKey}/documents/{documentId}/move
     POST   /projects/{projectId}/document-lists/{sourceListKey}/documents/{documentId}/copy
     DELETE /projects/{projectId}/document-lists/{listKey}/documents/{documentId}?kind=file|folder
 
-- Create and rename bodies remain as summarized below. Move/copy bodies also identify
-  `targetListKey` because their destination may be on another SharePoint site. Their
-  detailed SharePoint implementations will be documented when those operations are
-  designed.
+- Create addresses the parent folder in the URL and sends only the requested name.
+  Creating directly inside a document list uses that list's root-folder id as
+  `parentFolderId`; nested creation uses the current folder's id. Move/copy bodies also
+  identify `targetListKey` because their destination may be on another SharePoint site.
+  Their detailed SharePoint implementations will be documented when those operations
+  are designed.
 - `move`/`copy` are action endpoints (not PATCH) because they do more than set a field
   (new path and parent relationship on the returned node, plus a possible cross-list
   copy+delete).
 
 ## Example bodies
-    POST /projects/123/document-lists/execution/documents/folders
-    { "parentId": "folder-guid", "name": "New Folder" }
+    POST /projects/123/document-lists/execution/documents/parent-folder-guid/folders
+    { "name": "New folder" }
 
     PATCH /projects/123/document-lists/execution/documents/file-guid
     { "name": "New Name.docx" }
@@ -64,6 +66,8 @@
 Each operation gets a separate implementation file when its backend-to-SharePoint
 design is agreed. The overview remains a compact route/index document.
 
+- [CREATE folder](backend-operations/create-folder.md) — complete contract,
+  `AddUsingPath` request, canonical response mapping, and frontend handoff.
 - [DELETE document](backend-operations/delete.md) — complete contract and SharePoint
   implementation details.
 
