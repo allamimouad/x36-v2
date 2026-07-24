@@ -14,7 +14,9 @@
   SharePoint site URLs, list GUIDs, credentials, or backend access tokens.
 - Documents are addressed by SharePoint `UniqueId`. `kind` is additionally supplied for
   operations such as delete where SharePoint exposes separate file and folder APIs.
-- Mutations return the canonical affected node (Option A); delete returns 204.
+- Mutations return canonical SharePoint fields (Option A); delete returns 204. When
+  mapping a renamed file, the Angular adapter preserves its unchanged `parentId`
+  because SharePoint's `SP.File` resource does not expose `ParentFolder`.
 
 ## Retrieval (root by list, children by id, path resolve by list)
     GET /projects/{projectId}/document-lists/{listKey}/documents                   # root of the list
@@ -33,7 +35,7 @@
 
 ## Mutations (list-scoped route summary)
     POST   /projects/{projectId}/document-lists/{listKey}/documents/{parentFolderId}/folders
-    PATCH  /projects/{projectId}/document-lists/{listKey}/documents/{documentId}
+    PATCH  /projects/{projectId}/document-lists/{listKey}/documents/{documentId}?kind=file|folder
     POST   /projects/{projectId}/document-lists/{sourceListKey}/documents/{documentId}/move
     POST   /projects/{projectId}/document-lists/{sourceListKey}/documents/{documentId}/copy
     DELETE /projects/{projectId}/document-lists/{listKey}/documents/{documentId}?kind=file|folder
@@ -52,7 +54,7 @@
     POST /projects/123/document-lists/execution/documents/parent-folder-guid/folders
     { "name": "New folder" }
 
-    PATCH /projects/123/document-lists/execution/documents/file-guid
+    PATCH /projects/123/document-lists/execution/documents/file-guid?kind=file
     { "name": "New Name.docx" }
 
     POST /projects/123/document-lists/execution/documents/file-guid/move
@@ -68,6 +70,8 @@ design is agreed. The overview remains a compact route/index document.
 
 - [CREATE folder](backend-operations/create-folder.md) — complete contract,
   `AddUsingPath` request, canonical response mapping, and frontend handoff.
+- [RENAME document](backend-operations/rename.md) — `FileLeafRef` MERGE followed by
+  canonical by-id read for updated path and audit metadata.
 - [DELETE document](backend-operations/delete.md) — complete contract and SharePoint
   implementation details.
 

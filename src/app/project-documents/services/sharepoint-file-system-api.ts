@@ -50,8 +50,10 @@
  *                            unique-name behavior. Return its canonical Name,
  *                            ServerRelativeUrl, and UniqueId; collision resolution must
  *                            be atomic on the backend side.
- *   rename          POST   /_api/web/GetFolderById('<node.id>')/MoveTo (or GetFileById)
- *                            newurl = `${parentOf(node.path)}/${newName}`
+ *   rename          PATCH  backend /projects/{projectId}/document-lists/{listKey}
+ *                            /documents/{node.id}?kind={node.kind}
+ *                            Backend MERGEs `FileLeafRef` through the file/folder's
+ *                            `ListItemAllFields`, then reads the canonical node by id.
  *   move            POST   .../GetFolderById('<node.id>')/MoveTo
  *                            with newurl = `${newParent.path}/${node.name}`
  *                            Returns moved node; UniqueId unchanged, only path changes.
@@ -155,8 +157,9 @@ export class SharePointFileSystemApi extends FileSystemApi {
     }
 
     /**
-   * POST .../GetFolderById('<node.id>')/MoveTo (or GetFileById)
-   * with newurl = `${parentOf(node.path)}/${newName}`.
+   * Request a list-scoped backend rename by `node.id` and `node.kind`. The backend
+   * updates `ListItemAllFields.FileLeafRef`, then returns the canonical by-id read with
+   * SharePoint-owned path, modification time, and editor.
    */
     public override rename(
         _projectId: string,

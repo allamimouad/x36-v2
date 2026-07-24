@@ -92,6 +92,8 @@ percent-encoding. Do not pre-encode the logical `DecodedUrl` value as a SharePoi
 Use the parent's folder collection and SharePoint's `AddUsingPath` bound function:
 
     POST {siteUrl}/_api/web/GetFolderById('{parentFolderId}')/Folders/AddUsingPath(DecodedUrl='New folder',EnsureUniqueFileName=true)
+        ?$select=UniqueId,Name,ServerRelativeUrl,ItemCount,TimeCreated,TimeLastModified,ParentFolder/UniqueId
+        &$expand=ParentFolder
     Authorization: Bearer {cached access token}
     Accept: application/json
     Content-Type: application/json
@@ -111,6 +113,8 @@ For this workflow:
 
 - send `EnsureUniqueFileName=true`;
 - omit `Overwrite` entirely;
+- include `ParentFolder/UniqueId` in `$select` and use
+  `$expand=ParentFolder`;
 - do not call the legacy `Folders/Add`;
 - do not send `If-Match`;
 - do not add an `X-RequestDigest`.
@@ -135,7 +139,7 @@ Map SharePoint's returned `SP.Folder` directly to the domain `FolderNode`:
     id         <- SharePoint UniqueId
     path       <- SharePoint ServerRelativeUrl
     name       <- SharePoint Name
-    parentId   <- parentFolderId from domain route
+    parentId   <- SharePoint ParentFolder.UniqueId
     itemCount  <- SharePoint ItemCount (a new folder is normally 0)
     createdAt  <- SharePoint TimeCreated
     modifiedAt <- SharePoint TimeLastModified
@@ -145,6 +149,11 @@ Map SharePoint's returned `SP.Folder` directly to the domain `FolderNode`:
 id, path, or name from `parentFolderId` and the requested name. In particular, returning
 `name: "New folder"` when SharePoint created `New folder (1)` breaks the immediate
 inline-rename workflow.
+
+The expanded `ParentFolder.UniqueId` is also authoritative for `parentId`. The route's
+`parentFolderId` still selects where SharePoint creates the folder, but it is not
+copied into the response while the canonical relationship is available in the same
+SharePoint response.
 
 Do not add a second SharePoint GET just to enrich optional response properties. If the
 create response does not include optional `modifiedBy`, omit it. `itemCount` may safely
@@ -207,4 +216,5 @@ operation must not wait for the rename result.
 - Repeated requests create distinct folders with SharePoint-selected names.
 - The response uses SharePoint's returned `UniqueId`, `Name`, and
   `ServerRelativeUrl`.
+- The response maps `parentId` from the expanded `ParentFolder.UniqueId`.
 - A SharePoint failure produces no `FolderNode`.
