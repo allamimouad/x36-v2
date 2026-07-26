@@ -35,6 +35,7 @@
 
 ## Mutations (list-scoped route summary)
     POST   /projects/{projectId}/document-lists/{listKey}/documents/{parentFolderId}/folders
+    POST   /projects/{projectId}/document-lists/{listKey}/documents/{parentFolderId}/files?name={fileName}
     PATCH  /projects/{projectId}/document-lists/{listKey}/documents/{documentId}?kind=file|folder
     POST   /projects/{projectId}/document-lists/{sourceListKey}/documents/{documentId}/move
     POST   /projects/{projectId}/document-lists/{sourceListKey}/documents/{documentId}/copy
@@ -74,6 +75,8 @@ design is agreed. The overview remains a compact route/index document.
   canonical by-id read for updated path and audit metadata.
 - [DELETE document](backend-operations/delete.md) — complete contract and SharePoint
   implementation details.
+- [UPLOAD file](backend-operations/upload-file.md) — focused raw-body contract,
+  bounded first implementation, and verified Tomcat/Feign streaming constraints.
 
 ## Frontend mapping
 - `FileSystemApi.listDocumentRoot(projectId, listKey)` → the root GET;
