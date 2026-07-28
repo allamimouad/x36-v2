@@ -1,346 +1,227 @@
-# Upload File — Single-Request HTTP Streaming Implementation
+# UPLOAD File with HTTP Streaming
 
-> **Status: backend implementation contract.**
->
-> Relay the browser request body to SharePoint as a stream. The complete file must
-> never be materialized as a backend `byte[]`.
+> **Status: backend transport contract; backend and frontend pending.**
+> This is the operation-specific companion to the
+> [backend endpoint overview](../backend-endpoints.md).
 
-## Required outcome
+## Implementation rule
 
-Upload one file with:
+This operation belongs in an existing backend. Inspect the implemented create-folder,
+rename, and delete flows and retain their:
 
-- one browser-to-backend HTTP request;
-- one backend-to-SharePoint `Files/Add` HTTP request;
-- a direct `InputStream` relay with bounded working memory;
-- no upload session;
-- no database table;
-- no scheduler;
-- no `StartUpload`, `ContinueUpload`, or `FinishUpload`;
-- no empty-file creation before the real upload.
+- domain controller and service structure;
+- `(projectId, listKey)` configuration resolution;
+- authorization;
+- token service and token cache;
+- SharePoint DTOs and domain mapping;
+- validation, exception translation, and public error format.
 
-The incoming servlet stream becomes the outgoing SharePoint request entity. SharePoint
-creates the file from the complete body and returns the completed file.
+Do not create replacement routing, mapping, authentication, or error-handling
+architectures for upload.
+
+The only transport-specific addition is a direct streaming SharePoint request because
+the normal Spring Cloud OpenFeign encoder buffers request bodies. Keep that addition
+focused on executing this upload request; it must reuse the backend's existing
+configuration and token provider.
 
 ## Domain endpoint
 
-```http
-POST /projects/{projectId}/document-lists/{listKey}/documents/{parentFolderId}/files?name={encodedFileName}
-Content-Type: application/octet-stream
-Content-Length: {fileSize}
+    POST /projects/{projectId}/document-lists/{listKey}/documents/{parentFolderId}/files?name={encodedFileName}
+    Content-Type: application/octet-stream
+    Content-Length: {fileSize}
 
-{raw file bytes}
-```
+    {raw file bytes}
 
-The request body is the file itself. Do not use JSON, Base64, multipart form data, or
-`FormData`.
+- `listKey`: `execution` or `marketing`.
+- `parentFolderId`: the destination folder's SharePoint `UniqueId` GUID.
+- `name`: the decoded file name, including its extension.
+- The request body is the file itself, not JSON, Base64, multipart, or `FormData`.
+- Do not accept SharePoint routing information, credentials, an overwrite flag, or an
+  upload id from the frontend.
 
-Route meaning:
+Successful response:
 
-- `projectId` identifies the project.
-- `listKey` identifies the configured document list, for example `execution` or
-  `marketing`.
-- `parentFolderId` is the destination folder's SharePoint `UniqueId`.
-- `name` is one URL-encoded file name.
+    201 Created
+    Content-Type: application/json
 
-The frontend must never provide a SharePoint site URL, library id, server-relative
-path, access token, or SharePoint upload id.
-
-## Complete flow
-
-```text
-Angular sends the File as one raw request body
-                    |
-                    v
-Tomcat exposes HttpServletRequest.getInputStream()
-                    |
-                    v
-Service resolves and authorizes project/list/folder
-                    |
-                    v
-Apache HttpClient uses that InputStream as its request entity
-                    |
-                    v
-Existing token provider supplies the bearer token
-                    |
-                    v
-SharePoint Files/Add reads the stream and returns SP.File
-                    |
-                    v
-Backend maps it to the domain File DTO and returns 201
-```
-
-The two Tomcat instances need no shared upload state. The load balancer chooses one
-instance for the incoming request; the outgoing SharePoint request remains attached to
-that same request and instance until it finishes.
-
-## Dependency
-
-Use Apache HttpClient 5 for this upload operation:
-
-```xml
-<dependency>
-    <groupId>org.apache.httpcomponents.client5</groupId>
-    <artifactId>httpclient5</artifactId>
-</dependency>
-```
-
-Use the version managed by the application's Spring Boot dependency management where
-available.
-
-Apache's
-[`BasicHttpEntity`](https://hc.apache.org/httpcomponents-core-5.4.x/current/httpcore5/apidocs/org/apache/hc/core5/http/io/entity/BasicHttpEntity.html)
-is a streamed, non-repeatable entity backed by an `InputStream`; its documented
-`isStreaming()` result is `true`.
-
-## Controller
-
-The controller passes the servlet stream to the service without reading it into a byte
-array:
-
-```java
-@PostMapping(
-    value = "/projects/{projectId}/document-lists/{listKey}"
-        + "/documents/{parentFolderId}/files",
-    consumes = MediaType.APPLICATION_OCTET_STREAM_VALUE,
-    produces = MediaType.APPLICATION_JSON_VALUE
-)
-public ResponseEntity<FileDto> uploadFile(
-    @PathVariable String projectId,
-    @PathVariable String listKey,
-    @PathVariable UUID parentFolderId,
-    @RequestParam("name") String fileName,
-    HttpServletRequest request
-) throws IOException {
-    long contentLength = request.getContentLengthLong();
-    if (contentLength < 0) {
-        throw new LengthRequiredException();
+    {
+      "kind": "file",
+      "listKey": "execution",
+      "id": "sharepoint-returned-unique-id",
+      "path": "/sites/project/Documents/report.pdf",
+      "name": "report.pdf",
+      "parentId": "parent-folder-guid",
+      "sizeBytes": 123456,
+      "createdAt": "2026-07-29T10:15:30Z",
+      "modifiedAt": "2026-07-29T10:15:30Z",
+      "modifiedBy": "User Display Name"
     }
 
-    FileDto result = uploadFileService.upload(
-        projectId,
-        listKey,
-        parentFolderId,
-        fileName,
-        contentLength,
-        request.getInputStream()
-    );
+Return the backend's existing canonical file response shape.
 
-    return ResponseEntity.status(HttpStatus.CREATED).body(result);
-}
-```
+## Required semantics
 
-Require a known length for the first implementation. A browser sending a `File` or
-`Blob` as the raw XMLHttpRequest body supplies its length automatically. Enforce the
-configured SharePoint maximum before opening the outgoing request and return `413` when
-it is exceeded.
+1. Validate the route, destination, decoded file name, content type, and declared size
+   using existing backend rules.
+2. Resolve and authorize `(projectId, listKey)` through the same path as the implemented
+   document operations.
+3. Obtain the servlet request `InputStream` without converting it to `byte[]`.
+4. Use that stream as the body of one outgoing SharePoint `Files/Add` request.
+5. Reuse the existing token service to add the bearer token to that request.
+6. Map the returned `SP.File` through existing mapping conventions.
+7. Return `201` only after SharePoint confirms success.
 
-The service and HTTP client execute synchronously within this controller call. Do not
-return from the controller while another thread is still using the servlet stream.
+Do not create an empty file first. Do not use `StartUpload`, `ContinueUpload`, or
+`FinishUpload`. Do not add an upload session, database table, scheduler, cleanup job,
+or load-balancer stickiness.
 
-## Service
+## Backend resolution and guards
 
-The service owns validation, authorization, routing, and response mapping:
+Follow the same guards used by the implemented document operations:
 
-```java
-@Service
-public class UploadFileService {
-    private final SharePointRouteResolver routeResolver;
-    private final SharePointStreamingClient sharePointClient;
-    private final SharePointFileMapper fileMapper;
+1. Validate `projectId`, `listKey`, `parentFolderId`, and `name`.
+2. Reject blank or invalid file names, path separators, `.` and `..`.
+3. Resolve backend-owned SharePoint configuration for `(projectId, listKey)`.
+4. Authorize upload to the selected document list.
+5. Treat `parentFolderId` as the destination folder id without a preliminary
+   SharePoint lookup.
+6. Require a known `Content-Length` for the first streaming implementation and return
+   `411 Length Required` when it is unavailable.
+7. Reject a declared size above the backend's configured SharePoint maximum before
+   opening the outgoing request.
 
-    public FileDto upload(
-        String projectId,
-        String listKey,
-        UUID parentFolderId,
-        String fileName,
-        long contentLength,
-        InputStream content
-    ) {
-        SharePointRoute route = routeResolver.resolve(projectId, listKey);
-        authorizeWrite(route, parentFolderId);
-        String safeName = validateAndEscapeFileName(fileName);
-
-        SharePointFileResponse response = sharePointClient.addFile(
-            route,
-            parentFolderId,
-            safeName,
-            contentLength,
-            content
-        );
-
-        return fileMapper.toDomain(response, projectId, listKey, parentFolderId);
-    }
-}
-```
-
-## Streaming SharePoint client
-
-Create one focused client component. It reuses the existing route resolver and token
-provider but does not use a Feign encoder for the request body.
-
-```java
-@Component
-public class SharePointStreamingClient {
-    private final CloseableHttpClient httpClient;
-    private final TokenService tokenService;
-    private final ObjectMapper objectMapper;
-
-    public SharePointFileResponse addFile(
-        SharePointRoute route,
-        UUID parentFolderId,
-        String escapedFileName,
-        long contentLength,
-        InputStream content
-    ) {
-        URI uri = buildFilesAddUri(
-            route.siteUrl(),
-            parentFolderId,
-            escapedFileName
-        );
-
-        HttpPost request = new HttpPost(uri);
-        request.setHeader(HttpHeaders.AUTHORIZATION,
-            "Bearer " + tokenService.getAccessToken());
-        request.setHeader(HttpHeaders.ACCEPT, "application/json;odata=verbose");
-        request.setEntity(new BasicHttpEntity(
-            content,
-            contentLength,
-            ContentType.APPLICATION_OCTET_STREAM
-        ));
-
-        return httpClient.execute(request, response -> {
-            ensureSuccessfulStatus(response);
-            return objectMapper.readValue(
-                response.getEntity().getContent(),
-                SharePointFileResponse.class
-            );
-        });
-    }
-}
-```
-
-Adapt the token-service method and SharePoint response type to their established
-interfaces. The important behavior is:
-
-- use the existing token provider and cache;
-- obtain the same per-user access token used by authenticated SharePoint calls;
-- set the bearer header on the Apache request;
-- do not create another authentication flow or token cache.
-
-The Feign `RequestInterceptor` cannot intercept an Apache HttpClient request. Reuse the
-token provider behind that interceptor, not the Feign interceptor itself.
-
-Use one application-managed, pooled `CloseableHttpClient`; do not create a client per
-file.
+A browser sending a `File` or `Blob` as the raw request body normally supplies its
+length automatically. The frontend must not attempt to set the restricted
+`Content-Length` header itself.
 
 ## SharePoint request
 
-The client sends:
+Send:
 
-```http
-POST {siteUrl}/_api/web/GetFolderById('{parentFolderId}')/Files/Add(url='{escapedFileName}',overwrite=false)
-Authorization: Bearer {existingAccessToken}
-Accept: application/json;odata=verbose
-Content-Type: application/octet-stream
-Content-Length: {fileSize}
+    POST {siteUrl}/_api/web/GetFolderById('{parentFolderId}')/Files/Add(url='{escapedFileName}',overwrite=false)
+        ?$select=UniqueId,Name,ServerRelativeUrl,Length,TimeCreated,TimeLastModified,ListItemAllFields/Editor/Title
+        &$expand=ListItemAllFields/Editor
+    Authorization: Bearer {cached access token}
+    Accept: application/json
+    Content-Type: application/octet-stream
+    Content-Length: {fileSize}
 
-{streamed file bytes}
-```
-
-Escape the file name as an OData string value and then URL-encode it with a URI builder.
-Never concatenate an unvalidated raw file name into the SharePoint URL.
+    {streamed file bytes}
 
 Microsoft documents `Files/Add` with the binary file in the POST body in
 [Working with folders and files with REST](https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins/working-with-folders-and-files-with-rest).
 
-## Retry behavior
+Escape the logical file name using the same OData and URI construction already used by
+the backend. Never concatenate an unvalidated raw name.
 
-`BasicHttpEntity` is non-repeatable because it wraps the live servlet stream. Configure
-this operation with no automatic HTTP retry. A transparent retry would find the stream
-already consumed and could create an ambiguous result.
+## Streaming transport
 
-After any failure, a user retry sends a new browser request and restarts the complete
-file from byte zero. There is no resume support.
+Use Apache HttpClient 5 or the backend's already-approved streaming HTTP client.
+Apache's
+[`BasicHttpEntity`](https://hc.apache.org/httpcomponents-core-5.4.x/current/httpcore5/apidocs/org/apache/hc/core5/http/io/entity/BasicHttpEntity.html)
+is a streamed, non-repeatable entity backed by an `InputStream`.
 
-## Progress and cancellation
+The essential operation is:
 
-Angular can report upload progress while sending the request to Tomcat. Because Tomcat
-is simultaneously relaying the stream to SharePoint, that progress is closer to the
-real end-to-end transfer than a fully buffered call. Completion is still reported only
-after SharePoint returns success and the backend returns `201`.
+    InputStream content = servletRequest.getInputStream();
+    request.setEntity(new BasicHttpEntity(
+        content,
+        contentLength,
+        ContentType.APPLICATION_OCTET_STREAM
+    ));
 
-If the user cancels:
+Fit these lines into the backend's existing controller/service structure. Do not
+introduce speculative route-resolver or mapper classes around them.
 
-- Angular aborts the incoming HTTP request;
-- the servlet read normally fails or reaches an incomplete body;
-- the outgoing Apache request must be closed/aborted;
-- no database state or cleanup job exists;
-- cancellation remains best effort if SharePoint has already committed the request.
+Use one application-managed pooled HTTP client, not one new client per upload. Execute
+the outgoing request synchronously while the servlet request is open. Always close the
+outgoing response and abort/close the outgoing request after errors or disconnects.
 
-The HTTP client response and request resources must always be closed, including on
-client disconnect, timeout, parsing error, and SharePoint error.
+Never call `readAllBytes()`, `MultipartFile.getBytes()`, or copy the content into a
+`ByteArrayOutputStream`.
 
-## Memory and timeout rules
+## Existing authentication
 
-- Never convert the upload `InputStream` to `byte[]`.
-- Never use `readAllBytes()`, `ByteArrayOutputStream`, `MultipartFile.getBytes()`, or a
-  buffering request entity.
-- Do not log request bodies.
-- Keep servlet, reverse-proxy, load-balancer, and SharePoint timeouts long enough for
-  the maximum supported file at the slowest accepted connection speed.
-- Keep server request-size limits aligned with the supported SharePoint maximum.
-- Apply a concurrency limit if required to protect sockets and SharePoint, even though
-  heap usage stays bounded.
+The Feign request interceptor cannot intercept an Apache HttpClient request. Reuse the
+existing token service behind that interceptor:
 
-## Response and errors
+1. obtain the same cached per-user bearer token used by existing SharePoint calls;
+2. add `Authorization: Bearer ...` to the streaming request;
+3. retain the existing refresh and error behavior.
 
-On success:
+Do not create another OAuth flow, token cache, certificate configuration, form digest,
+`X-RequestDigest`, or `_api/contextinfo` request.
 
-```http
-201 Created
-Content-Type: application/json
+## SharePoint response mapping
 
-{
-  "id": "sharepoint-file-unique-id",
-  "listKey": "execution",
-  "parentId": "destination-folder-id",
-  "name": "report.pdf",
-  "path": "/configured/library/report.pdf",
-  "size": 123456,
-  "modifiedAt": "2026-07-29T10:15:30Z",
-  "modifiedBy": "..."
-}
-```
+Use the existing file DTOs and mapping code or conventions:
 
-Return the application's established canonical `FileDto`; the example only shows the
-expected meaning.
+    kind        <- constant "file"
+    listKey     <- domain route
+    id          <- SharePoint UniqueId
+    path        <- SharePoint ServerRelativeUrl
+    name        <- SharePoint Name
+    parentId    <- domain route parentFolderId
+    sizeBytes   <- SharePoint Length, parsed as a number
+    createdAt   <- SharePoint TimeCreated
+    modifiedAt  <- SharePoint TimeLastModified
+    modifiedBy  <- SharePoint ListItemAllFields.Editor.Title, when present
 
-Map failures consistently:
+Do not create an upload-specific file mapper or a second SharePoint GET merely to
+resolve `parentId`.
 
-- `400` invalid file name, list key, or request;
-- `401`/`403` authentication or authorization failure;
-- `404` unknown route or destination folder;
-- `409` a file with the same name already exists;
-- `411` missing `Content-Length`;
-- `413` configured maximum exceeded;
-- `499` only if the existing platform already uses it for a client-disconnected
-  request; otherwise do not invent a new public status;
-- `502` SharePoint rejected the operation or returned an unusable response;
-- `504` SharePoint timed out.
+## Call count and two Tomcat instances
 
-Never return an access token, SharePoint site URL, or internal HTTP-client details.
+A successful upload performs exactly one backend-to-SharePoint request. No preflight
+folder, metadata, collision, or permission request is added.
 
-## Acceptance checks
+The load balancer selects one Tomcat instance for the single incoming HTTP request.
+That instance relays the stream and returns the result. No shared upload state,
+database row, or session affinity is required.
 
-- A normal file is created with its exact bytes and canonical name.
-- A file larger than the available JVM heap can be relayed without heap growth
-  proportional to file size.
-- A second upload with the same name returns `409` and does not overwrite.
-- The outgoing request has the declared `Content-Length` and raw octet-stream body.
-- The existing token provider supplies authentication; no duplicate OAuth flow exists.
-- An automatic retry cannot replay the non-repeatable entity.
-- Disconnecting the browser closes the outgoing request and all resources.
-- No empty SharePoint file is explicitly created before `Files/Add`.
-- No database row, scheduler, upload id, or chunk endpoint is introduced.
-- Two parallel requests can be handled by different Tomcat instances without shared
-  state.
+## Retry, cancellation, and progress
+
+The streaming request body is non-repeatable. Disable automatic HTTP retries for this
+operation. A user retry sends a new browser request and restarts the complete file from
+byte zero.
+
+Angular progress measures how much of the file it has sent to Tomcat. Because Tomcat
+relays the same stream while receiving it, data flows toward SharePoint during that
+request. Completion is still reported only after SharePoint succeeds and the backend
+returns `201`.
+
+When Angular cancels, the servlet read should fail or end early and the outgoing
+request must be aborted. Cancellation remains best effort if SharePoint has already
+committed the file.
+
+## Error mapping
+
+Use the same exception translation and public error format as existing document
+operations:
+
+- invalid route, request, or name -> HTTP 400 / existing invalid-input code;
+- missing `Content-Length` -> HTTP 411;
+- missing destination -> HTTP 404 / `not-found`;
+- existing file with `overwrite=false` -> HTTP 409 / `name-collision`;
+- SharePoint 401/403 -> HTTP 403 / `permission-denied`;
+- declared size above the configured maximum -> HTTP 413;
+- SharePoint 429 or transport failure -> existing retryable `network` failure;
+- unrecognized SharePoint failure -> `unknown`, with technical and correlation details
+  retained only in backend logs.
+
+Return no file node on failure and never expose authentication or routing details.
+
+## Backend acceptance checklist
+
+- Existing controller/service, routing, authorization, DTO, mapping, and error patterns
+  are retained.
+- The only new transport behavior is the focused streaming SharePoint call.
+- The servlet `InputStream` is relayed without a complete-file `byte[]`.
+- One domain POST produces one SharePoint `Files/Add` POST.
+- The existing token service supplies authentication.
+- Automatic replay of the non-repeatable request is disabled.
+- SharePoint's canonical id, name, path, size, and timestamps are returned.
+- Browser disconnect closes the outgoing request and response resources.
+- No empty placeholder, chunk operation, upload session, database row, or scheduler is
+  introduced.
+- Two Tomcat instances require no shared upload state.
