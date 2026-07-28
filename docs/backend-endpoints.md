@@ -75,8 +75,10 @@ design is agreed. The overview remains a compact route/index document.
   canonical by-id read for updated path and audit metadata.
 - [DELETE document](backend-operations/delete.md) — complete contract and SharePoint
   implementation details.
-- [UPLOAD file](backend-operations/upload-file.md) — focused raw-body contract,
-  bounded first implementation, and verified Tomcat/Feign streaming constraints.
+- [UPLOAD file with Feign](backend-operations/upload-file-feign-buffered.md) —
+  bounded first implementation using the existing authenticated Feign client.
+- [UPLOAD file with HTTP streaming](backend-operations/upload-file-http-streaming.md) —
+  single-request `InputStream` relay for a future transport change.
 
 ## Frontend mapping
 - `FileSystemApi.listDocumentRoot(projectId, listKey)` → the root GET;

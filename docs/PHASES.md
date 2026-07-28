@@ -274,7 +274,7 @@
   ```
 
 **Mock**
-- Implement `MockFileSystemApi.upload` — simulated chunked progress, respects `AbortSignal`, creates the `FileNode` on completion, latency proportional to file size
+- Implement `MockFileSystemApi.upload` — simulated incremental progress, respects `AbortSignal`, creates the `FileNode` on completion, latency proportional to file size
 
 **Services**
 - `services/upload.service.ts`:
@@ -312,7 +312,7 @@
 - [ ] Cancel button aborts upload immediately
 - [ ] Retry button re-queues failed uploads
 - [ ] Uploaded files appear in tree/table on completion (without full refresh)
-- [ ] Large file simulation shows chunked-looking progress (not one jump to 100%)
+- [ ] Upload simulation shows incremental progress (not one jump to 100%)
 
 ---
 
@@ -333,7 +333,9 @@
   cache, form-digest interceptor, `X-RequestDigest`, or `_api/contextinfo` calls.
 - Implement `id` as the SharePoint `UniqueId` (GUID) and `path` as `ServerRelativeUrl`. Source operations address items via `GetFolderById('<id>')` / `GetFileById('<id>')`. The adapter is a thin shim over the auto-generated SharePoint client — every API method takes full `FolderNode` / `FileSystemNode` arguments, so the shim can read whichever fields (`id`, `path`, `name`, `parent.id`, `parent.path`, ...) the generated DTOs require.
 - Error code mapping from SharePoint error codes to `FileSystemError` codes
-- Implement chunked upload (`StartUpload` / `ContinueUpload` / `FinishUpload`)
+- Implement the raw-body upload endpoint through the bounded authenticated Feign
+  contract; keep the frontend contract compatible with a future single-request
+  streaming transport
 - In `project-documents.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
 - Only after that swap, optionally delete `services/mock/` (mock backend + seed + mock config token) and the two `stores/*.spec.ts` if unit tests aren't kept in that repo
 - Icons: no component swap needed — `FileSystemIcon` is the only file-type icon component (the Material Symbols stand-in was deleted 2026-07-08). Copy `src/assets/icons/sharepoint-file-type-icons/` (the 8 SVGs) to the target app along with the feature folder, or replace them with the target's own set — the component only needs `<name>.svg` to exist for the 8 `FileSystemIconName` values

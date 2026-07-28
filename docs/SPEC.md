@@ -8,6 +8,8 @@
 > **Before starting any work**: read `PROGRESS.md` to see which phase is active.
 > **Before ending your session**: update `PROGRESS.md` with what you completed, what you deferred, and what the next session should pick up.
 > **Never implement features from a future phase.** If you notice something needed later, note it in `PROGRESS.md` under "Deferred" and move on.
+> **Git publishing rule**: commit and push to `main` by default. Create or use another
+> branch only when the user explicitly asks for one.
 
 ---
 
@@ -185,7 +187,9 @@ All scenarios must work:
 - **Upload panel**: floating bottom-right, collapsible, shows active / queued / completed
 - Per-file progress bar, cancel, retry
 - **Concurrency limit**: 4 simultaneous uploads
-- **Chunked** for files > 10 MB (the mock simulates chunked progress; real SharePoint impl uses StartUpload/ContinueUpload/FinishUpload)
+- The initial backend uses one bounded raw-body request for files up to 10 MiB; a
+  single-request streaming transport can remove that temporary limit without changing
+  the frontend endpoint
 
 ---
 
