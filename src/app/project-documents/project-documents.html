@@ -223,16 +223,6 @@
     </ng-template>
   </p-contextMenu>
 
-  <pr-rename-dialog
-    [visible]="renameDialogVisible()"
-    [node]="renameDialogNode()"
-    [submitting]="renameDialogSubmitting()"
-    [serverError]="renameDialogError()"
-    (visibleChange)="renameDialogVisible.set($event)"
-    (nameEdited)="renameDialogError.set(null)"
-    (renameRequested)="onRenameDialogRequested($event)"
-  />
-
   <p-confirmDialog
     [key]="deleteConfirmationKey"
     appendTo="body"

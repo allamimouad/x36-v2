@@ -126,18 +126,18 @@
 - `services/notification.service.ts` — component-scoped wrapper around `MessageService`; methods: `success(message)`, `error(error, retry?)`, `warning(message)`, `info(message)`, `userMessageFor(error)`, `clear()`. `ProjectDocuments` decides inline state vs toast from typed store errors; retry actions use the custom `p-toast` template.
 
 **Components**
-- `components/dialogs/rename-dialog.ts` — file rename dialog with name validation
 - `components/dialogs/conflict-resolution-dialog.ts` — shell only (used in Phase 4 for bulk move/copy; for Phase 2 single ops, errors show as toast)
 - `components/folder-tree/folder-tree.ts` — emit folder context-menu requests; the container supplies the shared menu from SPEC §3.5
 - `components/file-table/file-table.ts` — add:
   - Context menu per row
   - Context menu on empty area
-  - Inline rename (when `focusedId === row.id` and rename mode active)
+  - Inline file/folder rename (when `focusedId === row.id` and rename mode active)
 - `components/nav-toolbar/nav-toolbar.ts` — enable new folder button (server-first create followed by inline rename), upload button still disabled
 
 **Container**
 - Wires context menu actions to store methods
-- Starts inline rename after the backend confirms folder creation; opens rename/delete dialogs and handles results
+- Starts inline rename for files and folders, including after the backend confirms
+  folder creation; opens the delete confirmation and handles results
 - Shows `p-toast` and `p-confirmDialog` at top level
 
 ### Acceptance checks

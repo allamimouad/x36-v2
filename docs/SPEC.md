@@ -405,7 +405,6 @@ project-documents/
     nav-toolbar/nav-toolbar.ts
     upload-panel/upload-panel.ts
     dialogs/
-      rename-dialog.ts
       conflict-resolution-dialog.ts
   shared/
     file-system-icon/                  # file-type icon: <img> over assets/icons/sharepoint-file-type-icons/<name>.svg

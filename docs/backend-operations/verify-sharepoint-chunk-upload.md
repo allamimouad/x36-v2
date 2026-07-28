@@ -6,6 +6,33 @@
 > This is only a capability check. It uploads the three text fragments `AAA`, `BBB`,
 > and `CCC`. The completed file must contain `AAABBBCCC`.
 
+## Verified farm result — 2026-07-28
+
+The target farm passed the chunk-upload probe:
+
+- The empty-file `Files/Add` response returned the SharePoint file object, including
+  its `UniqueId`.
+- The probe created the empty file through
+  `GetFolderByServerRelativeUrl(...)/Files/Add(...)`. `GetFolderById(...)` has also
+  been exercised successfully and is the intended backend route.
+- `StartUpload` and `ContinueUpload` both worked through `GetFileById(...)`.
+- With SharePoint verbose JSON, `StartUpload` returned
+  `{"d":{"StartUpload":"3"}}`.
+- `ContinueUpload` returned `{"d":{"ContinueUpload":"6"}}`.
+- The offsets are serialized as decimal strings by this farm. The backend must parse
+  them as signed 64-bit byte offsets and send the returned value to the next call.
+- `FinishUpload` worked through `GetFileById(...)` and returned the updated SharePoint
+  file object, including the completed file's new length and modified metadata.
+- The completed file was opened successfully from SharePoint and its content was
+  visually verified. The separate `GetFileById(...)/$value` check was not run.
+
+This confirms the by-id chunk design. The exact response-field projection needed for
+the domain `File` DTO can be selected explicitly or obtained with a canonical follow-up
+file read after `FinishUpload`.
+
+Before implementing cancellation cleanup, verify that the farm also accepts
+`GetFileById(...)/CancelUpload(uploadId=guid'...')`.
+
 ## Postman variables
 
 Use a local Postman environment:

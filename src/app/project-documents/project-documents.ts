@@ -55,10 +55,6 @@ import { FileTable } from './components/file-table/file-table';
 import { PathBar } from './components/path-bar/path-bar';
 import { NavToolbar } from './components/nav-toolbar/nav-toolbar';
 import { ContextMenuItem } from './components/context-menu-item/context-menu-item';
-import {
-    RenameDialog,
-    type RenameRequest
-} from './components/dialogs/rename-dialog';
 import type {
     ItemRenameRequest,
     NodeContextMenuRequest
@@ -85,7 +81,6 @@ type InlineRenameSurface = 'tree' | 'table';
         PathBar,
         NavToolbar,
         ContextMenuItem,
-        RenameDialog,
         ButtonModule,
         ConfirmDialog,
         ContextMenu,
@@ -129,10 +124,6 @@ export class ProjectDocuments {
     protected readonly inlineRenameSurface = signal<InlineRenameSurface | null>(null);
     protected readonly focusedSurface = signal<InlineRenameSurface>('table');
     protected readonly creatingFolder = signal(false);
-    protected readonly renameDialogVisible = signal(false);
-    protected readonly renameDialogNode = signal<FileNode | null>(null);
-    protected readonly renameDialogSubmitting = signal(false);
-    protected readonly renameDialogError = signal<string | null>(null);
 
     /** Address-bar edit state (owned here; PathBar is a controlled child). */
     protected readonly pathEditing = signal(false);
@@ -295,9 +286,7 @@ export class ProjectDocuments {
 
     @HostListener('document:keydown.F2', ['$event'])
     protected onF2(event: Event): void {
-        if (this.pathEditing() || this.renameDialogVisible()) {
-            return;
-        }
+        if (this.pathEditing()) { return; }
         const id = this.navigation.focusedId();
         const node = id ? this.fileSystem.entityMap()[id] : undefined;
         if (!node || node.parentId === null || this.isWriting(node.id)) { return; }
@@ -313,10 +302,7 @@ export class ProjectDocuments {
         }
         if (node.parentId === this.navigation.currentFolderId()) {
             this.startInlineRename(node, 'table');
-
-            return;
         }
-        this.openRenameDialog(node);
     }
 
     protected onItemFocused(id: string): void {
@@ -362,55 +348,6 @@ export class ProjectDocuments {
             );
         } finally {
             this.creatingFolder.set(false);
-        }
-    }
-
-    protected openRenameDialog(node: FileSystemNode): void {
-        if (node.parentId === null || this.isWriting(node.id)) { return; }
-        if (isFolder(node)) {
-            this.startInlineRename(node, this.focusedSurface());
-
-            return;
-        }
-        this.navigation.endRename();
-        this.inlineRenameSurface.set(null);
-        this.navigation.focus(node.id);
-        this.renameDialogNode.set(node);
-        this.renameDialogError.set(null);
-        this.renameDialogVisible.set(true);
-    }
-
-    protected async onRenameDialogRequested(request: RenameRequest): Promise<void> {
-        if (this.renameDialogSubmitting() || this.isWriting(request.node.id)) { return; }
-        const name = request.name.trim();
-        if (name === request.node.name) {
-            this.renameDialogVisible.set(false);
-
-            return;
-        }
-        this.renameDialogSubmitting.set(true);
-        this.renameDialogError.set(null);
-        this.setWriting(request.node.id, true);
-        try {
-            const renamed = await this.fileSystem.rename(request.node.id, name);
-            this.renameDialogVisible.set(false);
-            this.notifications.success(`“${request.node.name}” was renamed to “${renamed.name}”.`);
-        } catch (error) {
-            const fieldError = this.mutationFieldError(error);
-            if (fieldError) {
-                this.renameDialogError.set(fieldError);
-            } else {
-                this.notifications.error(
-                    error,
-                    this.retryForReadError(
-                        error,
-                        () => void this.onRenameDialogRequested({ ...request, name })
-                    )
-                );
-            }
-        } finally {
-            this.setWriting(request.node.id, false);
-            this.renameDialogSubmitting.set(false);
         }
     }
 
@@ -689,7 +626,7 @@ export class ProjectDocuments {
         ];
     }
 
-    private fileContextMenu(file: FileSystemNode): MenuItem[] {
+    private fileContextMenu(file: FileNode): MenuItem[] {
         const locked = this.isWriting(file.id);
 
         return [
@@ -712,7 +649,7 @@ export class ProjectDocuments {
             ]),
             { separator: true },
             this.menuItem('Rename File', 'edit', 'pd-menu-rename-file', () => {
-                this.openRenameDialog(file);
+                this.startInlineRename(file, 'table');
             }, locked),
             // TODO: enable with the copy/paste US.
             this.menuItem('Copy File', 'content_copy', 'pd-menu-copy-file', undefined, true),
@@ -785,7 +722,6 @@ export class ProjectDocuments {
         surface: InlineRenameSurface
     ): void {
         if (node.parentId === null || this.isWriting(node.id)) { return; }
-        this.renameDialogVisible.set(false);
         this.inlineRenameError.set(null);
         this.inlineRenameSurface.set(surface);
         this.focusedSurface.set(surface);
