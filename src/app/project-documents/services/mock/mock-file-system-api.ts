@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { type Observable, map, throwError, timer } from 'rxjs';
+import { Observable, map, timer } from 'rxjs';
 import type { DocumentListing, ResolvedDocumentPath } from '../../models/document-listing.model';
 import type { DocumentListKey } from '../../models/document-list.model';
 import { FileSystemError } from '../../models/file-system-error.model';
@@ -11,6 +11,10 @@ import {
 } from '../../models/file-system-node.model';
 import { joinPath } from '../../utils/path.utils';
 import { resolveNameCollision, validateName } from '../../utils/naming.utils';
+import {
+    FILE_MANAGER_CONFIG,
+    type FileManagerConfig
+} from '../../tokens/file-manager-config.token';
 import { FileSystemApi } from '../file-system-api';
 import { MOCK_CONFIG, type MockConfig } from './mock-config.token';
 import { buildSeed } from './mock-seed';
@@ -18,6 +22,7 @@ import { buildSeed } from './mock-seed';
 @Injectable()
 export class MockFileSystemApi extends FileSystemApi {
     private readonly config: MockConfig = inject(MOCK_CONFIG);
+    private readonly fileManagerConfig: FileManagerConfig = inject(FILE_MANAGER_CONFIG);
     private readonly seed = buildSeed();
     private readonly nodes: Map<string, FileSystemNode> = this.seed.nodes;
     private readonly rootIdByList: Record<DocumentListKey, string> = this.seed.rootIdByList;
@@ -213,13 +218,93 @@ export class MockFileSystemApi extends FileSystemApi {
 
     public override upload(
         _projectId: string,
-        _parent: FolderNode,
-        _file: File,
-        _onProgress: (percent: number) => void,
-        _signal?: AbortSignal
+        parent: FolderNode,
+        file: File,
+        onProgress: (percent: number) => void,
+        signal?: AbortSignal
     ): Observable<FileNode> {
-    // TODO: implement with the upload US.
-        return notImplemented('upload');
+        return new Observable<FileNode>((subscriber) => {
+            let intervalId: ReturnType<typeof setInterval> | undefined;
+            let settled = false;
+            let progress = 0;
+
+            const cleanup = (): void => {
+                if (intervalId !== undefined) {
+                    clearInterval(intervalId);
+                    intervalId = undefined;
+                }
+                signal?.removeEventListener('abort', abort);
+            };
+            const fail = (error: unknown): void => {
+                if (settled) { return; }
+                settled = true;
+                cleanup();
+                subscriber.error(error);
+            };
+            const abort = (): void => {
+                fail(new FileSystemError('cancelled', 'Upload was cancelled'));
+            };
+
+            if (signal?.aborted) {
+                abort();
+
+                return cleanup;
+            }
+            signal?.addEventListener('abort', abort, { once: true });
+
+            const sizeRatio = Math.min(
+                1,
+                file.size / Math.max(1, this.fileManagerConfig.maxUploadSizeBytes)
+            );
+            const totalLatencyMs = 300 + sizeRatio * 1_200;
+            intervalId = setInterval(() => {
+                if (settled) { return; }
+                progress = Math.min(100, progress + 10);
+                if (progress < 100) {
+                    onProgress(progress);
+
+                    return;
+                }
+
+                try {
+                    this.maybeFail();
+                    const parentNode = this.requireFolder(parent.id);
+                    this.assertValidName(file.name);
+                    if (file.size > this.fileManagerConfig.maxUploadSizeBytes) {
+                        throw new FileSystemError(
+                            'too-large',
+                            'File exceeds the configured upload limit'
+                        );
+                    }
+                    this.assertNameAvailable(parentNode.id, file.name);
+                    const now = nowIso();
+                    const created: FileNode = {
+                        kind: 'file',
+                        listKey: parentNode.listKey,
+                        id: crypto.randomUUID(),
+                        path: joinPath(parentNode.path, file.name),
+                        name: file.name,
+                        parentId: parentNode.id,
+                        sizeBytes: file.size,
+                        createdAt: now,
+                        modifiedAt: now,
+                        modifiedBy: this.currentUser,
+                        contentType: file.type || undefined
+                    };
+                    this.nodes.set(created.id, created);
+                    this.touchParentCounts(parentNode.id);
+                    onProgress(100);
+                    settled = true;
+                    cleanup();
+                    subscriber.next(clone(created));
+                    subscriber.complete();
+                } catch (error) {
+                    fail(error);
+                }
+            }, Math.max(30, totalLatencyMs / 10));
+
+            return cleanup;
+        });
     }
 
     /** Build a DocumentListing for `parentId`'s direct children in `listKey`. */
@@ -494,10 +579,4 @@ function normalizeMockPath(path: string): string {
         .filter((segment) => segment.length > 0)
         .join('/')
         .toLowerCase();
-}
-
-function notImplemented(method: string): Observable<never> {
-    return throwError(
-        () => new FileSystemError('unknown', `MockFileSystemApi.${method} is not implemented yet`)
-    );
 }

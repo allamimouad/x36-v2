@@ -500,6 +500,35 @@ export const FileSystemStore = signalStore(
             _unmarkLoaded(targetParentId);
         };
 
+        const upload = async (
+            parentId: string,
+            file: File,
+            onProgress: (percent: number) => void,
+            signal?: AbortSignal
+        ): Promise<FileNode> => {
+            const parent = store.entityMap()[parentId];
+            if (!parent || !isFolder(parent)) {
+                throw new FileSystemError(
+                    'not-found',
+                    `Parent folder not found in cache: ${parentId}`
+                );
+            }
+            const projectId = _requireProjectId();
+            const created = await firstValueFrom(
+                api.upload(projectId, parent, file, onProgress, signal)
+            );
+            if (store.projectId() !== projectId) {
+                throw new FileSystemError(
+                    'cancelled',
+                    'The project changed before the upload completed'
+                );
+            }
+            patchState(store, setEntity<FileSystemNode>(created));
+            _adjustParentCount(parentId, 1);
+
+            return created;
+        };
+
         return {
             connectProject,
             initialize,
@@ -511,9 +540,7 @@ export const FileSystemStore = signalStore(
             delete: deleteNodes,
             move,
             copy,
-            // TODO: implement with the upload US.
-            upload: (_parentId: string, _files: File[]): Promise<void> =>
-                Promise.reject(notImplemented('upload'))
+            upload
         };
     })
 );

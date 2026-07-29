@@ -102,7 +102,7 @@ class name.
 
 Add the following operation to the existing authenticated SharePoint Feign client:
 
-    POST {siteUrl}/_api/web/GetFolderById('{parentFolderId}')/Files/Add(url='{escapedFileName}',overwrite=false)
+    POST {siteUrl}/_api/web/GetFolderById('{parentFolderId}')/Files/AddUsingPath(DecodedUrl='{escapedFileName}',Overwrite=false)
         ?$select=UniqueId,Name,ServerRelativeUrl,Length,TimeCreated,TimeLastModified,ListItemAllFields/Editor/Title
         &$expand=ListItemAllFields/Editor
     Authorization: Bearer {cached access token}
@@ -112,7 +112,9 @@ Add the following operation to the existing authenticated SharePoint Feign clien
 
     {complete file bytes}
 
-The Feign request body is the bounded `byte[]`.
+The Feign request body is the bounded `byte[]`. An empty file is valid: normalize an
+absent inbound body to a non-null `new byte[0]` before calling Feign, and send it with
+`Content-Length: 0`.
 
 Use the existing Feign client's conventions for:
 
@@ -128,8 +130,10 @@ Escape an apostrophe in the logical file name as `''`, then let the backend's
 established URI construction perform transport encoding. Never concatenate an
 unvalidated raw file name into the OData URL.
 
-Microsoft documents `Files/Add` with the complete binary file in the POST body in
-[Working with folders and files with REST](https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins/working-with-folders-and-files-with-rest).
+Microsoft documents the ResourcePath-based `AddUsingPath` API in
+[Supporting % and # in files and folders with the ResourcePath API](https://learn.microsoft.com/en-us/sharepoint/dev/solution-guidance/supporting-and-in-file-and-folder-with-the-resourcepath-api).
+The [PnPjs SharePoint file documentation](https://pnp.github.io/pnpjs/sp/files/#adding-files)
+also demonstrates `addUsingPath` with the file content and `Overwrite` option.
 
 ## SharePoint response mapping
 
@@ -163,7 +167,7 @@ are authoritative. Do not reconstruct them in Java.
 - Do not add another OAuth flow, token cache, form digest, `X-RequestDigest`, or
   `_api/contextinfo` request.
 - A successful upload performs exactly **one backend-to-SharePoint request**: the
-  `Files/Add` POST.
+  `Files/AddUsingPath` POST.
 - Do not perform a preliminary folder, collision, metadata, or permission lookup.
 
 ## Why the first implementation is limited to 10 MiB
@@ -211,7 +215,7 @@ operations:
 
 - invalid route, body, or name -> HTTP 400 / existing invalid-input code;
 - missing destination folder -> HTTP 404 / `not-found`;
-- existing file with `overwrite=false` -> HTTP 409 / `name-collision`;
+- existing file with `Overwrite=false` -> HTTP 409 / `name-collision`;
 - SharePoint 401/403 -> HTTP 403 / `permission-denied`;
 - request above the buffered limit -> HTTP 413;
 - SharePoint 429 or transport failure -> existing retryable `network` failure;
@@ -225,12 +229,14 @@ Feign exception details.
 
 - The implementation extends the existing controller/service/Feign patterns rather
   than introducing speculative architecture.
-- One domain POST produces one SharePoint `Files/Add` POST.
+- One domain POST produces one SharePoint `Files/AddUsingPath` POST.
 - The existing Feign client, request interceptor, token service, DTOs, mapping, and
   error handling are reused wherever they already apply.
 - A valid file is returned with SharePoint's canonical id, name, path, size, and
   timestamps.
-- `overwrite=false` prevents replacement of an existing file.
+- `Overwrite=false` prevents replacement of an existing file. Do not send
+  `EnsureUniqueFileName=true`; duplicate names must fail rather than receive a numeric
+  suffix.
 - A request above 10 MiB returns `413` without calling SharePoint.
 - A request without a trustworthy `Content-Length` is still bounded while reading.
 - No empty placeholder, chunk operation, upload session, database row, or scheduler is

@@ -1,0 +1,142 @@
+<section class="pd-upload-panel" aria-label="Uploads" data-testid="pd-upload-panel">
+  <header class="pd-upload-header">
+    <div class="pd-upload-heading">
+      <span class="material-symbols-outlined" aria-hidden="true">cloud_upload</span>
+      <div>
+        <h2>Uploads</h2>
+        <span>{{ summary() }}</span>
+      </div>
+    </div>
+    <div class="pd-upload-header-actions">
+      <button
+        pButton
+        type="button"
+        severity="secondary"
+        [text]="true"
+        [disabled]="!canClear()"
+        pTooltip="Clear finished uploads"
+        tooltipPosition="top"
+        aria-label="Clear finished uploads"
+        data-testid="pd-upload-clear"
+        (click)="completedCleared.emit()"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">delete_sweep</span>
+      </button>
+      <button
+        pButton
+        type="button"
+        severity="secondary"
+        [text]="true"
+        [attr.aria-expanded]="!collapsed()"
+        [attr.aria-label]="collapsed() ? 'Expand uploads' : 'Collapse uploads'"
+        data-testid="pd-upload-collapse"
+        (click)="toggleCollapsed()"
+      >
+        <span class="material-symbols-outlined" aria-hidden="true">
+          {{ collapsed() ? 'expand_less' : 'expand_more' }}
+        </span>
+      </button>
+    </div>
+  </header>
+
+  @if (!collapsed()) {
+    <div class="pd-upload-list">
+      @for (batch of visibleBatches(); track batch.id) {
+        <article
+          class="pd-upload-row pd-upload-batch"
+          [class]="statusClass(batch.status)"
+          [attr.data-testid]="'pd-upload-batch-' + batch.id"
+        >
+          <span class="material-symbols-outlined pd-upload-kind" aria-hidden="true">
+            drive_folder_upload
+          </span>
+          <div class="pd-upload-content">
+            <div class="pd-upload-line">
+              <span class="pd-upload-name" [title]="batch.rootName">{{ batch.rootName }}</span>
+              <span class="pd-upload-status">{{ batchStatus(batch) }}</span>
+            </div>
+            @if (batch.status === 'preparing') {
+              <p-progressbar
+                styleClass="pd-upload-progress"
+                [value]="batchProgress(batch)"
+                [showValue]="false"
+              />
+            }
+            @if (batch.error) {
+              <span class="pd-upload-error" role="alert">{{ batch.error }}</span>
+            }
+          </div>
+          @if (batch.status === 'preparing') {
+            <button
+              pButton
+              type="button"
+              severity="secondary"
+              [text]="true"
+              pTooltip="Cancel folder preparation"
+              tooltipPosition="left"
+              aria-label="Cancel folder preparation"
+              (click)="batchCancelled.emit(batch.id)"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">close</span>
+            </button>
+          }
+        </article>
+      }
+
+      @for (task of tasks(); track task.id) {
+        <article
+          class="pd-upload-row"
+          [class]="statusClass(task.status)"
+          [attr.data-testid]="'pd-upload-task-' + task.id"
+        >
+          <span class="material-symbols-outlined pd-upload-kind" aria-hidden="true">
+            description
+          </span>
+          <div class="pd-upload-content">
+            <div class="pd-upload-line">
+              <span class="pd-upload-name" [title]="task.relativePath">
+                {{ task.relativePath }}
+              </span>
+              <span class="pd-upload-status">{{ taskStatus(task) }}</span>
+            </div>
+            <p-progressbar
+              styleClass="pd-upload-progress"
+              [value]="task.progress"
+              [showValue]="false"
+            />
+            @if (task.error) {
+              <span class="pd-upload-error" role="alert">{{ task.error }}</span>
+            }
+          </div>
+          @if (isTaskActive(task)) {
+            <button
+              pButton
+              type="button"
+              severity="secondary"
+              [text]="true"
+              pTooltip="Cancel upload"
+              tooltipPosition="left"
+              aria-label="Cancel upload"
+              (click)="taskCancelled.emit(task.id)"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">close</span>
+            </button>
+          } @else if (canRetry(task)) {
+            <button
+              pButton
+              type="button"
+              severity="secondary"
+              [text]="true"
+              pTooltip="Retry complete file"
+              tooltipPosition="left"
+              aria-label="Retry complete file"
+              (click)="taskRetried.emit(task.id)"
+            >
+              <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+            </button>
+          }
+        </article>
+      }
+    </div>
+  }
+</section>

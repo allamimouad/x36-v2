@@ -65,11 +65,10 @@
  *   delete          DELETE backend /projects/{projectId}/document-lists/{node.listKey}
  *                            /documents/{node.id}?kind=file|folder
  *                            Backend calls GetFileById or GetFolderById in that list's site.
- *   upload (small)  POST   /_api/web/GetFolderByServerRelativeUrl('<parent.path>')
- *                            /Files/add(url='<file.name>',overwrite=false)
- *   upload (large)  StartUpload    POST .../StartUpload(uploadId='<guid>')
- *                   ContinueUpload POST .../ContinueUpload(uploadId,fileOffset)
- *                   FinishUpload   POST .../FinishUpload(uploadId,fileOffset)
+ *   upload          POST   backend /projects/{projectId}/document-lists/{parent.listKey}
+ *                            /documents/{parent.id}/files?name={file.name}
+ *                            with the File as the raw application/octet-stream body.
+ *                            Observe Angular upload progress and map the returned file DTO.
  *
  * Error code mapping (SharePoint → FileSystemError code)
  *   -2147024713  →  'name-collision'    (object already exists)
@@ -78,6 +77,7 @@
  *   HTTP 401/403 →  'permission-denied'
  *   HTTP 404     →  'not-found'
  *   HTTP 409     →  'name-collision'
+ *   HTTP 413     →  'too-large'
  *   HTTP 429     →  'network'           (throttled — backoff in caller)
  *   any network  →  'network'
  *   AbortError   →  'cancelled'
@@ -204,10 +204,8 @@ export class SharePointFileSystemApi extends FileSystemApi {
     }
 
     /**
-   * Files ≤ chunkSize: POST .../GetFolderByServerRelativeUrl('<parent.path>')
-   *                         /Files/add(url='<file.name>',overwrite=false)
-   * Files > chunkSize: StartUpload → ContinueUpload chunks → FinishUpload
-   * Honor `signal` (abort the in-flight chunk + StartUpload session).
+   * POST the complete File as one raw request to the list-scoped backend upload route.
+   * Report browser-to-backend progress, honor `signal`, and emit the returned FileNode.
    */
     public override upload(
         _projectId: string,

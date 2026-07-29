@@ -1,0 +1,431 @@
+import {
+    DestroyRef,
+    Injectable,
+    computed,
+    inject,
+    signal,
+    type Signal
+} from '@angular/core';
+import type { FileSystemErrorCode } from '../models/file-system-error.model';
+import { FileSystemError } from '../models/file-system-error.model';
+import type { FolderNode } from '../models/file-system-node.model';
+import type { UploadBatch, UploadTask } from '../models/upload-task.model';
+import { FILE_MANAGER_CONFIG } from '../tokens/file-manager-config.token';
+import { validateName } from '../utils/naming.utils';
+import { FileSystemStore } from '../stores/file-system.store';
+import { ConcurrencyQueue } from './concurrency-queue';
+import { buildDirectoryManifest, type LocalFileEntry } from './directory-manifest';
+
+@Injectable()
+export class UploadService {
+    public readonly tasks: Signal<readonly UploadTask[]>;
+    public readonly batches: Signal<readonly UploadBatch[]>;
+    public readonly hasUploads: Signal<boolean>;
+
+    private readonly fileSystem = inject(FileSystemStore);
+    private readonly config = inject(FILE_MANAGER_CONFIG);
+    private readonly destroyRef = inject(DestroyRef);
+    private readonly queue = new ConcurrencyQueue(this.config.uploadConcurrency);
+    private readonly taskControllers = new Map<string, AbortController>();
+    private readonly batchControllers = new Map<string, AbortController>();
+    private readonly _tasks = signal<UploadTask[]>([]);
+    private readonly _batches = signal<UploadBatch[]>([]);
+    private destroyed = false;
+
+    constructor() {
+        this.tasks = this._tasks.asReadonly();
+        this.batches = this._batches.asReadonly();
+        this.hasUploads = computed(
+            () => this._tasks().length > 0 || this._batches().length > 0
+        );
+        this.destroyRef.onDestroy(() => {
+            this.destroyed = true;
+            for (const controller of this.taskControllers.values()) {
+                controller.abort();
+            }
+            for (const controller of this.batchControllers.values()) {
+                controller.abort();
+            }
+        });
+    }
+
+    public enqueueFiles(files: readonly File[], target: FolderNode): void {
+        for (const file of files) {
+            this.addFileTask(file, target.id, file.name);
+        }
+    }
+
+    public async enqueueDirectory(
+        rootHandle: FileSystemDirectoryHandle,
+        target: FolderNode
+    ): Promise<void> {
+        const batchId = crypto.randomUUID();
+        const controller = new AbortController();
+        this.batchControllers.set(batchId, controller);
+        this._batches.update((batches) => [
+            ...batches,
+            {
+                id: batchId,
+                rootName: rootHandle.name,
+                targetParentId: target.id,
+                status: 'preparing',
+                directoryCount: 0,
+                createdDirectoryCount: 0,
+                fileCount: 0
+            }
+        ]);
+
+        try {
+            const manifest = await buildDirectoryManifest(rootHandle, controller.signal);
+            this.assertValidDirectories(manifest.directories);
+            this.updateBatch(batchId, {
+                directoryCount: manifest.directories.length,
+                fileCount: manifest.files.length
+            });
+
+            const remoteFolders = new Map<string, FolderNode>();
+            for (const localDirectory of manifest.directories) {
+                this.throwIfCancelled(controller.signal);
+                const parentId = localDirectory.parentRelativePath === null
+                    ? target.id
+                    : remoteFolders.get(localDirectory.parentRelativePath)?.id;
+                if (!parentId) {
+                    throw new FileSystemError(
+                        'not-found',
+                        `Parent folder was not created for ${localDirectory.relativePath}`
+                    );
+                }
+                const created = await this.fileSystem.createFolder(
+                    parentId,
+                    localDirectory.name
+                );
+                remoteFolders.set(localDirectory.relativePath, created);
+                this.updateBatch(batchId, {
+                    rootName:
+                        localDirectory.parentRelativePath === null
+                            ? created.name
+                            : this.batch(batchId)?.rootName ?? rootHandle.name,
+                    createdDirectoryCount:
+                        (this.batch(batchId)?.createdDirectoryCount ?? 0) + 1
+                });
+            }
+
+            this.throwIfCancelled(controller.signal);
+            for (const localFile of manifest.files) {
+                const remoteParent = remoteFolders.get(localFile.parentRelativePath);
+                if (!remoteParent) {
+                    throw new FileSystemError(
+                        'not-found',
+                        `Destination folder was not created for ${localFile.relativePath}`
+                    );
+                }
+                this.addManifestFileTask(
+                    localFile,
+                    remoteParent,
+                    batchId,
+                    manifest.root.name,
+                    remoteFolders.get(manifest.root.relativePath)?.name ?? manifest.root.name
+                );
+            }
+            this.updateBatch(batchId, {
+                status: manifest.files.length === 0 ? 'done' : 'uploading'
+            });
+            this.refreshBatch(batchId);
+        } catch (error) {
+            const cancelled = controller.signal.aborted || isCancellation(error);
+            this.updateBatch(batchId, {
+                status: cancelled ? 'cancelled' : 'error',
+                error: cancelled
+                    ? 'Folder upload was cancelled. Already-created folders were kept.'
+                    : uploadErrorMessage(error)
+            });
+        } finally {
+            this.batchControllers.delete(batchId);
+        }
+    }
+
+    public cancelTask(id: string): void {
+        const task = this.task(id);
+        if (!task || !isActiveTask(task)) { return; }
+        this.updateTask(id, {
+            status: 'cancelled',
+            error: undefined,
+            errorCode: 'cancelled'
+        });
+        this.taskControllers.get(id)?.abort();
+        if (task.batchId) { this.refreshBatch(task.batchId); }
+    }
+
+    public cancelBatch(id: string): void {
+        const batch = this.batch(id);
+        if (!batch || batch.status !== 'preparing') { return; }
+        this.batchControllers.get(id)?.abort();
+    }
+
+    public retryTask(id: string): void {
+        const task = this.task(id);
+        if (!task || !isRetryableTask(task)) { return; }
+        this.updateTask(id, {
+            status: 'queued',
+            progress: 0,
+            error: undefined,
+            errorCode: undefined
+        });
+        if (task.batchId) {
+            this.updateBatch(task.batchId, { status: 'uploading', error: undefined });
+        }
+        this.scheduleTask(id);
+    }
+
+    public clearCompleted(): void {
+        this._tasks.update((tasks) => tasks.filter(isActiveTask));
+        const remainingBatchIds = new Set(
+            this._tasks()
+                .map((task) => task.batchId)
+                .filter((id): id is string => id !== undefined)
+        );
+        this._batches.update((batches) =>
+            batches.filter(
+                (batch) =>
+                    batch.status === 'preparing' ||
+                    batch.status === 'uploading' ||
+                    remainingBatchIds.has(batch.id)
+            )
+        );
+    }
+
+    public reset(): void {
+        for (const controller of this.taskControllers.values()) {
+            controller.abort();
+        }
+        for (const controller of this.batchControllers.values()) {
+            controller.abort();
+        }
+        this.taskControllers.clear();
+        this.batchControllers.clear();
+        this._tasks.set([]);
+        this._batches.set([]);
+    }
+
+    private addManifestFileTask(
+        entry: LocalFileEntry,
+        parent: FolderNode,
+        batchId: string,
+        localRootName: string,
+        remoteRootName: string
+    ): void {
+        const suffix = entry.relativePath.slice(localRootName.length);
+        this.addFileTask(
+            entry.file,
+            parent.id,
+            `${remoteRootName}${suffix}`,
+            batchId
+        );
+    }
+
+    private addFileTask(
+        file: File,
+        parentId: string,
+        relativePath: string,
+        batchId?: string
+    ): void {
+        const validationError = this.fileValidationError(file);
+        const task: UploadTask = {
+            id: crypto.randomUUID(),
+            batchId,
+            file,
+            parentId,
+            relativePath,
+            status: validationError ? 'error' : 'queued',
+            progress: 0,
+            error: validationError?.message,
+            errorCode: validationError?.code
+        };
+        this._tasks.update((tasks) => [...tasks, task]);
+        if (validationError) {
+            if (batchId) { this.refreshBatch(batchId); }
+
+            return;
+        }
+        this.scheduleTask(task.id);
+    }
+
+    private scheduleTask(id: string): void {
+        void this.queue.enqueue(async () => {
+            const queued = this.task(id);
+            if (this.destroyed || !queued || queued.status !== 'queued') { return; }
+            const controller = new AbortController();
+            this.taskControllers.set(id, controller);
+            this.updateTask(id, { status: 'uploading', progress: 0 });
+            try {
+                await this.fileSystem.upload(
+                    queued.parentId,
+                    queued.file,
+                    (progress) => {
+                        const current = this.task(id);
+                        if (!current || current.status === 'cancelled') { return; }
+                        this.updateTask(id, {
+                            status: progress >= 100 ? 'finalizing' : 'uploading',
+                            progress
+                        });
+                    },
+                    controller.signal
+                );
+                if (this.task(id)?.status !== 'cancelled') {
+                    this.updateTask(id, { status: 'done', progress: 100 });
+                }
+            } catch (error) {
+                if (controller.signal.aborted || isCancellation(error)) {
+                    this.updateTask(id, {
+                        status: 'cancelled',
+                        error: undefined,
+                        errorCode: 'cancelled'
+                    });
+                } else {
+                    this.updateTask(id, {
+                        status: 'error',
+                        error: uploadErrorMessage(error),
+                        errorCode: uploadErrorCode(error)
+                    });
+                }
+            } finally {
+                this.taskControllers.delete(id);
+                const batchId = this.task(id)?.batchId;
+                if (batchId) { this.refreshBatch(batchId); }
+            }
+        }).catch((error: unknown) => {
+            this.updateTask(id, {
+                status: 'error',
+                error: uploadErrorMessage(error),
+                errorCode: uploadErrorCode(error)
+            });
+        });
+    }
+
+    private refreshBatch(id: string): void {
+        const batchTasks = this._tasks().filter((task) => task.batchId === id);
+        if (batchTasks.length === 0) { return; }
+        if (batchTasks.some(isActiveTask)) {
+            this.updateBatch(id, { status: 'uploading' });
+
+            return;
+        }
+        if (batchTasks.every((task) => task.status === 'done')) {
+            this.updateBatch(id, { status: 'done' });
+
+            return;
+        }
+        if (batchTasks.some((task) => task.status === 'error')) {
+            this.updateBatch(id, { status: 'error' });
+
+            return;
+        }
+        this.updateBatch(id, { status: 'cancelled' });
+    }
+
+    private assertValidDirectories(
+        directories: readonly { name: string; relativePath: string }[]
+    ): void {
+        for (const directory of directories) {
+            if (validateName(directory.name).valid) { continue; }
+            throw new FileSystemError(
+                'invalid-name',
+                `Folder name is not supported: ${directory.relativePath}`
+            );
+        }
+    }
+
+    private fileValidationError(
+        file: File
+    ): { code: FileSystemErrorCode; message: string } | undefined {
+        if (!validateName(file.name).valid) {
+            return { code: 'invalid-name', message: 'This file name is not supported.' };
+        }
+        if (file.size > this.config.maxUploadSizeBytes) {
+            return {
+                code: 'too-large',
+                message: `File exceeds the ${formatBytes(this.config.maxUploadSizeBytes)} limit.`
+            };
+        }
+
+        return undefined;
+    }
+
+    private throwIfCancelled(abortSignal: AbortSignal): void {
+        if (abortSignal.aborted) {
+            throw new FileSystemError('cancelled', 'Folder upload was cancelled');
+        }
+    }
+
+    private task(id: string): UploadTask | undefined {
+        return this._tasks().find((task) => task.id === id);
+    }
+
+    private batch(id: string): UploadBatch | undefined {
+        return this._batches().find((batch) => batch.id === id);
+    }
+
+    private updateTask(id: string, changes: Partial<UploadTask>): void {
+        this._tasks.update((tasks) =>
+            tasks.map((task) => task.id === id ? { ...task, ...changes } : task)
+        );
+    }
+
+    private updateBatch(id: string, changes: Partial<UploadBatch>): void {
+        this._batches.update((batches) =>
+            batches.map((batch) => batch.id === id ? { ...batch, ...changes } : batch)
+        );
+    }
+}
+
+function isActiveTask(task: UploadTask): boolean {
+    return task.status === 'queued' ||
+        task.status === 'uploading' ||
+        task.status === 'finalizing';
+}
+
+function isRetryableTask(task: UploadTask): boolean {
+    return task.status === 'cancelled' ||
+        (task.status === 'error' && task.errorCode === 'network');
+}
+
+function isCancellation(error: unknown): boolean {
+    return error instanceof FileSystemError && error.code === 'cancelled';
+}
+
+function uploadErrorCode(error: unknown): FileSystemErrorCode {
+    return error instanceof FileSystemError ? error.code : 'unknown';
+}
+
+function uploadErrorMessage(error: unknown): string {
+    if (!(error instanceof FileSystemError)) {
+        return 'Upload failed. Please try again.';
+    }
+    switch (error.code) {
+        case 'name-collision':
+            return 'A file with this name already exists.';
+        case 'invalid-name':
+            return error.message;
+        case 'too-large':
+            return error.message;
+        case 'not-found':
+            return 'The destination folder is no longer available.';
+        case 'permission-denied':
+            return 'You do not have permission to upload here.';
+        case 'network':
+            return 'Connection problem — retry the complete file.';
+        case 'cancelled':
+            return 'Upload was cancelled.';
+        case 'descendant-move':
+        case 'unknown':
+            return 'Upload failed. Please try again.';
+    }
+}
+
+function formatBytes(bytes: number): string {
+    if (bytes < 1024 * 1024) {
+        return `${Math.ceil(bytes / 1024)} KiB`;
+    }
+
+    return `${Math.ceil(bytes / (1024 * 1024))} MiB`;
+}

@@ -6,6 +6,7 @@ export type FileSystemErrorCode =
   | 'permission-denied'
   | 'network'
   | 'cancelled'
+  | 'too-large'
   | 'unknown';
 
 export class FileSystemError extends Error {

@@ -250,9 +250,10 @@
 
 ---
 
-## Phase 5 — Uploads & External Drops
+## Phase 5 — File and Folder Upload
 
-**Goal**: feature-complete. Uploads work, external file drops work on both tree and right pane.
+**Goal**: files and complete local folder trees upload through toolbar/context-menu
+pickers with progress. External OS drops remain deferred to drag-and-drop work.
 
 ### Entry criteria
 - Phase 4 complete
@@ -260,59 +261,48 @@
 ### Deliverables
 
 **Models**
-- `models/upload-task.model.ts`:
-  ```ts
-  export interface UploadTask {
-    id: string;
-    file: File;
-    parentId: string;
-    status: 'queued' | 'uploading' | 'done' | 'error' | 'cancelled';
-    progress: number; // 0-100
-    error?: string;
-    abortController: AbortController;
-  }
-  ```
+- `models/upload-task.model.ts` — per-file tasks plus lightweight folder-batch
+  preparation state
 
 **Mock**
-- Implement `MockFileSystemApi.upload` — simulated incremental progress, respects `AbortSignal`, creates the `FileNode` on completion, latency proportional to file size
+- Implement `MockFileSystemApi.upload` — simulated incremental progress, 10 MiB guard,
+  collision detection, `AbortSignal`, and the final persisted `FileNode`
 
 **Services**
 - `services/upload.service.ts`:
-  - `tasks = signal<UploadTask[]>([])`
-  - `enqueue(files, parentId)` — adds tasks, kicks queue
-  - `cancel(id)`, `retry(id)`, `clearCompleted()`
-  - Uses `ConcurrencyQueue` with max 4
-  - On task completion, calls `fileSystemStore.invalidate(parentId)` so UI refreshes
+  - exposes task/batch signals and file/folder enqueue operations
+  - uses `showDirectoryPicker()` handles to preserve every directory, including empty
+  - creates the uniquely named selected root and descendants parent-first before files
+  - uses `ConcurrencyQueue` with max 4 for file requests
+  - supports cancel, eligible retry from byte zero, and clear completed
+- `services/directory-manifest.ts` — recursively enumerates directory/file handles
+  without loading complete file bytes into application memory
+- `services/concurrency-queue.ts` — generic bounded promise queue
 
 **Components**
 - `components/upload-panel/upload-panel.ts`:
   - Floating bottom-right
-  - Collapsible (header click)
-  - Shows per-task progress (p-progressBar), status icon, cancel/retry buttons
-  - Only visible when tasks exist
-
-**Tree and Table**
-- Both accept external file drops:
-  - `(dragover)` with `dataTransfer.types.includes('Files')` = valid target
-  - `(drop)` extracts `event.dataTransfer.files`, calls `uploadService.enqueue(files, targetId)`
-- Tree: target = hovered folder node
-- Table: target = hovered folder row, OR current folder if empty area
+  - Collapsible
+  - Shows folder preparation, relative file paths, progress, cancel/retry buttons
+  - Only visible while batches/tasks are retained
 
 **Container**
-- Enables upload button in toolbar (opens file picker, multi-select)
+- Toolbar Upload popup exposes Folder / File
+- Empty-area and folder context menus expose the same choices and capture the selected
+  SharePoint destination before the picker opens
+- File uses `<input type="file" multiple>`; Folder uses native `showDirectoryPicker()`
 - Adds upload panel to template (bottom-right fixed position)
 
 ### Acceptance checks
-- [ ] Dragging OS files onto a tree node uploads into that folder
-- [ ] Dragging OS files onto a table row (folder) uploads into that folder
-- [ ] Dragging OS files onto table empty area uploads into current folder
-- [ ] Upload button opens file picker, supports multi-select
-- [ ] Upload panel appears on first upload, shows progress per file
-- [ ] 4-at-a-time concurrency enforced (upload 10 files, only 4 show 'uploading', rest 'queued')
-- [ ] Cancel button aborts upload immediately
-- [ ] Retry button re-queues failed uploads
-- [ ] Uploaded files appear in tree/table on completion (without full refresh)
-- [ ] Upload simulation shows incremental progress (not one jump to 100%)
+- [ ] File action supports multi-select and keeps the captured destination
+- [ ] Folder action creates the selected root and all descendants, including empty-only trees
+- [ ] Duplicate selected roots use the backend-returned unique root name
+- [ ] Upload panel shows preparation and per-file progress
+- [ ] Four-at-a-time file concurrency is enforced
+- [ ] Cancel is best effort; network retry resends the complete file
+- [ ] Collisions fail without overwrite and files above 10 MiB fail before a request
+- [ ] Created folders/files appear in tree/table without a page refresh
+- [ ] Folder selection is browser-checked in Edge/Chrome over HTTPS
 
 ---
 

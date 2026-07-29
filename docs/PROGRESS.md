@@ -63,9 +63,15 @@
 
 ---
 
-## Phase 5 — Uploads & External Drops
+## Phase 5 — File and Folder Upload
 
-- [ ] Not started — blocked by Phase 4
+- [x] Toolbar, empty-area, and folder context-menu Folder / File picker entry points
+- [x] Native Edge/Chrome directory traversal preserving empty descendants
+- [x] Parent-first remote folder creation followed by four-at-a-time file uploads
+- [x] Mock progress, cancellation, collision/size guards, retry, and store updates
+- [x] Collapsible upload panel with preparation and per-file status
+- [x] Focused upload/concurrency/manifest specs compile in the Karma bundle
+- [ ] Browser acceptance in Edge/Chrome over HTTPS and real-backend integration
 
 ---
 
@@ -79,16 +85,21 @@
 
 _What should the next session work on?_
 
-1. Browser-check the three context-menu variants, hover submenus, dialog sizing, and forced write errors.
-2. Run the Phase 2 acceptance checks for create, F2/dialog rename, delete confirmation, and tree/table synchronization.
-3. Run Karma locally (the agent sandbox cannot bind port 9876 and has no Chrome binary).
+1. Browser-check Folder / File selection, the upload panel, cancellation, and a local
+   tree containing nested empty folders in Edge/Chrome.
+2. Browser-check the three context-menu variants, hover submenus, dialog sizing, and
+   forced write errors.
+3. Run the Phase 2 acceptance checks for create, F2/inline rename, delete confirmation,
+   and tree/table synchronization.
+4. Run Karma locally with Chrome/Edge installed (the agent environment can build the
+   suite but has no browser binary).
 
 Backend upload implementation handoff: use
 `docs/backend-operations/upload-file-feign-buffered.md` for the first bounded
 implementation that preserves the existing Feign authentication configuration. The
 independent `docs/backend-operations/upload-file-http-streaming.md` contract records
-the single-request streaming implementation for a later transport change. No frontend
-upload work was performed in this documentation pass.
+the single-request streaming implementation for a later transport change. The
+frontend now targets that stable raw-file endpoint through `FileSystemApi.upload`.
 
 ---
 
@@ -96,6 +107,11 @@ upload work was performed in this documentation pass.
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
+- **ProjectDocuments height is component-owned CSS** (2026-07-29): removed the public
+  `height` input and its host style binding. The whole component now has a fixed
+  `height: 80vh` in `project-documents.scss`, keeping the existing rendered size while
+  making every embedding consistent.
+- **Complete folder-tree upload uses browser enumeration plus existing operations** (2026-07-29): toolbar and context menus now expose Folder / File, matching the screenshot-defined action order. Multi-file selection uses the native file input; folder selection intentionally targets secure-context Edge/Chrome `showDirectoryPicker()` so the browser exposes directory handles as well as file handles. `directory-manifest.ts` records every directory—including empty descendants—without loading complete file bytes into application memory. `UploadService` creates the backend-uniquified selected root and each descendant sequentially, parent-first, through the existing `FileSystemStore.createFolder`; only after the full tree exists does it queue one existing `FileSystemApi.upload` call per file. File requests share a four-slot `ConcurrencyQueue`, capture their destination when the picker opens, report uploading/finalizing/completed states, abort best-effort, and retry only cancelled or typed network failures from byte zero. Collisions fail with `overwrite=false`; files above the agreed 10 MiB Feign limit fail before a request. The component-scoped queue/batch state is not persisted and introduces no backend directory-upload endpoint, ZIP, database, session, chunk protocol, or cleanup scheduler. The mock and store apply canonical returned nodes immediately; the new dumb upload panel shows folder preparation and one relative-path row per file. App/spec TypeScript, focused lint, the development build, and `git diff --check` pass. Karma builds all specs and starts when escalated but cannot launch because this environment has no Chrome/Chromium/Edge binary.
 - **File and folder rename now share the inline editor** (2026-07-29): Rename File from the table context menu and F2 on a focused file now enter the same table-row editor already used by folders. Both kinds use the existing pessimistic rename handler, inline validation/collision feedback, Enter/blur submit, Escape cancel, write spinner, success notification, and network Retry. The file-only modal, its component/template, container state, and duplicate submit handler were deleted because no flow uses them. App/spec TypeScript compilation, the development build, focused lint of `project-documents.ts`, and `git diff --check` pass. Full lint reaches only a pre-existing line-length error in the user's uncommitted `mock-seed.ts` stress fixture plus the two known path-bar warnings.
 - **Initial upload implementation remains on the existing Feign client** (2026-07-29): the immediate backend handoff is one raw browser request followed by one SharePoint `Files/Add` call through the already-configured authenticated Feign client. It is intentionally bounded to 10 MiB because Spring Cloud OpenFeign's normal `SpringEncoder` materializes the encoded request body as a byte array. It introduces no database state, scheduler, upload session, or explicit empty placeholder; retry starts from zero. A separate self-contained Apache HttpClient contract documents direct `InputStream` relay while reusing the token provider, without requiring that transport/authentication change in the first implementation. Both upload guides follow the operation-contract style used by create, rename, and delete: they require extending the backend's existing controller/service/client, routing, DTO, mapping, authentication, and error patterns and deliberately avoid prescribing speculative Java classes. The former database-backed chunk-session contract was abandoned and deleted.
 - **List-scoped frontend/backend contract + verified by-id DELETE design** (2026-07-21; authentication corrected 2026-07-22): Execution and Marketing may resolve to different SharePoint sites, superseding the earlier assumption that `projectId + documentId` always selected one project site. Every `FolderNode`/`FileNode` now carries the domain `listKey`; child reads use `listDocuments(projectId, parent)` and the adapter extracts `parent.listKey`/`parent.id`, create inherits the parent key, rename preserves it, and move/copy use `newParent.listKey` as destination context. Backend document routes include `listKey`; `(projectId, listKey)` resolves to backend-owned `{siteUrl, libraryId, rootFolderId}` configuration. DELETE is the first operation with a complete backend-to-SharePoint recipe in `docs/backend-operations/delete.md`: `DELETE /projects/{projectId}/document-lists/{listKey}/documents/{documentId}?kind=file|folder`, no body/path, root guard, exactly one SharePoint call through the existing authenticated Feign client to the Postman-verified `GetFileById` or `GetFolderById` direct-DELETE endpoint, 204 normalization, and typed error mapping. Authentication reuses the backend's cached per-user OAuth bearer token; no form-digest infrastructure is added. The Angular HTTP implementation remains pending.
@@ -137,7 +153,6 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 - **Large upload transport remains deferred** (2026-07-29): standard Spring Cloud OpenFeign buffers the encoded request body, so the first implementation is limited to 10 MiB. Supporting larger files requires the documented single-request streaming client while preserving the same frontend endpoint.
 - **Cross-site move backend semantics** (2026-07-21): frontend list-context propagation is complete, but the backend design still must decide whether a cross-site "move" is copy+delete and which new `UniqueId` it returns. Do not assume SharePoint `MoveTo` crosses site collections or preserves identity. The frontend already treats the returned node as canonical and drops cached descendants.
-- **`FileSystemStore.upload` signature is `(parentId, files)`** in the store stub but the underlying `FileSystemApi.upload` takes a single `File` plus progress callback. The mismatch is intentional — the store will fan out to `UploadService` in Phase 5 — but worth flagging now so the Phase 5 implementer doesn't try to wire them 1:1.
 - **Karma runner in agent environment** — the normal sandbox cannot bind Karma's port 9876 (`listen EPERM`); an escalated run can bind it, but this environment has no Chrome/Chromium binary for `ChromeHeadless`. Specs compile here, but browser execution still requires the user's local `npm test`.
 - **`@primeng/themes@20.4.0` shows a deprecation warning on install** advising migration to `@primeuix/themes`. The package still works — the Aura preset import path (`@primeng/themes/aura`) is unchanged. Migrate to `@primeuix/themes` when convenient (likely Phase 2 or 3); not blocking.
 - **Address bar accepts list keys whose root is unavailable** (2026-07-06, review finding): `onPathSubmitted` validates the typed key against `DOCUMENT_LIST_KEYS` only, not against the corresponding `initializedRoots` status. With the mock the path resolves anyway (the seed always has both roots), opening a folder in a list whose tree section is hidden; against the real backend it would fail with the misleading "No folder matches that path." Small agreed fix: require that list's status to be `loaded`. Full write-up: `docs/TODO.md` item 1.
@@ -187,7 +202,7 @@ _One line per session, newest at top. Include date, phase, what was completed, a
 - **2026-07-03 — mock unavailable-folder scenario**: added a deterministic mock-only stale-navigation case: `execution/Unavailable on open` appears in the Execution listing, but `MockFileSystemApi.listing()` throws `FileSystemError('not-found')` when that folder is opened. The behavior is driven by optional `MOCK_CONFIG.unavailableFolderPaths` using list-relative paths. This reproduces the current real-backend race where a folder can exist during retrieval but disappear before navigation; the container now reads `errorByParentId[currentFolderId]` and reuses the persistent unavailable pane/footer instead of rendering an empty table.
 - **2026-07-02 — file-type icon components + `pr-` selector migration**: added `shared/file-system-icon/` (SVG, target env) and `shared/file-system-prime-icon/` (PrimeIcons dev stand-in, same API — see decisions log); wired the Prime variant into `file-table` (folder + per-extension file icons, replacing the local `iconForFile()`/`row.icon`) and `folder-tree` (custom `pTemplate="default"` node template; requires `PrimeTemplate` in imports — see gotcha in decisions log); dropped `icon: 'pi pi-folder'` from the container's TreeNodes. All selectors renamed `app-*` → `pr-*` per the new angular.json/ESLint prefix. tsc + dev build + lint green; tree icon rendering needs a browser check.
 - **2026-07-02 — mock unit moved to `services/mock/`**: `git mv` of `mock-file-system-api.ts`, `mock-seed.ts` (from `services/`), and `mock-config.token.ts` (from `tokens/`) into `services/mock/`; fixed relative imports in the moved files and updated the three importers (container provider import path, both store specs). Binding stays in the container by design (see decisions log). SPEC §2.2/§8.3 + PHASES Phase 6 updated. tsc (app+spec), dev build, lint, and old-path grep all clean; run `npm test` locally.
-- **2026-07-02 — fixed component height via `height` input**: `ProjectDocuments` no longer fills its parent; it gets an optional `height` input (any CSS length, default `80vh`) applied through a host style binding, with panes scrolling inside as before. Hosts embedding the component set `[height]` explicitly; the demo uses the default. tsc + dev build green; browser check pending (sandbox can't reach localhost).
+- **2026-07-02 — fixed component height via `height` input (superseded 2026-07-29)**: `ProjectDocuments` no longer fills its parent; it originally received an optional `height` input (any CSS length, default `80vh`) through a host style binding. The input was later removed in favor of component-owned CSS. tsc + dev build green; browser check pending (sandbox can't reach localhost).
 - **2026-07-02 — minimal US-style TODO markers**: added one-line `TODO` comments at every unimplemented-feature site in `src/app/project-documents/` (SharePoint stub methods, mock/store upload stubs, bulk-op guard, selection stubs, paste note, `moveNode` wiring, disabled toolbar buttons). Wording references the future user story ("implement with the <feature> US."), never a phase — the user will swap in the real US references later. SPEC §2.6 updated with the TODO wording rule. Comment-only change; tsc + dev build green. Follow-ups the same day: neutralized the last phase-worded doc lines (PHASES.md store-placeholder error, PROGRESS.md toolbar-tooltip status) and renamed the mock seed's `Phase 1`/`Phase 2` schedule folders to `Stage 1`/`Stage 2` (+ `gantt-stage*.xlsx`) — `grep -ri phase src/app/project-documents` now returns nothing.
 - **2026-07-02 — plan-reference scrub + docs sync**: scrubbed all "Phase N" / planning-workflow references out of `src/app/project-documents/` (tooltips → "Not available yet", stub/store error messages → "not implemented yet", comments reworded; no behavior change) so the folder can be copied verbatim to the SharePoint-connected machine and pushed to its repo. Codified the rule as SPEC §2.6, updated SPEC §7's mandated stub body and the PHASES.md Phase 1 tooltip wording to match. Verified no spec asserts on the old messages; only remaining "Phase" hits in source are mock-seed folder names (intentional, realistic data).
 - **2026-07-01 — Redux DevTools for file-manager stores**: replaced the temporary DevTools console hook with `@angular-architects/ngrx-toolkit` Signal Store DevTools integration. Added `provideDevtoolsConfig({ name: 'X36 File Manager' })`, `withDevtools` for `FileSystemStore` and `NavigationStore`, readable store mappers, and prod `withDevToolsStub` fallback. Installed `@angular-architects/ngrx-toolkit@20.7.0` and `@ngrx/store@20.1.0`; latest toolkit `21.x` was skipped because it requires Angular 21. `npx tsc -p tsconfig.app.json --noEmit`, `npx tsc -p tsconfig.spec.json --noEmit`, `npx ng build --configuration development`, and `git diff --check` pass.

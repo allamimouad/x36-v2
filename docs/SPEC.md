@@ -23,6 +23,9 @@
 - **@ngrx/signals** (NgRx Signal Store) for state management
 - **RxJS** for the `FileSystemApi` contract (every method returns `Observable`, matching the HttpClient-native SharePoint adapter), plus HTTP and `rxMethod`. Stores that prefer async/await bridge with `firstValueFrom` at the call site.
 - **Angular Signals** API throughout: `signal()`, `computed()`, `effect()`, `input()`, `output()`, `model()`
+- **File System Access API** for folder selection in secure-context Microsoft Edge /
+  Google Chrome; `@types/wicg-file-system-access` is type-only and no runtime picker
+  library is used
 - **New control flow**: `@if`, `@for`, `@switch`, `@let`
 - **`inject()`** everywhere — no constructor injection
 - **`ChangeDetectionStrategy.OnPush`** on every component
@@ -95,7 +98,7 @@ The `src/app/project-documents/` folder will be copied verbatim to another machi
 - Rename folders inline from the table/tree; rename files inline on F2 or via a context-menu dialog
 - Delete folder or file (confirmation; bulk-aware)
 - Move / copy (drag-and-drop, or cut/copy/paste)
-- Upload files (drag-and-drop from OS + upload button)
+- Upload files or a complete local folder tree through the Upload menu
 - Navigate into folder
 
 ### 3.3 Navigation
@@ -138,7 +141,7 @@ All scenarios must work:
 
 ### 3.5 Right-click context menus
 
-- **Folder** (tree or right pane): Open Folder; separator; Rename Folder, Copy Folder, Delete Folder; separator; Upload within folder
+- **Folder** (tree or right pane): Open Folder; separator; Rename Folder, Copy Folder, Delete Folder; separator; Upload within folder → Folder / File
 - **File**: Open File in → Local application / Online Application; separator; Rename File, Copy File, Delete File; separator; Download File
 - **Right-pane empty area**: Create new Folder; separator; Paste; Upload → Folder / File
 - Nested menus open on hover. Paste is a direct command, not a submenu.
@@ -182,11 +185,22 @@ All scenarios must work:
 
 ### 3.9 Upload with progress
 
-- Drag external files → queue uploads to target folder
-- Upload button opens file picker (multi)
-- **Upload panel**: floating bottom-right, collapsible, shows active / queued / completed
-- Per-file progress bar, cancel, retry
+- Toolbar, empty-area, and folder context menus expose Folder / File choices
+- File selection uses a standard multi-file picker
+- Folder selection uses `showDirectoryPicker()` and selects one root per action
+- Folder upload first traverses the complete local tree, then creates the selected root
+  with the backend's unique-name behavior and creates every descendant directory
+  parent-first, including empty directories; files start only after directory creation
+  succeeds
+- **Upload panel**: floating bottom-right, collapsible, shows folder preparation plus
+  active / queued / completed per-file work
+- Per-file progress bar, best-effort cancel, and manual retry for network failures or
+  cancelled files; retry always restarts from byte zero
 - **Concurrency limit**: 4 simultaneous uploads
+- File collisions fail safely with `overwrite=false`; they are not automatically retried
+- Folder preparation and task state are in-memory only; no upload session, database row,
+  chunk protocol, or refresh resume is introduced
+- External OS drag-and-drop is deferred to the drag-and-drop work
 - The initial backend uses one bounded raw-body request for files up to 10 MiB; a
   single-request streaming transport can remove that temporary limit without changing
   the frontend endpoint
@@ -298,7 +312,7 @@ export abstract class FileSystemApi {
 
 **Rules for implementations**:
 - All errors are delivered on the Observable's **error channel** as a typed `FileSystemError` carrying a `code`:
-  `'not-found' | 'name-collision' | 'invalid-name' | 'descendant-move' | 'permission-denied' | 'network' | 'cancelled' | 'unknown'`.
+  `'not-found' | 'name-collision' | 'invalid-name' | 'descendant-move' | 'permission-denied' | 'network' | 'cancelled' | 'too-large' | 'unknown'`.
   Emit them via `throwError(() => new FileSystemError(...))`, or by throwing inside a `map`/operator so RxJS converts the throw into an error notification — do **not** `throw` synchronously from the method body (that fails at call time, before any subscriber attaches). The per-method "Throws on …" notes above are shorthand for this error notification. The real `HttpClient` adapter maps transport/SharePoint failures with `catchError` into a `FileSystemError`.
 - All returned objects are deep-copied (caller cannot mutate internal state)
 - `upload` must respect `AbortSignal` for cancellation
@@ -321,7 +335,7 @@ export abstract class FileSystemApi {
   - Invalid-name check: empty, `.`, `..`, chars in `\/:*?"<>|`, length > 128 (throw `invalid-name`)
   - Non-existent `id` (throw `not-found`)
 - **Deep clone on return** so callers can't mutate internal state
-- **Upload progress**: simulate chunked progress, emit `onProgress` at ~10% intervals based on simulated latency
+- **Upload progress**: simulate incremental progress, emit `onProgress` at ~10% intervals based on simulated latency
 - **Upload cancellation**: respect `AbortSignal`; throw `cancelled`
 - **Configurable via token**:
   ```ts
@@ -364,7 +378,7 @@ export abstract class FileSystemApi {
 **`FileSystemStore`** (entity cache, keyed by `id`):
 - Entities: `FileSystemNode`
 - State: `projectId: string | null`, `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, FileSystemError | undefined>`, `folderIdsWithLoadedChildren: string[]`, `isInitializing: boolean`, `initializedRoots: DocumentListRoots | null`
-- Methods: `connectProject(projectId)` (reactive `rxMethod`: the container passes its `projectId` input signal once; every change resets project state and re-initializes, with `switchMap` cancelling any in-flight load; imperative calls with a plain id retry the same project), `initialize(projectId)` (promise facade over one initialization — returns `DocumentListRoots` with each list marked `loaded`, `not-found`, or `error`; used by unit tests), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(id, newName)`, `delete(ids)`, `move(ids, targetParentId)`, `copy(ids, targetParentId)`, `invalidate(parentId)`, `upload(parentId, files)`
+- Methods: `connectProject(projectId)` (reactive `rxMethod`: the container passes its `projectId` input signal once; every change resets project state and re-initializes, with `switchMap` cancelling any in-flight load; imperative calls with a plain id retry the same project), `initialize(projectId)` (promise facade over one initialization — returns `DocumentListRoots` with each list marked `loaded`, `not-found`, or `error`; used by unit tests), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(id, newName)`, `delete(ids)`, `move(ids, targetParentId)`, `copy(ids, targetParentId)`, `invalidate(parentId)`, `upload(parentId, file, onProgress, signal)`
 - Depends on `FileSystemApi` (injected), not on a concrete class
 
 **`NavigationStore`**:
@@ -422,6 +436,7 @@ project-documents/
     drag-drop.service.ts
     upload.service.ts
     concurrency-queue.ts
+    directory-manifest.ts
     notification.service.ts
   models/
     file-system-node.model.ts
@@ -507,7 +522,8 @@ applied, so the store is already consistent and the failure surfaces as a toast.
 Name collision on rename/move/copy/upload:
 - **Initial folder creation**: the backend returns a unique persisted default name before inline editing starts
 - **Rename same parent**: inline error "A file/folder with that name already exists."
-- **Move / copy / upload**: `ConflictResolutionDialog` with options: Replace / Keep both (auto-suffix) / Skip / Cancel; bulk ops show "Apply to all" checkbox
+- **Move / copy**: `ConflictResolutionDialog` with options: Replace / Keep both (auto-suffix) / Skip / Cancel; bulk ops show "Apply to all" checkbox
+- **Upload**: fail the file with a collision message; never overwrite or retry automatically
 - `naming.utils.ts` provides `resolveNameCollision(baseName, existingNames)` → `"file (2).txt"`, `"file (3).txt"`, etc.
 
 ---
@@ -547,8 +563,7 @@ Name collision on rename/move/copy/upload:
 ```ts
 export interface FileManagerConfig {
   libraryRootName: string;       // display name for root, e.g. "Documents"
-  maxUploadSizeBytes: number;    // default 2 GB
-  chunkSizeBytes: number;        // default 5 MB
+  maxUploadSizeBytes: number;    // default 10 MiB
   uploadConcurrency: number;     // default 4
   bulkOpConcurrency: number;     // default 4
 }

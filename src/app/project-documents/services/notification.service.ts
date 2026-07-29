@@ -60,6 +60,8 @@ export class NotificationService {
                 return 'Connection problem — try again.';
             case 'cancelled':
                 return 'The operation was cancelled.';
+            case 'too-large':
+                return 'This file is larger than the upload limit.';
             case 'unknown':
                 return 'Something went wrong. Please try again.';
         }

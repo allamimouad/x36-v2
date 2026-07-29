@@ -66,7 +66,7 @@ Return the backend's existing canonical file response shape.
 2. Resolve and authorize `(projectId, listKey)` through the same path as the implemented
    document operations.
 3. Obtain the servlet request `InputStream` without converting it to `byte[]`.
-4. Use that stream as the body of one outgoing SharePoint `Files/Add` request.
+4. Use that stream as the body of one outgoing SharePoint `Files/AddUsingPath` request.
 5. Reuse the existing token service to add the bearer token to that request.
 6. Map the returned `SP.File` through existing mapping conventions.
 7. Return `201` only after SharePoint confirms success.
@@ -98,7 +98,7 @@ length automatically. The frontend must not attempt to set the restricted
 
 Send:
 
-    POST {siteUrl}/_api/web/GetFolderById('{parentFolderId}')/Files/Add(url='{escapedFileName}',overwrite=false)
+    POST {siteUrl}/_api/web/GetFolderById('{parentFolderId}')/Files/AddUsingPath(DecodedUrl='{escapedFileName}',Overwrite=false)
         ?$select=UniqueId,Name,ServerRelativeUrl,Length,TimeCreated,TimeLastModified,ListItemAllFields/Editor/Title
         &$expand=ListItemAllFields/Editor
     Authorization: Bearer {cached access token}
@@ -108,8 +108,10 @@ Send:
 
     {streamed file bytes}
 
-Microsoft documents `Files/Add` with the binary file in the POST body in
-[Working with folders and files with REST](https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins/working-with-folders-and-files-with-rest).
+Microsoft documents the ResourcePath-based `AddUsingPath` API in
+[Supporting % and # in files and folders with the ResourcePath API](https://learn.microsoft.com/en-us/sharepoint/dev/solution-guidance/supporting-and-in-file-and-folder-with-the-resourcepath-api).
+The [PnPjs SharePoint file documentation](https://pnp.github.io/pnpjs/sp/files/#adding-files)
+also demonstrates `addUsingPath` with the file content and `Overwrite` option.
 
 Escape the logical file name using the same OData and URI construction already used by
 the backend. Never concatenate an unvalidated raw name.
@@ -202,7 +204,7 @@ operations:
 - invalid route, request, or name -> HTTP 400 / existing invalid-input code;
 - missing `Content-Length` -> HTTP 411;
 - missing destination -> HTTP 404 / `not-found`;
-- existing file with `overwrite=false` -> HTTP 409 / `name-collision`;
+- existing file with `Overwrite=false` -> HTTP 409 / `name-collision`;
 - SharePoint 401/403 -> HTTP 403 / `permission-denied`;
 - declared size above the configured maximum -> HTTP 413;
 - SharePoint 429 or transport failure -> existing retryable `network` failure;
@@ -217,7 +219,10 @@ Return no file node on failure and never expose authentication or routing detail
   are retained.
 - The only new transport behavior is the focused streaming SharePoint call.
 - The servlet `InputStream` is relayed without a complete-file `byte[]`.
-- One domain POST produces one SharePoint `Files/Add` POST.
+- One domain POST produces one SharePoint `Files/AddUsingPath` POST.
+- `Overwrite=false` prevents replacement of an existing file. Do not send
+  `EnsureUniqueFileName=true`; duplicate names must fail rather than receive a numeric
+  suffix.
 - The existing token service supplies authentication.
 - Automatic replay of the non-repeatable request is disabled.
 - SharePoint's canonical id, name, path, size, and timestamps are returned.

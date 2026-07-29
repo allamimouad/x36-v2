@@ -33,6 +33,7 @@ describe('NotificationService', () => {
             ['permission-denied', 'You do not have permission to perform this action.'],
             ['network', 'Connection problem — try again.'],
             ['cancelled', 'The operation was cancelled.'],
+            ['too-large', 'This file is larger than the upload limit.'],
             ['unknown', 'Something went wrong. Please try again.']
         ];
 

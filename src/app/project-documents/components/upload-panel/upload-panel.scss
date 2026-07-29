@@ -1,0 +1,153 @@
+:host {
+  position: fixed;
+  z-index: 1100;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  display: block;
+  width: min(30rem, calc(100vw - 2rem));
+}
+
+.pd-upload-panel {
+  overflow: hidden;
+  background: var(--pd-surface);
+  border: 1px solid var(--pd-border-strong);
+  border-radius: 8px;
+  box-shadow: var(--pd-frame-shadow);
+}
+
+.pd-upload-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--pd-border);
+}
+
+.pd-upload-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+
+  > .material-symbols-outlined {
+    flex: 0 0 auto;
+    color: var(--pd-accent);
+    font-size: 1.3rem;
+  }
+
+  div {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  h2 {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+
+  span:not(.material-symbols-outlined) {
+    color: var(--pd-text-muted);
+    font-size: 0.72rem;
+  }
+}
+
+.pd-upload-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+
+  ::ng-deep .p-button {
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+  }
+
+  .material-symbols-outlined {
+    font-size: 1.1rem;
+  }
+}
+
+.pd-upload-list {
+  max-height: min(28rem, 55vh);
+  overflow: auto;
+}
+
+.pd-upload-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.55rem;
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--pd-border-subtle);
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  > ::ng-deep .p-button {
+    width: 1.9rem;
+    height: 1.9rem;
+    padding: 0;
+    margin-top: -0.25rem;
+  }
+
+  > ::ng-deep .p-button .material-symbols-outlined {
+    font-size: 1rem;
+  }
+}
+
+.pd-upload-kind {
+  color: var(--pd-text-faint);
+  font-size: 1.15rem;
+  line-height: 1.35;
+}
+
+.pd-upload-done .pd-upload-kind {
+  color: var(--pd-accent);
+}
+
+.pd-upload-error .pd-upload-kind {
+  color: var(--pd-danger);
+}
+
+.pd-upload-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.pd-upload-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.pd-upload-name {
+  overflow: hidden;
+  min-width: 0;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pd-upload-status {
+  flex: 0 0 auto;
+  color: var(--pd-text-muted);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.pd-upload-error {
+  color: var(--pd-danger);
+  font-size: 0.7rem;
+  line-height: 1.25;
+}
+
+:host ::ng-deep .pd-upload-progress {
+  height: 0.3rem;
+}

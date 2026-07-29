@@ -97,20 +97,39 @@
         <span class="material-symbols-outlined pd-btn-symbol" aria-hidden="true">create_new_folder</span>
         <span class="pd-action-label">New folder</span>
       </button>
-      <!-- TODO: enable with the upload US. -->
       <button
         pButton
         type="button"
-        [disabled]="true"
-        pTooltip="Not available yet"
+        [disabled]="!navigation.currentFolder()"
+        pTooltip="Upload files or a folder"
         tooltipPosition="bottom"
         severity="secondary"
         [text]="true"
         data-testid="pd-btn-upload"
+        (click)="openToolbarUploadMenu($event)"
       >
         <span class="material-symbols-outlined pd-btn-symbol" aria-hidden="true">upload</span>
-        <span class="pd-action-label">Upload file</span>
+        <span class="pd-action-label">Upload</span>
       </button>
+      <p-menu
+        #uploadMenu
+        [model]="toolbarUploadItems()"
+        [popup]="true"
+        appendTo="body"
+        styleClass="pd-context-menu"
+      >
+        <ng-template #item let-item>
+          <pr-context-menu-item [item]="item" />
+        </ng-template>
+      </p-menu>
+      <input
+        #fileInput
+        hidden
+        type="file"
+        multiple
+        data-testid="pd-upload-file-input"
+        (change)="onFilesPicked($event)"
+      />
     </div>
   </div>
 
@@ -222,6 +241,19 @@
       <pr-context-menu-item [item]="item" />
     </ng-template>
   </p-contextMenu>
+
+  @if (uploads.hasUploads()) {
+    <pr-upload-panel
+      [tasks]="uploads.tasks()"
+      [batches]="uploads.batches()"
+      [collapsed]="uploadPanelCollapsed()"
+      (collapsedChange)="uploadPanelCollapsed.set($event)"
+      (taskCancelled)="uploads.cancelTask($event)"
+      (taskRetried)="uploads.retryTask($event)"
+      (batchCancelled)="uploads.cancelBatch($event)"
+      (completedCleared)="uploads.clearCompleted()"
+    />
+  }
 
   <p-confirmDialog
     [key]="deleteConfirmationKey"

@@ -2,6 +2,7 @@ import {
     ChangeDetectionStrategy,
     Component,
     computed,
+    ElementRef,
     effect,
     HostListener,
     inject,
@@ -22,6 +23,7 @@ import { ButtonModule } from 'primeng/button';
 import { ConfirmDialog } from 'primeng/confirmdialog';
 import { ContextMenu } from 'primeng/contextmenu';
 import { InputTextModule } from 'primeng/inputtext';
+import { Menu } from 'primeng/menu';
 import { SplitterModule } from 'primeng/splitter';
 import { Toast } from 'primeng/toast';
 import { TooltipModule } from 'primeng/tooltip';
@@ -46,6 +48,7 @@ import {
     NotificationService,
     PROJECT_DOCUMENTS_TOAST_KEY
 } from './services/notification.service';
+import { UploadService } from './services/upload.service';
 import { FileSystemReader } from './stores/file-system-reader';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore, type PathSegment } from './stores/navigation.store';
@@ -55,6 +58,7 @@ import { FileTable } from './components/file-table/file-table';
 import { PathBar } from './components/path-bar/path-bar';
 import { NavToolbar } from './components/nav-toolbar/nav-toolbar';
 import { ContextMenuItem } from './components/context-menu-item/context-menu-item';
+import { UploadPanel } from './components/upload-panel/upload-panel';
 import type {
     ItemRenameRequest,
     NodeContextMenuRequest
@@ -81,10 +85,12 @@ type InlineRenameSurface = 'tree' | 'table';
         PathBar,
         NavToolbar,
         ContextMenuItem,
+        UploadPanel,
         ButtonModule,
         ConfirmDialog,
         ContextMenu,
         InputTextModule,
+        Menu,
         SplitterModule,
         Toast,
         TooltipModule
@@ -97,33 +103,36 @@ type InlineRenameSurface = 'tree' | 'table';
         MessageService,
         ConfirmationService,
         NotificationService,
+        UploadService,
         { provide: FileSystemApi, useClass: MockFileSystemApi }
     ],
     templateUrl: './project-documents.html',
-    styleUrl: './project-documents.scss',
-    host: { '[style.height]': 'height()' }
+    styleUrl: './project-documents.scss'
 })
 export class ProjectDocuments {
     public readonly projectId = input.required<string>();
     public readonly projectLabel = input.required<string>();
-    /** Fixed component height (any CSS length); the panes scroll within it. */
-    public readonly height = input('80vh');
 
     protected readonly fileSystem = inject(FileSystemStore);
     protected readonly navigation = inject(NavigationStore);
     protected readonly clipboard = inject(ClipboardService);
     protected readonly notifications = inject(NotificationService);
     protected readonly confirmation = inject(ConfirmationService);
+    protected readonly uploads = inject(UploadService);
     protected readonly config = inject(FILE_MANAGER_CONFIG);
     protected readonly notificationKey = PROJECT_DOCUMENTS_TOAST_KEY;
     protected readonly deleteConfirmationKey = DELETE_CONFIRMATION_KEY;
     protected readonly contextMenu = viewChild<ContextMenu>('contextMenu');
+    protected readonly uploadMenu = viewChild<Menu>('uploadMenu');
+    protected readonly fileInput = viewChild<ElementRef<HTMLInputElement>>('fileInput');
 
     protected readonly writingIds = signal<ReadonlySet<string>>(new Set<string>());
     protected readonly inlineRenameError = signal<string | null>(null);
     protected readonly inlineRenameSurface = signal<InlineRenameSurface | null>(null);
     protected readonly focusedSurface = signal<InlineRenameSurface>('table');
     protected readonly creatingFolder = signal(false);
+    protected readonly toolbarUploadItems = signal<MenuItem[]>([]);
+    protected readonly uploadPanelCollapsed = signal(false);
 
     /** Address-bar edit state (owned here; PathBar is a controlled child). */
     protected readonly pathEditing = signal(false);
@@ -241,11 +250,23 @@ export class ProjectDocuments {
     });
 
     protected readonly bootstrapLoading = computed(() => this.fileSystem.isInitializing());
+    private pendingFileTarget: FolderNode | null = null;
 
     constructor() {
         // Reactive project connection: the store re-initializes (cancelling any in-flight
         // load via switchMap) whenever the host rebinds `projectId`.
         this.fileSystem.connectProject(this.projectId);
+        let uploadProjectId: string | undefined;
+        effect(() => {
+            const currentProjectId = this.projectId();
+            untracked(() => {
+                if (uploadProjectId !== undefined && uploadProjectId !== currentProjectId) {
+                    this.pendingFileTarget = null;
+                    this.uploads.reset();
+                }
+                uploadProjectId = currentProjectId;
+            });
+        });
         // React to each completed initialization; `untracked` keeps the effect keyed to
         // `initializedRoots` alone so store writes inside cannot re-trigger it.
         effect(() => {
@@ -348,6 +369,55 @@ export class ProjectDocuments {
             );
         } finally {
             this.creatingFolder.set(false);
+        }
+    }
+
+    protected openToolbarUploadMenu(event: MouseEvent): void {
+        const target = this.navigation.currentFolder();
+        const menu = this.uploadMenu();
+        if (!target || !menu) { return; }
+        this.toolbarUploadItems.set(this.uploadMenuItems(target));
+        menu.toggle(event);
+    }
+
+    protected pickFiles(target: FolderNode): void {
+        const inputElement = this.fileInput()?.nativeElement;
+        if (!inputElement) { return; }
+        this.pendingFileTarget = target;
+        inputElement.value = '';
+        inputElement.click();
+    }
+
+    protected onFilesPicked(event: Event): void {
+        const inputElement = event.currentTarget as HTMLInputElement;
+        const target = this.pendingFileTarget;
+        const files = inputElement.files ? Array.from(inputElement.files) : [];
+        inputElement.value = '';
+        this.pendingFileTarget = null;
+        if (!target || files.length === 0) { return; }
+        this.uploadPanelCollapsed.set(false);
+        this.uploads.enqueueFiles(files, target);
+    }
+
+    protected async pickFolder(target: FolderNode): Promise<void> {
+        if (typeof showDirectoryPicker !== 'function') {
+            this.notifications.warning(
+                'Folder upload requires Microsoft Edge or Google Chrome over HTTPS.'
+            );
+
+            return;
+        }
+        try {
+            const rootHandle = await showDirectoryPicker({
+                id: 'project-documents-upload',
+                mode: 'read'
+            });
+            this.uploadPanelCollapsed.set(false);
+            await this.uploads.enqueueDirectory(rootHandle, target);
+        } catch (error) {
+            if (!isPickerCancellation(error)) {
+                this.notifications.error(error);
+            }
         }
     }
 
@@ -615,13 +685,13 @@ export class ProjectDocuments {
                 this.requestDelete(folder);
             }, root || locked),
             { separator: true },
-            // TODO: enable with the upload US.
             this.menuItem(
                 'Upload within folder',
                 'upload',
                 'pd-menu-upload-within-folder',
                 undefined,
-                true
+                false,
+                this.uploadMenuItems(folder)
             )
         ];
     }
@@ -663,7 +733,8 @@ export class ProjectDocuments {
     }
 
     private emptyContextMenu(): MenuItem[] {
-        const canCreate = this.navigation.currentFolder() !== null && !this.creatingFolder();
+        const currentFolder = this.navigation.currentFolder();
+        const canCreate = currentFolder !== null && !this.creatingFolder();
 
         return [
             this.menuItem('Create new Folder', 'create_new_folder', 'pd-menu-create-folder', () => {
@@ -672,17 +743,25 @@ export class ProjectDocuments {
             { separator: true },
             // TODO: enable with the copy/paste US.
             this.menuItem('Paste', 'content_paste', 'pd-menu-paste', undefined, true),
-            // TODO: enable with the upload US.
-            this.menuItem('Upload', 'upload', 'pd-menu-upload', undefined, false, [
-                this.menuItem(
-                    'Folder',
-                    'drive_folder_upload',
-                    'pd-menu-upload-folder',
-                    undefined,
-                    true
-                ),
-                this.menuItem('File', 'upload_file', 'pd-menu-upload-file', undefined, true)
-            ])
+            this.menuItem(
+                'Upload',
+                'upload',
+                'pd-menu-upload',
+                undefined,
+                currentFolder === null,
+                currentFolder ? this.uploadMenuItems(currentFolder) : undefined
+            )
+        ];
+    }
+
+    private uploadMenuItems(target: FolderNode): MenuItem[] {
+        return [
+            this.menuItem('Folder', 'drive_folder_upload', 'pd-menu-upload-folder', () => {
+                void this.pickFolder(target);
+            }),
+            this.menuItem('File', 'upload_file', 'pd-menu-upload-file', () => {
+                this.pickFiles(target);
+            })
         ];
     }
 
@@ -860,4 +939,8 @@ export class ProjectDocuments {
 
         return false;
     }
+}
+
+function isPickerCancellation(error: unknown): boolean {
+    return error instanceof DOMException && error.name === 'AbortError';
 }
