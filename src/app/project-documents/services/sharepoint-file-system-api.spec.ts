@@ -9,10 +9,14 @@ import {
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { FileSystemError } from '../models/file-system-error.model';
-import type { FileNode, FolderNode } from '../models/file-system-node.model';
+import type {
+    FileNode,
+    FileSystemNode,
+    FolderNode
+} from '../models/file-system-node.model';
 import { SharePointFileSystemApi } from './sharepoint-file-system-api';
 
-describe('SharePointFileSystemApi upload', () => {
+describe('SharePointFileSystemApi', () => {
     const parent: FolderNode = {
         kind: 'folder',
         listKey: 'execution',
@@ -35,6 +39,24 @@ describe('SharePointFileSystemApi upload', () => {
         createdAt: '2026-07-30T10:01:00Z',
         modifiedAt: '2026-07-30T10:01:00Z'
     };
+    const target: FolderNode = {
+        kind: 'folder',
+        listKey: 'execution',
+        id: 'target-id',
+        path: '/sites/project/Documents/Target',
+        name: 'Target',
+        parentId: parent.id,
+        itemCount: 0,
+        createdAt: '2026-07-30T10:00:00Z',
+        modifiedAt: '2026-07-30T10:00:00Z'
+    };
+    const crossListTarget: FolderNode = {
+        ...target,
+        listKey: 'marketing',
+        id: 'marketing-target-id',
+        path: '/sites/project/Marketing/Target',
+        parentId: 'marketing-root-id'
+    };
 
     let api: SharePointFileSystemApi;
     let http: HttpTestingController;
@@ -53,6 +75,72 @@ describe('SharePointFileSystemApi upload', () => {
 
     afterEach(() => {
         http.verify({ ignoreCancelled: true });
+    });
+
+    it('sends the complete copy contract and emits the canonical copied node', () => {
+        const copied: FileNode = {
+            ...uploaded,
+            listKey: target.listKey,
+            id: 'copied-id',
+            path: `${target.path}/${uploaded.name}`,
+            parentId: target.id
+        };
+        let result: FileSystemNode | undefined;
+
+        api.copy('project 1', uploaded, target).subscribe((node) => {
+            result = node;
+        });
+
+        const request = http.expectOne('/projects/project%201/documents/copy');
+        expect(request.request.method).toBe('POST');
+        expect(request.request.body).toEqual({
+            kind: 'file',
+            sourceParentPath: parent.path,
+            sourceName: uploaded.name,
+            targetListKey: target.listKey,
+            targetParentId: target.id,
+            targetParentPath: target.path
+        });
+        request.flush(copied);
+
+        expect(result).toEqual(copied);
+    });
+
+    it('rejects a cross-list copy before sending an HTTP request', () => {
+        let receivedError: unknown;
+
+        api.copy('project', uploaded, crossListTarget).subscribe({
+            error: (error: unknown) => {
+                receivedError = error;
+            }
+        });
+
+        expect(receivedError).toEqual(
+            jasmine.objectContaining<FileSystemError>({ code: 'cross-list-copy' })
+        );
+        http.expectNone('/projects/project/documents/copy');
+    });
+
+    it('maps a missing copy source or destination to not-found', () => {
+        let receivedError: unknown;
+
+        api.copy('project', uploaded, target).subscribe({
+            error: (error: unknown) => {
+                receivedError = error;
+            }
+        });
+
+        const request = http.expectOne('/projects/project/documents/copy');
+        request.flush(
+            { message: 'Not found' },
+            { status: 404, statusText: 'Not Found' }
+        );
+
+        expect(receivedError).toEqual(
+            jasmine.objectContaining<Partial<FileSystemError>>({
+                code: 'not-found'
+            })
+        );
     });
 
     it('reports progress and emits the created file', () => {

@@ -49,12 +49,14 @@
 - [x] `services/notification.service.ts` (typed error mapping, scoped `p-toast`, Retry action, partial-root + read-error routing)
 - [x] Dialog component: conflict-resolution shell
 - [x] Context menu and inline rename wiring
+- [x] Online/local file launch and direct SharePoint download frontend wiring
 
 ---
 
 ## Phase 3 — Selection, Keyboard, Clipboard
 
-- [ ] Not started — blocked by Phase 2
+- [x] Single-item Copy File / Copy Folder with empty-area and folder-target Paste
+- [ ] Cut, multi-selection, bulk clipboard operations, and remaining keyboard shortcuts
 
 ---
 
@@ -79,7 +81,9 @@
 ## Phase 6 — SharePoint Implementation (other laptop)
 
 - [x] Compile-safe raw upload HTTP-event/progress/cancellation reference
-- [ ] Replace `requestUpload` with the generated client and implement remaining methods
+- [x] Compile-safe copy request/response/error reference
+- [ ] Replace `requestCopy` / `requestUpload` with generated client calls and implement
+  remaining methods
 
 ---
 
@@ -109,6 +113,42 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
+- **Backend-owned file action links wired in Angular** (2026-07-31): `FileNode` now
+  accepts optional `onlineUrl`, `desktopUrl`, and `downloadUrl`. A component-scoped
+  `FileLaunchService` validates the backend-provided capability links, opens Online in
+  a new tab, launches allow-listed Microsoft Office URI schemes, and downloads through
+  a direct temporary anchor without `HttpClient`, Blob buffering, or backend byte
+  relay. The file context menu enables each action independently and keeps unsupported
+  or unsafe links visible but disabled. A confirmed folder rename clears cached
+  descendant file links while repathing those descendants, preventing stale pre-rename
+  URLs from launching before the folder is reloaded. The self-contained backend
+  handoff is `docs/backend-operations/file-links.md`; it records the
+  environment-verified `web=1`, Office URI, and
+  `/_layouts/15/download.aspx?SourceUrl=...` formats, exact DTO fields, canonical
+  response coverage, encoding, security, and acceptance rules.
+- **Single-item frontend copy/paste completed** (2026-07-30): enabled Copy File and
+  Copy Folder context actions plus empty-area and right-clicked-folder Paste. Folder
+  Paste targets the clicked folder without navigating into it first and is disabled
+  while that target is busy or the clipboard cannot paste. The in-flight spinner and
+  write lock appear on the destination folder because copy does not mutate the source.
+  Keyboard shortcuts remain deferred. Copy only records the stable source id in the
+  component-scoped `ClipboardService`; Paste captures the current destination folder
+  and performs the existing pessimistic `FileSystemStore.copy`. The source remains on
+  the clipboard so repeated paste works, one paste runs at a time, editable fields keep
+  native clipboard behavior, roots cannot be copied, and folder-to-self/descendant
+  copies are rejected.
+  `SharePointFileSystemApi.copy` now sends exactly `kind`, `sourceParentPath`,
+  `sourceName`, `targetListKey`, `targetParentId`, and `targetParentPath` to the
+  project-scoped endpoint and maps HTTP failures to typed errors. The mock simulates
+  backend-owned naming: same-folder copies start with ` - Copy`, repeated or
+  destination collisions use KeepBoth suffixes, and copied folders retain their real
+  child count. A successful copy keeps an already-loaded destination marked as loaded;
+  the canonical inserted child is enough to keep the tree coherent, while invalidating
+  that marker would hide all children until the next read. Focused adapter/store specs
+  cover the request, errors, list context, repeated same-folder copy, retained
+  destination loading state, and folder count. App/spec TypeScript, focused lint, the
+  development build, and `git diff --check` pass; browser acceptance and local Karma
+  execution remain pending.
 - **COPY public DTO simplified; existing controller/service retained** (2026-07-30):
   aligned `docs/backend-operations/copy.md`, the endpoint index, and SPEC around the
   already implemented `POST /projects/{projectId}/documents/copy` controller. Replace
@@ -197,6 +237,39 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
 
 _Things noticed during implementation but not fixed in the current phase. Review before starting the next phase._
 
+- **Real descendant-copy rejection needs verification** (2026-07-31, review finding):
+  the mock rejects copying a folder into itself or a descendant, but the existing real
+  copy service has not yet been confirmed. Frontend guards are cache-based and can
+  miss a deep descendant opened through typed-path resolution. Test the disposable
+  `Contracts/Vendors/2026` scenario against the real API on 2026-08-01, capture the
+  response, and confirm that no partial copy is created. Potential P1 if the backend
+  does not reject safely. Full procedure: `docs/TODO.md` item 6.
+- **Stale async results after a project switch** (2026-07-31, review finding):
+  `copy` can start against project A, finish after project B has initialized,
+  and then insert A's returned node into B's cache and alter B's parent count.
+  Resetting state on initialization does not invalidate independently awaited
+  requests. Treat this as an operation-wide P0 audit, not a copy-only patch:
+  mutations and reads must not write stale success, error, loading, or cleanup
+  state. A private store session-token guard is the current candidate because
+  token identity also handles A → B → A and requires no component changes; the
+  backend-success/reconciliation behavior still needs a decision. Full write-up
+  and acceptance cases: `docs/TODO.md` item 3. No runtime change yet.
+- **Copy endpoint project/list authorization** (2026-07-31, P0 review finding):
+  the current path-based copy DTO does not require the backend to prove that its
+  client-controlled source/target paths and target id belong to `projectId`'s
+  configured list. Angular now enforces same-list copy in the menu, store, real
+  adapter, and mock adapter, but that is not a security boundary. Prefer a
+  list-scoped id-based backend request, or strictly validate canonical path/id/list
+  agreement before mutation. Full write-up: `docs/TODO.md` item 5.
+- **Ambiguous copy failures can be duplicated by Retry** (2026-07-31, review
+  finding): a copy may succeed in SharePoint before its response or canonical
+  lookup fails, but the frontend maps timeout/transport/`5xx` failures to
+  `network` and offers a Retry that invokes copy again. KeepBoth then creates a
+  second item. Do not equate transient with safe-to-repeat. Destination
+  refresh/reconciliation is the safest immediate candidate; true retry requires
+  an end-to-end idempotency key with backend deduplication. Audit the other
+  mutations for the same ambiguous-outcome assumption. Full write-up and
+  acceptance cases: `docs/TODO.md` item 4. No runtime change yet.
 - **Large upload transport remains deferred** (2026-07-29): standard Spring Cloud OpenFeign buffers the encoded request body, so the first implementation is limited to 10 MiB. Supporting larger files requires the documented single-request streaming client while preserving the same frontend endpoint.
 - **Cross-site move backend semantics** (2026-07-21): frontend list-context propagation is complete, but the backend design still must decide whether a cross-site "move" is copy+delete and which new `UniqueId` it returns. Do not assume SharePoint `MoveTo` crosses site collections or preserves identity. The frontend already treats the returned node as canonical and drops cached descendants.
 - **Karma runner in agent environment** — the normal sandbox cannot bind Karma's port 9876 (`listen EPERM`); an escalated run can bind it, but this environment has no Chrome/Chromium binary for `ChromeHeadless`. Specs compile here, but browser execution still requires the user's local `npm test`.
@@ -211,12 +284,47 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-07-31 — descendant-copy API verification queued**: documented the
+  cache-incomplete frontend scenario and a disposable real-API test for 2026-08-01 in
+  `docs/TODO.md` item 6. The mock already rejects the operation. The real backend
+  behavior remains unconfirmed; no runtime change was made.
+- **2026-07-31 — same-list frontend copy enforcement**: Copy/Paste is now allowed
+  only when the source and destination have the same `listKey`. Cross-list Paste is
+  disabled, while store and both concrete adapters defensively return the new typed
+  `cross-list-copy` error before an API request. Replaced the cross-list success
+  coverage with rejection coverage and updated the copy contract documentation.
+  This does not solve the backend project/list authorization boundary, which is
+  recorded as P0 in `docs/TODO.md` item 5. App/spec TypeScript, focused lint, the
+  development build, and diff-check pass.
+- **2026-07-31 — ambiguous copy Retry documented for later**: recorded the
+  duplicate-copy risk in `docs/TODO.md` item 4 and the deferred-issues summary
+  above. The review confirmed that a `network` classification does not establish
+  that a mutation is safe to repeat. Destination refresh/reconciliation and
+  end-to-end idempotency remain candidate solutions; the other mutations also
+  need an outcome-ambiguity audit. Documentation only; no runtime behavior
+  changed.
+- **2026-07-31 — project-switch async race documented for later**: recorded
+  the confirmed `copy` race in `docs/TODO.md` item 3 and the deferred-issues
+  summary above. The future review must cover every asynchronous store write,
+  including stale errors/loading cleanup and A → B → A, and decide how to
+  reconcile a mutation that succeeded remotely after its frontend session
+  became stale. A private store session token is a candidate, not yet an agreed
+  implementation. Documentation only; no runtime behavior changed.
+- **2026-07-31 — file open/download DTO handoff + frontend wiring**: enabled the
+  existing Online Application, Local application, and Download File menu entries from
+  optional backend-provided `onlineUrl`, `desktopUrl`, and `downloadUrl` file fields.
+  Added component-scoped URL validation/launch behavior and focused specs. Added
+  `docs/backend-operations/file-links.md`, recording the exact DTO contract and the
+  environment-verified Office Online `web=1`, Microsoft Office URI, and direct
+  SharePoint `download.aspx` formats. Angular never constructs the links or relays
+  bytes. App/spec compilation, focused lint, development build, and diff-check pass;
+  browser execution still requires links from the connected backend DTO.
 - **2026-07-27 — SharePoint chunk-upload Postman probe**: added `docs/backend-operations/verify-sharepoint-chunk-upload.md`, a short manual farm-capability check using three raw `AAA`/`BBB`/`CCC` fragments, by-id Start/Continue/Finish calls, returned offsets `3`/`6`, final `AAABBBCCC` verification, a path fallback, cleanup, and a compact result template. Linked it from the bounded upload-file contract; no backend or Angular behavior changed.
 - **2026-07-27 — focused upload-file backend contract**: removed the premature remaining-actions plan and replaced it with only the agreed file-upload work. Documented one raw-body domain endpoint, the canonical `File` response with required `parentId`, a bounded 10 MiB implementation through the existing authenticated Feign client, exact RAM/temp-file behavior, and a Postman checklist. Source verification confirmed that Tomcat supports ordinary streamed request bodies without WebSocket, while standard Spring Cloud OpenFeign buffers outbound bodies; true relay streaming therefore remains a separate upload-client design. No Angular functionality was implemented.
 - **2026-07-22 — corrected SharePoint authentication guidance for DELETE**: confirmed the backend already uses an authenticated Feign client with a cached per-user, certificate-backed OAuth bearer token, and the working copy mutation proves this path supports SharePoint writes. Removed the obsolete form-digest/`X-RequestDigest`/`_api/contextinfo` implementation instructions from the DELETE guide, SPEC, PHASES, and adapter guidance; Delete now explicitly reuses the existing Feign configuration and performs one direct backend-to-SharePoint DELETE with no metadata lookup. Documentation/source comments only; no runtime behavior changed.
 - **2026-07-21 — completed post-listKey simplification**: changed nested reads from redundant `(projectId, listKey, parentId)` arguments to `(projectId, parent)`, with adapters extracting the parent key/id for the unchanged list-scoped backend route. Removed identical folder/file object branches in mock repathing and cached rename maintenance; the latter now branches only on renamed root versus descendant to preserve the file parent-id invariant. App/spec TypeScript, production build, focused lint, and diff-check pass; full lint retains only the pre-existing stress-fixture max-length error and two path-bar warnings.
 - **2026-07-21 — removed duplicate store root-id mapping**: deleted `rootIdByList` from `FileSystemStore` state, DevTools, `FileSystemReader`, and tests. The container and tree template now use `initializedRoots` directly for root availability/identity; it resets to null when current-project initialization begins, and root loaded markers derive from the completed statuses. The mock API retains its private list-to-random-root lookup because that is backend simulation state, not duplicated frontend state.
-- **2026-07-21 — frontend `listKey` propagation implemented**: added `listKey` to every folder/file node, seeded it through both mock trees, made child reads list-aware, and used destination context for create/move/copy. Cross-list mock move/copy now returns the destination key (recursively internally); cached breadcrumbs/address paths read the key from the node. Updated the SharePoint stub to state that Angular calls the generated backend client (never SharePoint directly), plus the DELETE guide, SPEC/PHASES, and store specs covering delete routing and cross-list move/copy. App/spec TypeScript compilation and the production build pass; focused lint is clean (full lint retains only the pre-existing stress-fixture max-length error and two path-bar warnings).
+- **2026-07-21 — frontend `listKey` propagation implemented**: added `listKey` to every folder/file node, seeded it through both mock trees, made child reads list-aware, and used destination context for create/move/copy. Cross-list mock move/copy originally returned the destination key recursively; cross-list copy was later prohibited on 2026-07-31, while cross-list move remains a separate backend decision. Cached breadcrumbs/address paths read the key from the node. Updated the SharePoint stub to state that Angular calls the generated backend client (never SharePoint directly), plus the DELETE guide, SPEC/PHASES, and store specs covering delete routing and list context. App/spec TypeScript compilation and the production build pass; focused lint is clean (full lint retains only the pre-existing stress-fixture max-length error and two path-bar warnings).
 - **2026-07-21 — DELETE backend-to-SharePoint contract documented** (authentication corrected 2026-07-22): revised the backend route overview for the newly confirmed multi-site possibility: every route is list-scoped through `(projectId, listKey)`. Kept that overview compact and added `docs/backend-operations/delete.md` as the first per-operation guide, recording the bodyless domain endpoint with `kind`, backend project/list resolution and root guard, exact Postman-verified direct SharePoint DELETE calls for `GetFileById`/`GetFolderById`, reuse of the existing authenticated Feign client and cached per-user OAuth bearer token, one SharePoint call, error mapping, and 204 normalization. This documentation-only step identified the frontend alignment that was implemented later the same day (note above).
 - **2026-07-19 — component-scoped notifications + typed read-error routing**: implemented `NotificationService` over PrimeNG `MessageService`, keyed custom toast UI with Material Symbols and Retry, safe code-based messages, raw technical logging, and scoped clearing. `ProjectDocuments` now owns notifications for partial root loads, folder/tree reads, and path/breadcrumb/up resolution; stores/children remain UI-independent. `errorByParentId` retains typed `FileSystemError`; blocking/no-cache failures stay inline, cached revalidation failures keep rows and toast, with Retry only for typed `network` errors (unknown/untyped callbacks are discarded defensively). Added notification-service specs plus typed/transient store coverage. App/spec tsc, focused lint, dev build, and diff-check pass. Full `ng lint` is blocked only by the user's pre-existing 206-character mock-seed stress line; Karma compiles all specs but browser execution is unavailable because the environment has no Chrome/Chromium binary.
 - **2026-07-09 — toolbar overflow fix + hover unification + tree selection + cell-truncation consistency**: four small UI fixes, all verified in a real headless browser driven against the running dev server (reproduced the bug, applied the fix, re-measured). (1) **Toolbar overflow (user-reported)**: selecting a very long folder let the breadcrumb grow the toolbar past the frame, pushing the search box and New folder/Upload buttons off-screen. Root cause was NOT the flex chain (host/nav/segment all already had `min-width: 0`) but `.pd-toolbar-row` being a **grid item** of the `.pd-root` grid with the default `min-width: auto` — its max-content (the 200-char breadcrumb) forced the implicit grid column to ~1974px inside a 1248px frame, so `flex: 1 1 0` on the breadcrumb was moot. Fix: `.pd-toolbar-row { min-width: 0 }`. Measured before→after: toolbar row scrollWidth 1974→1246px (= frame), actions right edge +710px off-frame → −18px inside. (2) **Shared hover color**: the file-table row hover used `--pd-selection-bg` (green) while the tree used the PrimeNG preset; unified both (plus the path-bar, which already did) onto `--pd-hover-bg`, repointed from `$secondary-lightest` (#fafafa, near-invisible) to `$secondary-lighter` (#f0f1f2). Tree hover overridden via its component token `--p-tree-node-hover-background` (preserves selected-node styling). (3) **Tree selection sticks**: `[metaKeySelection]="true"` on `p-tree` so re-clicking the current folder keeps it selected (green) instead of PrimeNG's default single-select toggle-off. (4) **Cell-truncation consistency**: the three muted table columns (Type / Last Modified / Modified By) moved their tooltip + `mouseenter` measurement onto a padding-less inner `.pd-cell-text` span (like the name column) so the hover tooltip triggers exactly when the `…` appears, instead of only after the text overflows past the cell's ~0.85rem right padding. Build + lint green. NOT committed: the local `mock-seed.ts` stress-name tweak (throwaway repro fixture) and `tmp-screenshots/`.

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { delay, throwError } from 'rxjs';
+import { delay, map, throwError } from 'rxjs';
 import type {
     DocumentListRoots,
     DocumentListRootStatus
@@ -236,6 +236,47 @@ describe('FileSystemStore project-scoped API contract', () => {
         );
     });
 
+    it('clears cached descendant file links when a folder rename changes their paths', async () => {
+        await store.initialize('project-123');
+        const folder = store
+            .entities()
+            .find(
+                (node): node is FolderNode =>
+                    isFolder(node) && node.path === '/execution/Contracts'
+            );
+        if (!folder) { throw new Error('Expected Contracts folder'); }
+        const originalListDocuments = api.listDocuments.bind(api);
+        spyOn(api, 'listDocuments').and.callFake((projectId, parent) =>
+            originalListDocuments(projectId, parent).pipe(
+                map((listing) => ({
+                    ...listing,
+                    files: listing.files.map((file) => ({
+                        ...file,
+                        onlineUrl: `https://sharepoint.test${file.path}?web=1`,
+                        desktopUrl: `ms-word:ofe|u|https://sharepoint.test${file.path}`,
+                        downloadUrl: `https://sharepoint.test/download?path=${file.path}`
+                    }))
+                }))
+            )
+        );
+        await store.loadChildren(folder.id);
+        const descendantFile = store
+            .entities()
+            .find((node) => !isFolder(node) && node.parentId === folder.id);
+        if (!descendantFile || isFolder(descendantFile)) {
+            throw new Error('Expected a cached descendant file');
+        }
+
+        await store.rename(folder.id, 'Renamed Contracts');
+
+        const repathed = store.entityMap()[descendantFile.id];
+        if (!repathed || isFolder(repathed)) { throw new Error('Expected repathed file'); }
+        expect(repathed.path).toContain('/execution/Renamed Contracts/');
+        expect(repathed.onlineUrl).toBeUndefined();
+        expect(repathed.desktopUrl).toBeUndefined();
+        expect(repathed.downloadUrl).toBeUndefined();
+    });
+
     it('passes the selected node list context to delete', async () => {
         const roots = await store.initialize('project-123');
         const executionRoot = requireRoot(roots.execution, 'execution');
@@ -299,7 +340,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(moved?.listKey).toBe('marketing');
     });
 
-    it('uses the destination list context when copying across document lists', async () => {
+    it('rejects copying across document lists before calling the API', async () => {
         const roots = await store.initialize('project-123');
         const executionRoot = requireRoot(roots.execution, 'execution');
         const marketingRoot = requireRoot(roots.marketing, 'marketing');
@@ -307,15 +348,67 @@ describe('FileSystemStore project-scoped API contract', () => {
             (node) => isFolder(node) && node.parentId === executionRoot.id
         );
         if (!source) { throw new Error('Expected execution source folder'); }
+        const copy = spyOn(api, 'copy').and.callThrough();
 
-        await store.copy(source.id, marketingRoot.id);
+        await expectAsync(store.copy(source.id, marketingRoot.id)).toBeRejectedWith(
+            jasmine.objectContaining<FileSystemError>({ code: 'cross-list-copy' })
+        );
+
+        expect(copy).not.toHaveBeenCalled();
+        expect(
+            store.entities().some(
+                (node) => node.parentId === marketingRoot.id && node.name === source.name
+            )
+        ).toBeFalse();
+    });
+
+    it('keeps repeated same-folder copies with File Explorer names', async () => {
+        const roots = await store.initialize('project-123');
+        const executionRoot = requireRoot(roots.execution, 'execution');
+        const source = store.entities().find(
+            (node) => !isFolder(node) && node.parentId === executionRoot.id
+        );
+        if (!source) { throw new Error('Expected execution source file'); }
+
+        await store.copy(source.id, executionRoot.id);
+        await store.copy(source.id, executionRoot.id);
+
+        const copiedNames = store.entities()
+            .filter((node) => node.id !== source.id && node.parentId === executionRoot.id)
+            .map((node) => node.name);
+        const extensionIndex = source.name.lastIndexOf('.');
+        const stem = extensionIndex > 0
+            ? source.name.slice(0, extensionIndex)
+            : source.name;
+        const extension = extensionIndex > 0
+            ? source.name.slice(extensionIndex)
+            : '';
+        expect(copiedNames).toContain(`${stem} - Copy${extension}`);
+        expect(copiedNames).toContain(`${stem} - Copy (2)${extension}`);
+        expect(store.folderIdsWithLoadedChildren()).toContain(executionRoot.id);
+    });
+
+    it('returns a copied folder with its real child count', async () => {
+        const roots = await store.initialize('project-123');
+        const executionRoot = requireRoot(roots.execution, 'execution');
+        const source = store.entities().find(
+            (node): node is FolderNode =>
+                isFolder(node) &&
+                node.parentId === executionRoot.id &&
+                node.itemCount > 0
+        );
+        if (!source) { throw new Error('Expected a non-empty execution folder'); }
+
+        await store.copy(source.id, executionRoot.id);
 
         const copied = store.entities().find(
-            (node) => node.id !== source.id &&
-                node.parentId === marketingRoot.id &&
-                node.name === source.name
+            (node) =>
+                isFolder(node) &&
+                node.id !== source.id &&
+                node.parentId === executionRoot.id &&
+                node.name.startsWith(`${source.name} - Copy`)
         );
-        expect(copied?.listKey).toBe('marketing');
+        expect(copied && isFolder(copied) ? copied.itemCount : -1).toBe(source.itemCount);
     });
 
     it('loadPathListing resolves a typed path and returns canonical casing', async () => {

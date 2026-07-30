@@ -44,6 +44,7 @@ import { FileSystemError } from './models/file-system-error.model';
 import { FileSystemApi } from './services/file-system-api';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
 import { ClipboardService } from './services/clipboard.service';
+import { FileLaunchService } from './services/file-launch.service';
 import {
     NotificationService,
     PROJECT_DOCUMENTS_TOAST_KEY
@@ -100,6 +101,7 @@ type InlineRenameSurface = 'tree' | 'table';
         { provide: FileSystemReader, useExisting: FileSystemStore },
         NavigationStore,
         ClipboardService,
+        FileLaunchService,
         MessageService,
         ConfirmationService,
         NotificationService,
@@ -116,6 +118,7 @@ export class ProjectDocuments {
     protected readonly fileSystem = inject(FileSystemStore);
     protected readonly navigation = inject(NavigationStore);
     protected readonly clipboard = inject(ClipboardService);
+    protected readonly fileLauncher = inject(FileLaunchService);
     protected readonly notifications = inject(NotificationService);
     protected readonly confirmation = inject(ConfirmationService);
     protected readonly uploads = inject(UploadService);
@@ -131,6 +134,7 @@ export class ProjectDocuments {
     protected readonly inlineRenameSurface = signal<InlineRenameSurface | null>(null);
     protected readonly focusedSurface = signal<InlineRenameSurface>('table');
     protected readonly creatingFolder = signal(false);
+    protected readonly pasting = signal(false);
     protected readonly toolbarUploadItems = signal<MenuItem[]>([]);
     protected readonly uploadPanelCollapsed = signal(false);
 
@@ -499,6 +503,46 @@ export class ProjectDocuments {
         }
     }
 
+    protected copyToClipboard(node: FileSystemNode): void {
+        if (node.parentId === null || this.isWriting(node.id)) { return; }
+        this.clipboard.copy([node.id]);
+        this.notifications.info(`“${node.name}” is ready to paste.`);
+    }
+
+    protected async pasteInto(target: FolderNode): Promise<void> {
+        if (!this.canPaste(target) || this.isWriting(target.id)) { return; }
+        const sourceId = this.clipboard.ids().values().next().value;
+        const source = sourceId ? this.fileSystem.entityMap()[sourceId] : undefined;
+        if (!source) {
+            this.clipboard.clear();
+            this.notifications.warning('The copied item is no longer available.');
+
+            return;
+        }
+        if (isFolder(source) && this.isAncestorOrSelf(source.id, target.id)) {
+            this.notifications.warning(
+                'A folder cannot be copied inside itself or one of its subfolders.'
+            );
+
+            return;
+        }
+
+        this.pasting.set(true);
+        this.setWriting(target.id, true);
+        try {
+            await this.fileSystem.copy(source.id, target.id);
+            this.notifications.success(`“${source.name}” was copied.`);
+        } catch (error) {
+            this.notifications.error(
+                error,
+                this.retryForReadError(error, () => void this.pasteInto(target))
+            );
+        } finally {
+            this.setWriting(target.id, false);
+            this.pasting.set(false);
+        }
+    }
+
     protected onTreeNodeSelected(id: string): void {
         this.focusedSurface.set('tree');
         this.closePathEditor();
@@ -679,8 +723,12 @@ export class ProjectDocuments {
             this.menuItem('Rename Folder', 'edit', 'pd-menu-rename-folder', () => {
                 this.startInlineRename(folder, source);
             }, root || locked),
-            // TODO: enable with the copy/paste US.
-            this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', undefined, true),
+            this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
+                this.copyToClipboard(folder);
+            }, root || locked),
+            this.menuItem('Paste', 'content_paste', 'pd-menu-paste', () => {
+                void this.pasteInto(folder);
+            }, locked || !this.canPaste(folder)),
             this.menuItem('Delete Folder', 'delete', 'pd-menu-delete-folder', () => {
                 this.requestDelete(folder);
             }, root || locked),
@@ -698,38 +746,65 @@ export class ProjectDocuments {
 
     private fileContextMenu(file: FileNode): MenuItem[] {
         const locked = this.isWriting(file.id);
+        const openItems = [
+            this.menuItem(
+                'Local application',
+                'grid_view',
+                'pd-menu-open-local',
+                () => { this.openInDesktopApplication(file); },
+                locked || !this.fileLauncher.canOpenDesktop(file)
+            ),
+            this.menuItem(
+                'Online Application',
+                'language',
+                'pd-menu-open-online',
+                () => { this.openInOnlineApplication(file); },
+                locked || !this.fileLauncher.canOpenOnline(file)
+            )
+        ];
 
         return [
-            // TODO: enable with the open-file US.
-            this.menuItem('Open File in', 'file_open', 'pd-menu-open-file-in', undefined, false, [
-                this.menuItem(
-                    'Local application',
-                    'grid_view',
-                    'pd-menu-open-local',
-                    undefined,
-                    true
-                ),
-                this.menuItem(
-                    'Online Application',
-                    'language',
-                    'pd-menu-open-online',
-                    undefined,
-                    true
-                )
-            ]),
+            this.menuItem(
+                'Open File in',
+                'file_open',
+                'pd-menu-open-file-in',
+                undefined,
+                openItems.every((item) => item.disabled === true),
+                openItems
+            ),
             { separator: true },
             this.menuItem('Rename File', 'edit', 'pd-menu-rename-file', () => {
                 this.startInlineRename(file, 'table');
             }, locked),
-            // TODO: enable with the copy/paste US.
-            this.menuItem('Copy File', 'content_copy', 'pd-menu-copy-file', undefined, true),
+            this.menuItem('Copy File', 'content_copy', 'pd-menu-copy-file', () => {
+                this.copyToClipboard(file);
+            }, locked),
             this.menuItem('Delete File', 'delete', 'pd-menu-delete-file', () => {
                 this.requestDelete(file);
             }, locked),
             { separator: true },
-            // TODO: enable with the download-file US.
-            this.menuItem('Download File', 'download', 'pd-menu-download-file', undefined, true)
+            this.menuItem('Download File', 'download', 'pd-menu-download-file', () => {
+                this.downloadFile(file);
+            }, locked || !this.fileLauncher.canDownload(file))
         ];
+    }
+
+    private openInOnlineApplication(file: FileNode): void {
+        if (!this.fileLauncher.openOnline(file)) {
+            this.notifications.warning('The online application could not be opened.');
+        }
+    }
+
+    private openInDesktopApplication(file: FileNode): void {
+        if (!this.fileLauncher.openDesktop(file)) {
+            this.notifications.warning('The local application could not be opened.');
+        }
+    }
+
+    private downloadFile(file: FileNode): void {
+        if (!this.fileLauncher.download(file)) {
+            this.notifications.warning('This file does not have a download link.');
+        }
     }
 
     private emptyContextMenu(): MenuItem[] {
@@ -741,8 +816,9 @@ export class ProjectDocuments {
                 void this.createFolder();
             }, !canCreate),
             { separator: true },
-            // TODO: enable with the copy/paste US.
-            this.menuItem('Paste', 'content_paste', 'pd-menu-paste', undefined, true),
+            this.menuItem('Paste', 'content_paste', 'pd-menu-paste', () => {
+                if (currentFolder) { void this.pasteInto(currentFolder); }
+            }, currentFolder === null || !this.canPaste(currentFolder)),
             this.menuItem(
                 'Upload',
                 'upload',
@@ -794,6 +870,22 @@ export class ProjectDocuments {
         if (error.code !== 'name-collision' && error.code !== 'invalid-name') { return null; }
 
         return this.notifications.userMessageFor(error);
+    }
+
+    private canPaste(target: FolderNode): boolean {
+        if (
+            this.pasting() ||
+            this.clipboard.mode() !== 'copy' ||
+            this.clipboard.ids().size !== 1
+        ) {
+            return false;
+        }
+        const sourceId = this.clipboard.ids().values().next().value;
+        const source = sourceId ? this.fileSystem.entityMap()[sourceId] : undefined;
+
+        // Keep the action available for a stale clipboard id so pasteInto can clear it
+        // and explain what happened; known sources must remain in their own list.
+        return source === undefined || source.listKey === target.listKey;
     }
 
     private startInlineRename(

@@ -132,6 +132,8 @@
   - Context menu per row
   - Context menu on empty area
   - Inline file/folder rename (when `focusedId === row.id` and rename mode active)
+  - File open/download actions consume backend-provided `onlineUrl`, `desktopUrl`, and
+    `downloadUrl`; missing or unsafe links leave only that action disabled
 - `components/nav-toolbar/nav-toolbar.ts` — enable new folder button (server-first create followed by inline rename), upload button still disabled
 
 **Container**
@@ -180,7 +182,8 @@
 - `components/file-table/file-table.ts`:
   - Multi-select wired (p-table selectionMode="multiple")
   - Cut items render at 50% opacity (read from `ClipboardService`)
-  - Context menu adds: Cut, Copy, Paste (if clipboard not empty)
+  - Context menu adds: Cut, Copy, Paste (if clipboard not empty); folder-menu Paste
+    targets the right-clicked folder without opening it first
 - `project-documents.ts`:
   - `@HostListener` or signal-based key handler for all shortcuts (SPEC §3.8)
   - Handles Escape to clear selection / close menus
@@ -191,7 +194,8 @@
 - [ ] Ctrl+A selects all in current folder
 - [ ] Delete on multi-selection shows bulk confirm ("Delete 5 items?"), deletes sequentially with progress
 - [ ] Bulk errors: succeeded items stay deleted, failed items remain, summary toast shown
-- [ ] Cut + Paste moves items; Copy + Paste copies items
+- [ ] Cut + Paste moves items; Copy + Paste copies items only within the same
+  document list
 - [ ] Cut items are visually dimmed; clear on successful paste or Escape
 - [ ] All keyboard shortcuts work as specified
 - [ ] Backspace only triggers up-nav when focus is in right pane and no input/dialog open
@@ -316,8 +320,9 @@ pickers with progress. External OS drops remain deferred to drag-and-drop work.
 - Ability to debug network requests
 
 ### Work to do
-- Keep the implemented upload lifecycle in `sharepoint-file-system-api.ts`; replace
-  only its private `requestUpload` body with the generated upload operation
+- Keep the implemented copy/upload lifecycles in `sharepoint-file-system-api.ts`;
+  replace only the private `requestCopy` and `requestUpload` bodies with their
+  generated backend operations
 - Implement every remaining method per the adapter's JSDoc comments
 - Use the application's existing generated backend client. The backend already routes
   SharePoint calls through an authenticated Feign client whose interceptor supplies the

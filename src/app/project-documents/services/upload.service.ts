@@ -416,6 +416,7 @@ function uploadErrorMessage(error: unknown): string {
             return 'Connection problem — retry the complete file.';
         case 'cancelled':
             return 'Upload was cancelled.';
+        case 'cross-list-copy':
         case 'descendant-move':
         case 'unknown':
             return 'Upload failed. Please try again.';

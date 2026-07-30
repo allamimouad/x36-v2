@@ -4,7 +4,8 @@
 > request DTO is being simplified. Other entries remain implementation guidance where
 > their backend operation is pending.** The backend sits between the frontend and
 > SharePoint. The frontend never sees SharePoint list GUIDs, credentials, or backend
-> configuration. Nodes do carry canonical decoded server-relative paths.
+> routing configuration. Nodes carry canonical decoded server-relative paths, and file
+> DTOs may carry ready-to-use navigation links.
 
 ## Principles
 - Read, create, rename, move, delete, and upload operations are list-scoped. Execution
@@ -53,16 +54,17 @@
 - Create addresses the parent folder in the URL and sends only the requested name.
   Creating directly inside a document list uses that list's root-folder id as
   `parentFolderId`; nested creation uses the current folder's id. Move identifies
-  `targetListKey` because its destination may be on another SharePoint site. Copy sends
-  decoded source/target parent paths already present on the frontend nodes; those full
-  server-relative paths contain the site, library, and folder, so copy needs no source
-  list key for SharePoint routing. It sends `targetListKey` so the backend can populate
-  the copied node's domain list context. The backend compares those parent paths: a
+  `targetListKey` because its destination may be on another SharePoint site. Copy is
+  frontend-limited to a destination with the same `listKey` as its source. The current
+  adapter sends decoded source/target parent paths already present on the frontend
+  nodes and sends `targetListKey` for the returned node's domain context. This
+  path-based public contract still needs the backend project/list ownership hardening
+  tracked in `docs/TODO.md` item 5. The backend compares the parent paths: a
   different-folder copy keeps `sourceName`, while a same-folder copy uses the
   ` - Copy` form before applying its existing `KeepBoth` collision handling.
 - `move`/`copy` are action endpoints (not PATCH) because they do more than set a field
-  (new path and parent relationship on the returned node, plus a possible cross-list
-  copy+delete).
+  (new path and parent relationship on the returned node; a cross-list move may also
+  require copy+delete).
 
 ## Example bodies
     POST /projects/123/document-lists/execution/documents/parent-folder-guid/folders
@@ -79,9 +81,9 @@
       "kind": "file",
       "sourceParentPath": "/sites/project/Documents",
       "sourceName": "report.pdf",
-      "targetListKey": "marketing",
+      "targetListKey": "execution",
       "targetParentId": "folder-guid",
-      "targetParentPath": "/sites/project/Marketing/Target"
+      "targetParentPath": "/sites/project/Documents/Target"
     }
 
 ## Operation implementation guides
@@ -97,6 +99,8 @@ design is agreed. The overview remains a compact route/index document.
   implementation details.
 - [COPY document](backend-operations/copy.md) — controller integration over the
   existing service that already performs copy and canonical post-copy lookup.
+- [OPEN and DOWNLOAD file](backend-operations/file-links.md) — file DTO link mapping
+  for Office Online, installed Office clients, and direct SharePoint download.
 - [UPLOAD file with Feign](backend-operations/upload-file-feign-buffered.md) —
   bounded first implementation using the existing authenticated Feign client.
 - [UPLOAD file with HTTP streaming](backend-operations/upload-file-http-streaming.md) —
@@ -106,11 +110,12 @@ design is agreed. The overview remains a compact route/index document.
 - `FileSystemApi.listDocumentRoot(projectId, listKey)` → the root GET;
   `FileSystemApi.listDocuments(projectId, parent)` → the children GET, with the adapter
   extracting `parent.listKey` and `parent.id` for the list-scoped route.
-- Nodes will carry the domain `listKey`; they still do not expose SharePoint site URLs
-  or list GUIDs.
+- Nodes carry the domain `listKey`; files may also carry ready-to-use open/download
+  URLs, but never SharePoint routing configuration, list GUIDs, or credentials.
 - Mutations stay node-based. Most adapters extract list keys and ids from the passed
-  nodes; copy instead sends `kind`, the source parent path and name, and the target
-  list key, parent id, and path to its project-scoped path-based endpoint.
+  nodes; copy first requires matching source/destination list keys, then sends `kind`,
+  the source parent path and name, and the target list key, parent id, and path to its
+  project-scoped path-based endpoint.
 - The copy response maps `listKey` from the requested `targetListKey` and `parentId`
   from `targetParentId`; SharePoint supplies the canonical copied fields. File responses
   include the real `sizeBytes`, and folder responses include the real `itemCount`.

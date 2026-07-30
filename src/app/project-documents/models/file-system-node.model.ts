@@ -27,6 +27,8 @@ export interface FileNode {
     modifiedAt: string;
     modifiedBy?: string;
     contentType?: string;
+    onlineUrl?: string;
+    desktopUrl?: string;
     downloadUrl?: string;
 }
 

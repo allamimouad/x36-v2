@@ -353,7 +353,17 @@ export const FileSystemStore = signalStore(
             return nodes.map((node): FileSystemNode => {
                 const isRoot = node.id === id;
                 const path = isRoot ? newPath : node.path.replace(`${oldPath}/`, `${newPath}/`);
-                if (!isRoot) { return { ...node, path }; }
+                if (!isRoot) {
+                    if (isFolder(node)) { return { ...node, path }; }
+
+                    return {
+                        ...node,
+                        path,
+                        onlineUrl: undefined,
+                        desktopUrl: undefined,
+                        downloadUrl: undefined
+                    };
+                }
 
                 return {
                     ...node,
@@ -492,12 +502,23 @@ export const FileSystemStore = signalStore(
                     `Target folder not found in cache: ${targetParentId}`
                 );
             }
+            if (source.listKey !== targetParent.listKey) {
+                throw new FileSystemError(
+                    'cross-list-copy',
+                    'Cannot copy items between document lists'
+                );
+            }
+            if (isFolder(source) && _cachedSubtreeIds(id).includes(targetParentId)) {
+                throw new FileSystemError(
+                    'descendant-move',
+                    'Cannot copy a folder into itself or a descendant'
+                );
+            }
             const copied = await firstValueFrom(
                 api.copy(_requireProjectId(), source, targetParent)
             );
             patchState(store, setEntity<FileSystemNode>(copied));
             _adjustParentCount(targetParentId, 1);
-            _unmarkLoaded(targetParentId);
         };
 
         const upload = async (

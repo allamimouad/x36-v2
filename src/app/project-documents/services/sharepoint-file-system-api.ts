@@ -1,7 +1,7 @@
 /**
  * SharePoint on-prem implementation of {@link FileSystemApi}.
  *
- * STATUS: PARTIAL. Upload is implemented; the remaining methods return an
+ * STATUS: PARTIAL. Copy and upload are implemented; the remaining methods return an
  * implementation-pending error.
  *
  * ───────────────────────────────────────────────────────────────────────────
@@ -21,10 +21,11 @@
  *
  * Authentication
  *   Use the application's existing frontend-to-backend authentication. SharePoint
- *   credentials, access tokens, and site URLs remain backend-only. The backend reuses
- *   its existing authenticated Feign client; its interceptor supplies the cached
- *   per-user certificate-backed OAuth bearer token. Do not add token or form-digest
- *   handling to this Angular adapter.
+ *   credentials, access tokens, and routing configuration remain backend-only. File
+ *   DTOs may contain ready-to-use open/download navigation links, but never tokens.
+ *   The backend reuses its existing authenticated Feign client; its interceptor
+ *   supplies the cached per-user certificate-backed OAuth bearer token. Do not add
+ *   token or form-digest handling to this Angular adapter.
  *
  * id / path mapping
  *   `node.id` = SharePoint `UniqueId` (a GUID; stable across rename/move).
@@ -60,10 +61,10 @@
  *                            with newurl = `${newParent.path}/${node.name}`
  *                            Returns moved node; UniqueId unchanged, only path changes.
  *                            Set `parentId: newParent.id` on the returned FileSystemNode.
- *   copy            POST   .../GetFileById('<node.id>')/CopyTo for files
- *                            newurl = `${newParent.path}/${node.name}`
- *                   POST   recursive copy for folders (no native API; iterate)
- *                   Response gives a new UniqueId for the copy.
+ *   copy            POST   backend /projects/{projectId}/documents/copy with the
+ *                            source parent path/name plus the destination list key,
+ *                            parent id, and parent path. The backend reuses its existing
+ *                            copy plus canonical post-copy lookup.
  *   delete          DELETE backend /projects/{projectId}/document-lists/{node.listKey}
  *                            /documents/{node.id}?kind=file|folder
  *                            Backend calls GetFileById or GetFolderById in that list's site.
@@ -101,14 +102,24 @@ import {
     HttpParams
 } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Observable, throwError } from 'rxjs';
+import { catchError, Observable, throwError } from 'rxjs';
 import type { DocumentListing, ResolvedDocumentPath } from '../models/document-listing.model';
 import type { DocumentListKey } from '../models/document-list.model';
 import { FileSystemError } from '../models/file-system-error.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
+import { parentOf } from '../utils/path.utils';
 import { FileSystemApi } from './file-system-api';
 
 const IMPLEMENTATION_PENDING = 'SharePointFileSystemApi is not implemented yet';
+
+interface CopyDocumentRequest {
+    kind: FileSystemNode['kind'];
+    sourceParentPath: string;
+    sourceName: string;
+    targetListKey: DocumentListKey;
+    targetParentId: string;
+    targetParentPath: string;
+}
 
 @Injectable()
 export class SharePointFileSystemApi extends FileSystemApi {
@@ -196,17 +207,24 @@ export class SharePointFileSystemApi extends FileSystemApi {
         return throwError(() => new Error(IMPLEMENTATION_PENDING));
     }
 
-    /**
-   * POST .../GetFileById('<node.id>')/CopyTo for files; recursive iteration for folders.
-   * Response gives a new UniqueId for the copy.
-   */
+    /** Call the project-scoped backend copy route and emit its canonical copied node. */
     public override copy(
-        _projectId: string,
-        _node: FileSystemNode,
-        _newParent: FolderNode
+        projectId: string,
+        node: FileSystemNode,
+        newParent: FolderNode
     ): Observable<FileSystemNode> {
-    // TODO: implement with the SharePoint integration US.
-        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+        if (node.listKey !== newParent.listKey) {
+            return throwError(
+                () => new FileSystemError(
+                    'cross-list-copy',
+                    'Cannot copy items between document lists'
+                )
+            );
+        }
+
+        return this.requestCopy(projectId, node, newParent).pipe(
+            catchError((error: unknown) => throwError(() => this.mapCopyError(error)))
+        );
     }
 
     /** Call the list-scoped backend DELETE route using `node.listKey`, `node.id`, and kind. */
@@ -309,6 +327,65 @@ export class SharePointFileSystemApi extends FileSystemApi {
             observe: 'events',
             reportProgress: true
         });
+    }
+
+    /**
+     * Replace only this method body when an auto-generated backend client is available.
+     * Keep the request mapping in this adapter so stores remain backend-agnostic.
+     */
+    private requestCopy(
+        projectId: string,
+        node: FileSystemNode,
+        newParent: FolderNode
+    ): Observable<FileSystemNode> {
+        const request: CopyDocumentRequest = {
+            kind: node.kind,
+            sourceParentPath: parentOf(node.path),
+            sourceName: node.name,
+            targetListKey: newParent.listKey,
+            targetParentId: newParent.id,
+            targetParentPath: newParent.path
+        };
+        const url = `/projects/${encodeURIComponent(projectId)}/documents/copy`;
+
+        return this.http.post<FileSystemNode>(url, request);
+    }
+
+    private mapCopyError(error: unknown): FileSystemError {
+        if (error instanceof FileSystemError) { return error; }
+        if (!(error instanceof HttpErrorResponse)) {
+            return new FileSystemError('unknown', 'Copy failed', error);
+        }
+
+        const status = error.status;
+        if (status === 0 || status === 408 || status === 429 || status >= 500) {
+            return new FileSystemError('network', 'Copy request failed', error);
+        }
+        switch (status) {
+            case 400:
+                return new FileSystemError('invalid-name', 'Invalid copy request', error);
+            case 401:
+            case 403:
+                return new FileSystemError(
+                    'permission-denied',
+                    'Copy is not permitted',
+                    error
+                );
+            case 404:
+                return new FileSystemError(
+                    'not-found',
+                    'Copy source or destination was not found',
+                    error
+                );
+            case 409:
+                return new FileSystemError(
+                    'name-collision',
+                    'An item with that name already exists',
+                    error
+                );
+            default:
+                return new FileSystemError('unknown', 'Copy failed', error);
+        }
     }
 
     private mapUploadError(error: unknown): FileSystemError {

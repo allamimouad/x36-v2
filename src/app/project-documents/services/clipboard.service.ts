@@ -59,8 +59,3 @@ export class ClipboardService {
         this.modeSignal.set(next.size > 0 ? mode : null);
     }
 }
-
-// TODO: paste arrives with the cut/copy/paste US.
-// Keep paste orchestration outside this service. Paste needs
-// FileSystemStore + NavigationStore coordination and belongs in the container
-// or a dedicated use-case service; this service should remain pure state.

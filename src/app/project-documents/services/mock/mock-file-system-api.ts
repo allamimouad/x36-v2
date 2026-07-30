@@ -187,13 +187,31 @@ export class MockFileSystemApi extends FileSystemApi {
         return this.write(() => {
             const source = this.requireNode(node.id);
             const target = this.requireFolder(newParent.id);
-            this.assertNameAvailable(target.id, source.name);
+            if (source.listKey !== target.listKey) {
+                throw new FileSystemError(
+                    'cross-list-copy',
+                    'Cannot copy items between document lists'
+                );
+            }
+            if (isFolder(source) && this.isAncestorOrSelf(source.id, target.id)) {
+                throw new FileSystemError(
+                    'descendant-move',
+                    'Cannot copy a folder into itself or a descendant'
+                );
+            }
+            const existingNames = [...this.nodes.values()]
+                .filter((candidate) => candidate.parentId === target.id)
+                .map((candidate) => candidate.name);
+            const requestedName = source.parentId === target.id
+                ? fileExplorerCopyName(source.name)
+                : source.name;
+            const canonicalName = resolveNameCollision(requestedName, existingNames);
             const copied = this.copyRecursive(
                 source,
                 target.listKey,
                 target.id,
                 target.path,
-                source.name
+                canonicalName
             );
             this.touchParentCounts(target.id);
 
@@ -579,4 +597,13 @@ function normalizeMockPath(path: string): string {
         .filter((segment) => segment.length > 0)
         .join('/')
         .toLowerCase();
+}
+
+function fileExplorerCopyName(name: string): string {
+    const extensionIndex = name.lastIndexOf('.');
+    if (extensionIndex <= 0 || extensionIndex === name.length - 1) {
+        return `${name} - Copy`;
+    }
+
+    return `${name.slice(0, extensionIndex)} - Copy${name.slice(extensionIndex)}`;
 }

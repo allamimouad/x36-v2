@@ -4,6 +4,11 @@
 > change is to simplify the controller request body while preserving the existing
 > copy and post-copy lookup logic.** This is the operation-specific companion to the
 > [backend endpoint overview](../backend-endpoints.md).
+>
+> **Security status (2026-07-31): Angular now permits copy/paste only within one
+> `listKey`, but that is not an authorization boundary. The path-based backend
+> contract below still requires the project/list ownership validation tracked in
+> `docs/TODO.md` item 5. Do not treat client-provided paths or ids as trusted.**
 
 ## Scope
 
@@ -138,7 +143,9 @@ For a folder:
 
     itemCount <- SharePoint ItemCount
 
-`contentType` and `downloadUrl` remain optional. Do not default a copied folder's
+`contentType`, `onlineUrl`, `desktopUrl`, and `downloadUrl` remain optional. When file
+links are populated, build them from the copied file's canonical final path per
+[File Open and Download Links](file-links.md). Do not default a copied folder's
 `itemCount` to `0`: a recursive copy may already contain files and folders. If the
 existing post-copy query does not select a required canonical field, extend that
 existing query rather than constructing the value in the controller.
@@ -211,8 +218,10 @@ fields are unused. Keep only one public copy route and one service implementatio
 - Existing destination items are not overwritten.
 - Folder copy is recursive and preserves nested files, nested folders, and empty
   descendants.
-- Copy can use the same source/destination list or different Execution and Marketing
-  lists when supported by the configured SharePoint environment.
+- Copy is supported only within the same domain document list. Angular rejects
+  different source/destination `listKey` values before sending the request. The
+  backend must independently enforce the same rule; frontend validation can be
+  bypassed.
 - The controller returns no success body when the existing service reports a failure.
 
 ## Error behavior
@@ -252,9 +261,18 @@ sent only because the returned domain node requires it and SharePoint does not p
 it. Deriving `sourceParentPath` from `sourceNode.path` is a local path operation and
 requires no backend lookup.
 
+Before mapping the request, the component/store/adapter require
+`sourceNode.listKey === targetParent.listKey`. A cross-list target keeps Paste disabled,
+and an attempted direct store/adapter call fails with `cross-list-copy` before HTTP.
+This frontend check does not prove that the current public DTO belongs to
+`projectId`; backend enforcement remains the P0 follow-up in `docs/TODO.md` item 5.
+
 It maps the returned file/folder response through the existing frontend mapper.
 `FileSystemStore` remains pessimistic: only after success does it insert the copied
-node, update the target parent count, and invalidate the destination listing.
+node and update the target parent count. If the destination's direct children were
+already loaded, they remain loaded because inserting the canonical copied node keeps
+that cached listing coherent; invalidating the destination here would temporarily
+erase its tree children until another read.
 
 ## Acceptance checklist
 
@@ -276,8 +294,8 @@ node, update the target parent count, and invalidate the destination listing.
 - Repeated same-folder file copy keeps every copy.
 - Folder copy returns the canonical copied folder and preserves its complete subtree,
   including empty descendants.
-- Execution-to-Marketing and Marketing-to-Execution copies are tested where the
-  configured environment supports them.
+- Execution-to-Marketing and Marketing-to-Execution copies are rejected before the
+  frontend sends an HTTP request.
 - Spaces, apostrophes, `%`, and `#` are covered.
 - A service failure is translated through the existing global error handling.
 - A post-copy lookup failure never causes the controller to invoke copy a second time.

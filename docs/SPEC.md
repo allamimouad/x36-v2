@@ -142,11 +142,16 @@ All scenarios must work:
 
 ### 3.5 Right-click context menus
 
-- **Folder** (tree or right pane): Open Folder; separator; Rename Folder, Copy Folder, Delete Folder; separator; Upload within folder → Folder / File
+- **Folder** (tree or right pane): Open Folder; separator; Rename Folder, Copy Folder, Paste, Delete Folder; separator; Upload within folder → Folder / File
 - **File**: Open File in → Local application / Online Application; separator; Rename File, Copy File, Delete File; separator; Download File
 - **Right-pane empty area**: Create new Folder; separator; Paste; Upload → Folder / File
 - Nested menus open on hover. Paste is a direct command, not a submenu.
 - Root folders cannot be renamed or deleted. Actions whose workflows are not implemented yet remain visible but disabled, preserving the final menu structure.
+- File actions consume backend-provided `onlineUrl`, `desktopUrl`, and `downloadUrl`
+  capabilities. A missing or unsafe link disables only its corresponding action.
+- Online opens in a new browser tab; Local application launches an allow-listed
+  Microsoft Office URI; Download navigates directly to SharePoint without Angular or
+  the application backend relaying the file bytes.
 
 ### 3.6 Cut / copy / paste clipboard
 
@@ -154,7 +159,12 @@ All scenarios must work:
 - Clipboard: `{ ids: ReadonlySet<string>, mode: 'cut' | 'copy' | null }` in `ClipboardService`
 - Cut items render at 50% opacity until pasted or cleared
 - Paste cut into same folder: no-op (silent)
-- Paste copy where name collides: prompt (Replace / Keep both / Skip / Cancel)
+- Copy/paste is limited to the source node's document list:
+  `source.listKey === destination.listKey`. Cross-list Paste is disabled in the UI,
+  and both `FileSystemStore` and the concrete frontend adapters reject it before an
+  API request.
+- Paste copy always keeps both through the backend's canonical collision handling; the
+  frontend neither predicts the final name nor prompts for one
 - On successful move after cut: clear clipboard
 
 ### 3.7 Multi-select (right pane only)
@@ -238,6 +248,8 @@ export interface FileNode {
   createdAt: string;
   modifiedAt: string;
   contentType?: string;
+  onlineUrl?: string;
+  desktopUrl?: string;
   downloadUrl?: string;
 }
 
@@ -333,6 +345,13 @@ returns the canonical final name. The frontend never chooses the target name or
 calculates a suffix. The source parent path is derived locally from `node.path`,
 without a backend lookup.
 
+The implemented frontend permits this call only when `node.listKey ===
+newParent.listKey`; the menu, store, SharePoint adapter, and mock adapter all enforce
+that same-list rule. This is defense in depth and a UX rule, not a backend
+authorization boundary: a caller can bypass Angular. The current path-based public
+contract still requires the backend hardening tracked in `docs/TODO.md` item 5 before
+it can be considered project/list-bound.
+
 For the returned node, the backend maps `listKey` from `targetListKey` and `parentId`
 from `targetParentId`. SharePoint supplies the canonical `id`, `path`, `name`,
 `createdAt`, `modifiedAt`, and optional `modifiedBy`. A file also maps its real
@@ -363,8 +382,9 @@ because a recursive copy may contain children.
 - **Simulated errors**: 5% random failure rate on writes, configurable via `MOCK_CONFIG.errorRate` token; errors throw `FileSystemError('network', ...)`. `MOCK_CONFIG.unavailableFolderPaths` can also force deterministic `not-found` reads for specific list-relative paths.
 - **Constraint enforcement** (mandatory — the mock behaves like real SharePoint):
   - Create resolves the requested default name to a unique canonical name (`New folder`, `New folder (1)`, …)
-  - Name collision check on rename/move/copy (throw `name-collision`)
-  - Descendant guard on move (throw `descendant-move`)
+  - Name collision check on rename/move (throw `name-collision`)
+  - Copy resolves root-name collisions with backend-equivalent KeepBoth naming
+  - Descendant guard on move/copy (throw `descendant-move`)
   - Invalid-name check: empty, `.`, `..`, chars in `\/:*?"<>|`, length > 128 (throw `invalid-name`)
   - Non-existent `id` (throw `not-found`)
 - **Deep clone on return** so callers can't mutate internal state
@@ -386,17 +406,23 @@ because a recursive copy may contain children.
 
 ## 7. SharePoint Adapter Requirements
 
-`SharePointFileSystemApi` is partially implemented. Its upload lifecycle is complete;
-the remaining operations retain implementation-pending Observable errors.
+`SharePointFileSystemApi` is partially implemented. Its copy and upload lifecycles are
+complete; the remaining operations retain implementation-pending Observable errors.
 
 - Class implements `FileSystemApi` with every method present
+- `copy` maps the source node and destination folder to the six-field project-scoped
+  backend request, emits the canonical copied node, and translates HTTP failures into
+  typed `FileSystemError` values
+- Copy request construction is isolated in one private `requestCopy` method so an
+  auto-generated client can replace the equivalent `HttpClient` call without changing
+  clipboard, store, or error behavior
 - `upload` sends the raw `File` to the stable backend endpoint, observes HTTP events,
   reports real progress, unsubscribes on `AbortSignal`, maps the final `FileNode`, and
   translates HTTP failures into typed `FileSystemError` values
 - Upload request construction is isolated in one private `requestUpload` method so an
   auto-generated client can replace the equivalent `HttpClient` call without changing
   progress, cancellation, or error behavior
-- Every remaining method returns
+- Every method other than copy/upload returns
   `throwError(() => new Error('SharePointFileSystemApi is not implemented yet'))`
   on the Observable error channel
 - File contains a detailed comment block at the top listing:
@@ -446,6 +472,9 @@ All stores and feature services are provided at `ProjectDocuments` level.
 - **`ClipboardService`** — small signal-based clipboard state holder
 - **`ConcurrencyQueue`** — generic promise-based queue, max N concurrent; used for bulk ops and uploads
 - **`NotificationService`** — component-scoped wrapper around `MessageService` (`p-toast`); centralizes severity/lifetime defaults, safe `FileSystemError.code` → user-message mapping, technical console logging, and optional Retry actions. `ProjectDocuments` owns the decision to notify; stores and dumb components do not inject it.
+- **`FileLaunchService`** — validates backend-provided file action links and performs
+  online, installed-Office, and direct-download navigation. It never constructs a
+  SharePoint URL or downloads file bytes through Angular.
 
 ### 8.3 Components
 
@@ -479,6 +508,7 @@ project-documents/
     concurrency-queue.ts
     directory-manifest.ts
     notification.service.ts
+    file-launch.service.ts
   models/
     file-system-node.model.ts
     file-system-error.model.ts
@@ -549,7 +579,7 @@ canDropOn(targetId: string): boolean {
 | Rename | Pessimistic | Await server, apply the returned node, repath cached descendants |
 | Single delete | Pessimistic | Await server, then remove the cached subtree |
 | Single move | Pessimistic | Await server; drop the moved subtree and insert only the returned node (collapsed/unloaded), adjust both parent counts, prune dangling refs (replace-on-success) |
-| Single copy | Pessimistic | Await server (copy creates a new entity, need real id) |
+| Single copy | Pessimistic | Same-list only; await server (copy creates a new entity, need real id) |
 | Bulk delete/move/copy | Pessimistic + progress | Run through ConcurrencyQueue, apply each on success, summarize errors |
 | Upload | Pessimistic + progress | Always |
 
@@ -563,7 +593,8 @@ applied, so the store is already consistent and the failure surfaces as a toast.
 Name collision on rename/move/copy/upload:
 - **Initial folder creation**: the backend returns a unique persisted default name before inline editing starts
 - **Rename same parent**: inline error "A file/folder with that name already exists."
-- **Move / copy**: `ConflictResolutionDialog` with options: Replace / Keep both (auto-suffix) / Skip / Cancel; bulk ops show "Apply to all" checkbox
+- **Move**: `ConflictResolutionDialog` with options: Replace / Keep both (auto-suffix) / Skip / Cancel; bulk ops show "Apply to all" checkbox
+- **Copy**: always KeepBoth through the backend; apply the canonical returned name
 - **Upload**: fail the file with a collision message; never overwrite or retry automatically
 - `naming.utils.ts` provides `resolveNameCollision(baseName, existingNames)` → `"file (2).txt"`, `"file (3).txt"`, etc.
 
