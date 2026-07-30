@@ -316,16 +316,18 @@ pickers with progress. External OS drops remain deferred to drag-and-drop work.
 - Ability to debug network requests
 
 ### Work to do
-- Implement each method in `sharepoint-file-system-api.ts` per the stub's JSDoc comments
+- Keep the implemented upload lifecycle in `sharepoint-file-system-api.ts`; replace
+  only its private `requestUpload` body with the generated upload operation
+- Implement every remaining method per the adapter's JSDoc comments
 - Use the application's existing generated backend client. The backend already routes
   SharePoint calls through an authenticated Feign client whose interceptor supplies the
   cached per-user certificate-backed OAuth bearer token. Do not add a frontend token
   cache, form-digest interceptor, `X-RequestDigest`, or `_api/contextinfo` calls.
 - Implement `id` as the SharePoint `UniqueId` (GUID) and `path` as `ServerRelativeUrl`. Source operations address items via `GetFolderById('<id>')` / `GetFileById('<id>')`. The adapter is a thin shim over the auto-generated SharePoint client — every API method takes full `FolderNode` / `FileSystemNode` arguments, so the shim can read whichever fields (`id`, `path`, `name`, `parent.id`, `parent.path`, ...) the generated DTOs require.
 - Error code mapping from SharePoint error codes to `FileSystemError` codes
-- Implement the raw-body upload endpoint through the bounded authenticated Feign
-  contract; keep the frontend contract compatible with a future single-request
-  streaming transport
+- Preserve the implemented raw-body upload progress, cancellation, response, and typed
+  error behavior when connecting the generated client; keep the frontend contract
+  compatible with a future single-request streaming transport
 - In `project-documents.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
 - Only after that swap, optionally delete `services/mock/` (mock backend + seed + mock config token) and the two `stores/*.spec.ts` if unit tests aren't kept in that repo
 - Icons: no component swap needed — `FileSystemIcon` is the only file-type icon component (the Material Symbols stand-in was deleted 2026-07-08). Copy `src/assets/icons/sharepoint-file-type-icons/` (the 8 SVGs) to the target app along with the feature folder, or replace them with the target's own set — the component only needs `<name>.svg` to exist for the 8 `FileSystemIconName` values

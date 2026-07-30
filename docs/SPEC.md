@@ -40,7 +40,8 @@ Child components (`FolderTree`, `FileTable`, `PathBar`, `NavToolbar`, `UploadPan
 ### 2.2 Backend-agnostic via `FileSystemApi`
 Stores **MUST NOT know about SharePoint**. They depend on an abstract `FileSystemApi` class. Two implementations exist:
 - `MockFileSystemApi` — in-memory, used for dev and tests (default provider)
-- `SharePointFileSystemApi` — stubbed now, implemented later on another machine
+- `SharePointFileSystemApi` — upload implemented as a compile-safe HTTP reference;
+  remaining operations are stubbed until backend-client integration
 
 `services/mock/` contains the mock/dev backend and unit-test double (`mock-file-system-api.ts`, `mock-seed.ts`, `mock-config.token.ts`). It is used by the default local `ProjectDocuments` provider until the SharePoint laptop swaps that provider to `SharePointFileSystemApi` — after which the directory (plus the two store specs, if tests aren't kept) can be deleted in one go. (Named `mock`, not `testing`: the target repo's `eslint-plugin-boundaries` config classifies `testing` folders as shared test utilities forbidden from importing feature code.)
 
@@ -351,14 +352,24 @@ export abstract class FileSystemApi {
 
 ---
 
-## 7. SharePoint Stub Requirements
+## 7. SharePoint Adapter Requirements
 
-`SharePointFileSystemApi` is a **stub file** committed now, implemented on another laptop later.
+`SharePointFileSystemApi` is partially implemented. Its upload lifecycle is complete;
+the remaining operations retain implementation-pending Observable errors.
 
 - Class implements `FileSystemApi` with every method present
-- Each method body: `return throwError(() => new Error('SharePointFileSystemApi is not implemented yet'));` (error on the Observable channel, per §5)
+- `upload` sends the raw `File` to the stable backend endpoint, observes HTTP events,
+  reports real progress, unsubscribes on `AbortSignal`, maps the final `FileNode`, and
+  translates HTTP failures into typed `FileSystemError` values
+- Upload request construction is isolated in one private `requestUpload` method so an
+  auto-generated client can replace the equivalent `HttpClient` call without changing
+  progress, cancellation, or error behavior
+- Every remaining method returns
+  `throwError(() => new Error('SharePointFileSystemApi is not implemented yet'))`
+  on the Observable error channel
 - File contains a detailed comment block at the top listing:
-  - The generated Angular client routes operations through the application backend
+  - Angular routes operations through the application backend, never SharePoint
+    directly
   - The backend reuses its existing authenticated Feign client and cached per-user
     certificate-backed OAuth bearer token; the feature adds no authentication or
     form-digest infrastructure
@@ -366,8 +377,6 @@ export abstract class FileSystemApi {
   - Endpoints needed per method (e.g., for `createFolder`: `POST /_api/web/Folders`)
   - Error code mapping (SharePoint `-2147024713` → `'name-collision'`, etc.)
 - JSDoc on each method with the endpoint(s) it will call
-
-**Do not** write any real HTTP calls in the stub. The goal is: when the developer opens this file on the SharePoint-connected laptop, they have a complete checklist of what to implement.
 
 ---
 

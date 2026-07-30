@@ -23,7 +23,8 @@
 - [x] `services/file-system-api.ts` (abstract class)
 - [x] `services/mock/mock-file-system-api.ts` (read listing real, mutations implemented; `listDocumentRoot(projectId, listKey)` + node-based `listDocuments(projectId, parent)`)
 - [x] `services/mock/mock-seed.ts` (two list roots — Execution & Marketing — each with two levels of subfolders and mixed file types)
-- [x] `services/sharepoint-file-system-api.ts` (full stub with implementation notes + per-method JSDoc + SP error-code map)
+- [x] `services/sharepoint-file-system-api.ts` (compile-safe upload implementation;
+  remaining methods retain implementation notes + per-method JSDoc + SP error-code map)
 - [x] `stores/file-system.store.ts` (`initialize(projectId)` + loadChildren + invalidate; mutations initially rejected as Phase 2)
 - [x] `stores/navigation.store.ts` (full minus selection; selection methods are no-op stubs)
 - [x] `services/clipboard.service.ts` (plain signal service)
@@ -77,7 +78,8 @@
 
 ## Phase 6 — SharePoint Implementation (other laptop)
 
-- [ ] Not started — deferred to other machine
+- [x] Compile-safe raw upload HTTP-event/progress/cancellation reference
+- [ ] Replace `requestUpload` with the generated client and implement remaining methods
 
 ---
 
@@ -107,13 +109,39 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
+- **Compile-safe real upload adapter with one generated-client seam** (2026-07-30):
+  `SharePointFileSystemApi.upload` no longer throws an implementation-pending error.
+  It observes Angular HTTP events, deduplicates percentage callbacks, maps the final
+  canonical `FileNode`, aborts the active HTTP request by unsubscribing when the
+  provided `AbortSignal` fires, and maps upload statuses to typed `FileSystemError`
+  codes. The raw `HttpClient` request is isolated in private `requestUpload`; the
+  SharePoint-connected implementation replaces only that method body with its
+  generated OpenAPI call using `observe: 'events'` and `reportProgress: true`.
+  `provideHttpClient()` is registered in the local app. Focused specs cover progress,
+  empty-file bodies, cancellation, and duplicate-name errors. App/spec TypeScript and
+  focused lint pass; Karma compiles the focused suite and starts when escalated but
+  cannot execute because the environment has no Chrome binary.
 - **ProjectDocuments height is component-owned CSS** (2026-07-29): removed the public
   `height` input and its host style binding. The whole component now has a fixed
   `height: 80vh` in `project-documents.scss`, keeping the existing rendered size while
   making every embedding consistent.
 - **Complete folder-tree upload uses browser enumeration plus existing operations** (2026-07-29): toolbar and context menus now expose Folder / File, matching the screenshot-defined action order. Multi-file selection uses the native file input; folder selection intentionally targets secure-context Edge/Chrome `showDirectoryPicker()` so the browser exposes directory handles as well as file handles. `directory-manifest.ts` records every directory—including empty descendants—without loading complete file bytes into application memory. `UploadService` creates the backend-uniquified selected root and each descendant sequentially, parent-first, through the existing `FileSystemStore.createFolder`; only after the full tree exists does it queue one existing `FileSystemApi.upload` call per file. File requests share a four-slot `ConcurrencyQueue`, capture their destination when the picker opens, report uploading/finalizing/completed states, abort best-effort, and retry only cancelled or typed network failures from byte zero. Collisions fail with `overwrite=false`; files above the agreed 10 MiB Feign limit fail before a request. The component-scoped queue/batch state is not persisted and introduces no backend directory-upload endpoint, ZIP, database, session, chunk protocol, or cleanup scheduler. The mock and store apply canonical returned nodes immediately; the new dumb upload panel shows folder preparation and one relative-path row per file. App/spec TypeScript, focused lint, the development build, and `git diff --check` pass. Karma builds all specs and starts when escalated but cannot launch because this environment has no Chrome/Chromium/Edge binary.
 - **File and folder rename now share the inline editor** (2026-07-29): Rename File from the table context menu and F2 on a focused file now enter the same table-row editor already used by folders. Both kinds use the existing pessimistic rename handler, inline validation/collision feedback, Enter/blur submit, Escape cancel, write spinner, success notification, and network Retry. The file-only modal, its component/template, container state, and duplicate submit handler were deleted because no flow uses them. App/spec TypeScript compilation, the development build, focused lint of `project-documents.ts`, and `git diff --check` pass. Full lint reaches only a pre-existing line-length error in the user's uncommitted `mock-seed.ts` stress fixture plus the two known path-bar warnings.
-- **Initial upload implementation remains on the existing Feign client** (2026-07-29): the immediate backend handoff is one raw browser request followed by one SharePoint `Files/Add` call through the already-configured authenticated Feign client. It is intentionally bounded to 10 MiB because Spring Cloud OpenFeign's normal `SpringEncoder` materializes the encoded request body as a byte array. It introduces no database state, scheduler, upload session, or explicit empty placeholder; retry starts from zero. A separate self-contained Apache HttpClient contract documents direct `InputStream` relay while reusing the token provider, without requiring that transport/authentication change in the first implementation. Both upload guides follow the operation-contract style used by create, rename, and delete: they require extending the backend's existing controller/service/client, routing, DTO, mapping, authentication, and error patterns and deliberately avoid prescribing speculative Java classes. The former database-backed chunk-session contract was abandoned and deleted.
+- **Initial upload implementation remains on the existing Feign client** (2026-07-29;
+  SharePoint endpoint updated 2026-07-30): the immediate backend handoff is one raw
+  browser request followed by one SharePoint
+  `Files/AddUsingPath(DecodedUrl=...,Overwrite=false)` call through the
+  already-configured authenticated Feign client. It is intentionally bounded to 10 MiB
+  because Spring Cloud OpenFeign's normal `SpringEncoder` materializes the encoded
+  request body as a byte array. It introduces no database state, scheduler, upload
+  session, or explicit empty placeholder; retry starts from zero. A separate
+  self-contained Apache HttpClient contract documents direct `InputStream` relay while
+  reusing the token provider, without requiring that transport/authentication change
+  in the first implementation. Both upload guides follow the operation-contract style
+  used by create, rename, and delete: they require extending the backend's existing
+  controller/service/client, routing, DTO, mapping, authentication, and error patterns
+  and deliberately avoid prescribing speculative Java classes. The former
+  database-backed chunk-session contract was abandoned and deleted.
 - **List-scoped frontend/backend contract + verified by-id DELETE design** (2026-07-21; authentication corrected 2026-07-22): Execution and Marketing may resolve to different SharePoint sites, superseding the earlier assumption that `projectId + documentId` always selected one project site. Every `FolderNode`/`FileNode` now carries the domain `listKey`; child reads use `listDocuments(projectId, parent)` and the adapter extracts `parent.listKey`/`parent.id`, create inherits the parent key, rename preserves it, and move/copy use `newParent.listKey` as destination context. Backend document routes include `listKey`; `(projectId, listKey)` resolves to backend-owned `{siteUrl, libraryId, rootFolderId}` configuration. DELETE is the first operation with a complete backend-to-SharePoint recipe in `docs/backend-operations/delete.md`: `DELETE /projects/{projectId}/document-lists/{listKey}/documents/{documentId}?kind=file|folder`, no body/path, root guard, exactly one SharePoint call through the existing authenticated Feign client to the Postman-verified `GetFileById` or `GetFolderById` direct-DELETE endpoint, 204 normalization, and typed error mapping. Authentication reuses the backend's cached per-user OAuth bearer token; no form-digest infrastructure is added. The Angular HTTP implementation remains pending.
 - **Server-first inline folder creation** (2026-07-20): replaced the create-folder modal with a direct backend write using `New folder`. The mock/backend contract now owns collision resolution and returns the persisted canonical name (`New folder`, `New folder (1)`, …); only then does the confirmed row appear and enter inline rename with its name selected. Escape leaves that already-persisted default folder intact. Initial create failures remain toast-only with network Retry; subsequent rename collisions/validation stay inline. The toolbar shows its loading state while creation is pending. Removed the unused create dialog and added store coverage for canonical server names. Production build and spec compilation pass; browser acceptance remains pending.
 - **Folder rename is inline on both surfaces** (2026-07-20): the Rename Folder context action no longer opens a modal. A table-folder action edits that row; a tree-folder action edits the tree label in place. The container records the initiating surface so the same cached folder never renders two editors when it is visible in both tree and table. Both editors share the existing pessimistic rename handler, inline validation/collision feedback, Enter/blur submit, Escape cancel, write spinner, and network-only Retry. Production build and spec compilation pass; browser acceptance remains pending.

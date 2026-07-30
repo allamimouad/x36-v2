@@ -1,16 +1,18 @@
 /**
  * SharePoint on-prem implementation of {@link FileSystemApi}.
  *
- * STATUS: STUB. Every method body currently returns an implementation-pending error.
+ * STATUS: PARTIAL. Upload is implemented; the remaining methods return an
+ * implementation-pending error.
  *
  * ───────────────────────────────────────────────────────────────────────────
  * Implementation notes for the developer who picks this up
  * ───────────────────────────────────────────────────────────────────────────
  *
- * Generated client
- *   Angular calls the application's backend through its auto-generated client.
- *   This file maps domain methods to that client and converts its DTOs into our
- *   `FolderNode` / `FileNode` shapes. It never calls SharePoint directly.
+ * Backend client
+ *   Angular calls the application's backend, never SharePoint directly. The upload
+ *   request construction is isolated in `requestUpload` so an auto-generated client
+ *   can replace the equivalent `HttpClient` call without changing progress,
+ *   cancellation, or error behavior.
  *
  * Backend site/list routing
  *   `projectId` + `node.listKey` resolve the SharePoint site and document library.
@@ -91,10 +93,18 @@
  *   - Path encoding: spaces, apostrophes (must double-escape inside `'...'`)
  */
 
-import { Injectable } from '@angular/core';
-import { type Observable, throwError } from 'rxjs';
+import {
+    HttpClient,
+    HttpErrorResponse,
+    type HttpEvent,
+    HttpEventType,
+    HttpParams
+} from '@angular/common/http';
+import { inject, Injectable } from '@angular/core';
+import { Observable, throwError } from 'rxjs';
 import type { DocumentListing, ResolvedDocumentPath } from '../models/document-listing.model';
 import type { DocumentListKey } from '../models/document-list.model';
+import { FileSystemError } from '../models/file-system-error.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { FileSystemApi } from './file-system-api';
 
@@ -102,6 +112,8 @@ const IMPLEMENTATION_PENDING = 'SharePointFileSystemApi is not implemented yet';
 
 @Injectable()
 export class SharePointFileSystemApi extends FileSystemApi {
+    private readonly http = inject(HttpClient);
+
     /**
    * Resolve `listKey` → the project's SharePoint document library, then GET its
    * RootFolder with `$expand=Folders,Files`. Map the result into a DocumentListing.
@@ -208,13 +220,137 @@ export class SharePointFileSystemApi extends FileSystemApi {
    * Report browser-to-backend progress, honor `signal`, and emit the returned FileNode.
    */
     public override upload(
-        _projectId: string,
-        _parent: FolderNode,
-        _file: File,
-        _onProgress: (percent: number) => void,
-        _signal?: AbortSignal
+        projectId: string,
+        parent: FolderNode,
+        file: File,
+        onProgress: (percent: number) => void,
+        signal?: AbortSignal
     ): Observable<FileNode> {
-    // TODO: implement with the SharePoint integration US.
-        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+        return new Observable<FileNode>((subscriber) => {
+            let lastProgress = -1;
+
+            const reportProgress = (percent: number): void => {
+                const normalized = Math.max(0, Math.min(100, Math.round(percent)));
+                if (normalized === lastProgress) { return; }
+                lastProgress = normalized;
+                onProgress(normalized);
+            };
+            const cancel = (): void => {
+                requestSubscription.unsubscribe();
+                if (subscriber.closed) { return; }
+                subscriber.error(
+                    new FileSystemError('cancelled', 'Upload was cancelled')
+                );
+            };
+
+            if (signal?.aborted) {
+                subscriber.error(
+                    new FileSystemError('cancelled', 'Upload was cancelled')
+                );
+
+                return;
+            }
+            signal?.addEventListener('abort', cancel, { once: true });
+
+            const requestSubscription = this.requestUpload(projectId, parent, file).subscribe({
+                next: (event) => {
+                    if (event.type === HttpEventType.UploadProgress) {
+                        const total = event.total ?? file.size;
+                        reportProgress(total > 0 ? event.loaded / total * 100 : 100);
+                    }
+                    if (event.type !== HttpEventType.Response) { return; }
+                    if (!event.body) {
+                        subscriber.error(
+                            new FileSystemError(
+                                'unknown',
+                                'The upload response did not contain a file'
+                            )
+                        );
+
+                        return;
+                    }
+                    reportProgress(100);
+                    subscriber.next(event.body);
+                    subscriber.complete();
+                },
+                error: (error: unknown) => {
+                    subscriber.error(
+                        signal?.aborted
+                            ? new FileSystemError('cancelled', 'Upload was cancelled')
+                            : this.mapUploadError(error)
+                    );
+                }
+            });
+
+            return () => {
+                signal?.removeEventListener('abort', cancel);
+                requestSubscription?.unsubscribe();
+            };
+        });
+    }
+
+    /**
+     * Replace only this method body when an auto-generated backend client is available.
+     * Its generated call must observe HTTP events and enable progress reporting.
+     */
+    private requestUpload(
+        projectId: string,
+        parent: FolderNode,
+        file: File
+    ): Observable<HttpEvent<FileNode>> {
+        const url =
+            `/projects/${encodeURIComponent(projectId)}` +
+            `/document-lists/${encodeURIComponent(parent.listKey)}` +
+            `/documents/${encodeURIComponent(parent.id)}/files`;
+
+        return this.http.post<FileNode>(url, file, {
+            headers: { 'Content-Type': 'application/octet-stream' },
+            params: new HttpParams().set('name', file.name),
+            observe: 'events',
+            reportProgress: true
+        });
+    }
+
+    private mapUploadError(error: unknown): FileSystemError {
+        if (error instanceof FileSystemError) { return error; }
+        if (!(error instanceof HttpErrorResponse)) {
+            return new FileSystemError('unknown', 'Upload failed', error);
+        }
+
+        const status = error.status;
+        if (status === 0 || status === 408 || status === 429 || status >= 500) {
+            return new FileSystemError('network', 'Upload request failed', error);
+        }
+        switch (status) {
+            case 400:
+                return new FileSystemError('invalid-name', 'Invalid upload request', error);
+            case 401:
+            case 403:
+                return new FileSystemError(
+                    'permission-denied',
+                    'Upload is not permitted',
+                    error
+                );
+            case 404:
+                return new FileSystemError(
+                    'not-found',
+                    'Upload destination was not found',
+                    error
+                );
+            case 409:
+                return new FileSystemError(
+                    'name-collision',
+                    'A file with that name already exists',
+                    error
+                );
+            case 413:
+                return new FileSystemError(
+                    'too-large',
+                    'File exceeds the upload limit',
+                    error
+                );
+            default:
+                return new FileSystemError('unknown', 'Upload failed', error);
+        }
     }
 }
