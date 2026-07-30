@@ -1,56 +1,83 @@
 # COPY Document
 
-> **Status: controller integration pending; the backend already contains a service
-> that copies a SharePoint item and retrieves the created result.** This is the
-> operation-specific companion to the
+> **Status: the controller and copy service already exist. The required backend
+> change is to simplify the controller request body while preserving the existing
+> copy and post-copy lookup logic.** This is the operation-specific companion to the
 > [backend endpoint overview](../backend-endpoints.md).
 
 ## Scope
 
-This task exposes the existing copy capability through the backend's existing document
-controller.
+This task changes the public request DTO accepted by the existing copy controller.
 
 The copy service already performs the SharePoint copy and the follow-up lookup needed
-to return the created file. Reuse that service. Do not reimplement or duplicate its
+to return the created item. Reuse that service. Do not reimplement or duplicate its
 copy request, `KeepBoth` handling, time/name filtering, latest-item lookup,
 authentication, or SharePoint client calls.
 
-The implementation may make small adaptations to the existing service method
-signature, request DTO, or response mapping when required by the public controller
-contract. Keep those changes inside the existing controller/service/client/mapper
-structure. Do not create a new service, SharePoint client, mapper, token cache,
-configuration flow, database table, scheduler, or parallel copy implementation.
+The implementation may map the simplified controller DTO to the existing service
+arguments and make the smallest necessary service-signature adaptation. Keep those
+changes inside the existing controller/service/client/mapper structure. Do not create
+a new service, SharePoint client, mapper, token cache, configuration flow, database
+table, scheduler, or parallel copy implementation.
 
-If an equivalent controller route already exists, adapt it rather than adding a
-duplicate.
+Keep the existing controller route and adapt its request DTO. Do not add a second
+controller or a second copy endpoint.
 
 ## Domain endpoint
 
-    POST /projects/{projectId}/document-lists/{sourceListKey}/documents/copy
+    POST /projects/{projectId}/documents/copy
     Content-Type: application/json
 
     {
       "kind": "file",
-      "sourcePath": "/sites/project/Documents/report.pdf",
+      "sourceParentPath": "/sites/project/Documents",
       "sourceName": "report.pdf",
-      "targetListKey": "marketing",
       "targetParentId": "target-folder-guid",
       "targetParentPath": "/sites/project/Marketing/Target"
     }
 
-- `sourceListKey`: `execution` or `marketing`; it supplies the source list context.
-- `kind`: `file` or `folder`.
-- `sourcePath`: the source node's decoded canonical path.
+- `kind`: `file` or `folder`. One value is sufficient because copying does not change
+  the item's kind.
+- `sourceParentPath`: the source parent folder's decoded canonical
+  `ServerRelativeUrl`. It already identifies the source site and document library.
 - `sourceName`: the source node's canonical leaf name, including its extension when it
   is a file.
-- `targetListKey`: the destination list context. It may equal `sourceListKey`.
-- `targetParentId`: the destination folder's id.
-- `targetParentPath`: the destination folder's decoded canonical path.
+- `targetParentId`: the destination folder's id, retained because the existing service
+  uses it for the canonical post-copy lookup.
+- `targetParentPath`: the destination folder's decoded canonical
+  `ServerRelativeUrl`. It already identifies the destination site and document
+  library.
+
+Replace the more complicated nested DTO:
+
+    {
+      "source": { "kind": "...", "id": "...", "path": "...", "name": "..." },
+      "destination": { "kind": "...", "id": "...", "path": "...", "name": "..." }
+    }
+
+Do not retain the nested DTO as a second public contract unless backward compatibility
+is an explicit requirement. Source/destination ids that the existing copy operation
+does not use, the duplicated destination `kind`, list keys already encoded in the full
+server-relative paths, and a destination name that merely repeats `sourceName` do not
+belong in the new request.
+
+There is no `targetName` in this requirement. The existing backend logic compares the
+normalized `sourceParentPath` and `targetParentPath`:
+
+- different parent folders -> use `sourceName` unchanged; do not add ` - Copy`;
+- the same parent folder -> use the File-Explorer copy form, such as
+  `report - Copy.pdf`;
+- if the selected name already exists -> let the existing `KeepBoth` collision logic
+  choose the next available name without overwriting anything.
+
+The frontend must not make this choice or predict a numbered final name. Both parent
+paths are already present in the request, and concurrent copies can make a frontend
+prediction stale. The canonical response supplies the actual final name.
 
 Do not add a source `documentId` merely for route consistency if the existing
 path-based service does not use it. An unused id must not trigger a new SharePoint
-lookup. If the existing service genuinely requires an id, preserve that established
-parameter instead of adding a second competing contract.
+lookup. If the existing service genuinely requires an internal id, preserve it only
+inside the established service contract instead of exposing it in this public DTO.
 
 The frontend must not send SharePoint credentials, access tokens, backend
 configuration, OData filters, copy timestamps, ordering, or page sizes.
@@ -90,7 +117,8 @@ The controller should only:
 
 1. Bind and validate route/body values.
 2. Delegate once to the existing copy service.
-3. Pass the source and destination context expected by that existing service.
+3. Map the simplified body to the source and destination arguments expected by that
+   existing service.
 4. Return its mapped canonical result as `201 Created`.
 5. Let the existing global exception handling produce the public error response.
 
@@ -117,7 +145,8 @@ logic is the source of truth for:
 - building source and destination SharePoint URLs;
 - native file-copy behavior;
 - native folder-copy behavior, if already present;
-- same-folder copy naming;
+- comparing the source and target parents and choosing whether to use the unchanged
+  source name or the same-folder ` - Copy` form;
 - `KeepBoth` collision behavior;
 - recording copy start time;
 - querying the destination parent by id;
@@ -133,13 +162,15 @@ beside it.
 
 If the service already accepts slightly different argument names or a consolidated
 request object, prefer a small controller-to-service mapping over rewriting working
-logic. Keep only one public copy route and one service implementation.
+logic. Do not make the public DTO mirror an internal service object when those extra
+fields are unused. Keep only one public copy route and one service implementation.
 
 ## Required behavior
 
 - Copy leaves the source unchanged.
 - The returned copy has a new SharePoint id.
-- Copying between different folders initially keeps the source name.
+- Copying between different folders keeps the source name and does not proactively add
+  ` - Copy`.
 - Copying into the current folder must behave like File Explorer, beginning with a
   name such as `report - Copy.pdf`.
 - Repeated paste operations keep every copy with collision-resolved names.
@@ -173,13 +204,16 @@ destination when appropriate.
 The Angular adapter obtains the request values from the existing domain nodes:
 
     projectId        <- ProjectDocuments input
-    sourceListKey    <- sourceNode.listKey
     kind             <- sourceNode.kind
-    sourcePath       <- sourceNode.path
+    sourceParentPath <- decoded parent portion of sourceNode.path
     sourceName       <- sourceNode.name
-    targetListKey    <- targetParent.listKey
     targetParentId   <- targetParent.id
     targetParentPath <- targetParent.path
+
+The adapter does not send `sourceNode.id`, either node's `listKey`, a destination
+`kind`, or a destination name. The complete server-relative parent paths already
+identify both SharePoint sites and document libraries. Deriving `sourceParentPath`
+from `sourceNode.path` is a local path operation and requires no backend lookup.
 
 It maps the returned file/folder response through the existing frontend mapper.
 `FileSystemStore` remains pessimistic: only after success does it insert the copied
@@ -187,10 +221,16 @@ node, update the target parent count, and invalidate the destination listing.
 
 ## Acceptance checklist
 
-- The new/existing controller route delegates to the existing copy service.
+- The existing `POST /projects/{projectId}/documents/copy` route remains the only copy
+  route and delegates once to the existing copy service.
+- Its public request contains exactly `kind`, `sourceParentPath`, `sourceName`,
+  `targetParentId`, and `targetParentPath`.
+- The old nested source/destination DTO is replaced rather than extended.
 - No new service, SharePoint client, mapper, or authentication flow is introduced.
 - Working service internals are reused instead of rewritten from this document.
-- No unused source id or new SharePoint preflight lookup is added.
+- No list keys, unused source id, duplicated destination kind/name, or new SharePoint
+  preflight lookup is added to the public request.
+- The frontend does not calculate the final copied name.
 - File copy returns the canonical copied file.
 - Repeated same-folder file copy keeps every copy.
 - Folder copy returns the canonical copied folder and preserves its complete subtree,
