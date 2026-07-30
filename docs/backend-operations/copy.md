@@ -32,6 +32,7 @@ controller or a second copy endpoint.
       "kind": "file",
       "sourceParentPath": "/sites/project/Documents",
       "sourceName": "report.pdf",
+      "targetListKey": "marketing",
       "targetParentId": "target-folder-guid",
       "targetParentPath": "/sites/project/Marketing/Target"
     }
@@ -42,8 +43,12 @@ controller or a second copy endpoint.
   `ServerRelativeUrl`. It already identifies the source site and document library.
 - `sourceName`: the source node's canonical leaf name, including its extension when it
   is a file.
+- `targetListKey`: the destination domain list key, `execution` or `marketing`.
+  SharePoint does not return this application-owned value, so the backend uses it to
+  populate the copied node's response.
 - `targetParentId`: the destination folder's id, retained because the existing service
-  uses it for the canonical post-copy lookup.
+  uses it for the canonical post-copy lookup and because it becomes the copied node's
+  `parentId`.
 - `targetParentPath`: the destination folder's decoded canonical
   `ServerRelativeUrl`. It already identifies the destination site and document
   library.
@@ -57,9 +62,11 @@ Replace the more complicated nested DTO:
 
 Do not retain the nested DTO as a second public contract unless backward compatibility
 is an explicit requirement. Source/destination ids that the existing copy operation
-does not use, the duplicated destination `kind`, list keys already encoded in the full
-server-relative paths, and a destination name that merely repeats `sourceName` do not
-belong in the new request.
+does not use, the duplicated destination `kind`, the source list key already identified
+by the full source path, and a destination name that merely repeats `sourceName` do not
+belong in the new request. `targetListKey` is not redundant response metadata: the
+complete paths identify SharePoint locations, but they do not produce the frontend's
+application-owned destination list key.
 
 There is no `targetName` in this requirement. The existing backend logic compares the
 normalized `sourceParentPath` and `targetParentPath`:
@@ -111,6 +118,31 @@ Return the exact canonical result produced by the existing copy service. Do not
 reconstruct the new id, final collision-resolved name, path, timestamps, or editor in
 the controller.
 
+Complete the domain response mapping as follows:
+
+    kind       <- request.kind
+    listKey    <- request.targetListKey
+    parentId   <- request.targetParentId
+    id         <- SharePoint UniqueId from the post-copy lookup
+    path       <- SharePoint ServerRelativeUrl from the post-copy lookup
+    name       <- SharePoint Name from the post-copy lookup
+    createdAt  <- SharePoint TimeCreated from the post-copy lookup
+    modifiedAt <- SharePoint TimeLastModified from the post-copy lookup
+    modifiedBy <- SharePoint ListItemAllFields.Editor.Title, when present
+
+For a file:
+
+    sizeBytes <- SharePoint Length, parsed as a number
+
+For a folder:
+
+    itemCount <- SharePoint ItemCount
+
+`contentType` and `downloadUrl` remain optional. Do not default a copied folder's
+`itemCount` to `0`: a recursive copy may already contain files and folders. If the
+existing post-copy query does not select a required canonical field, extend that
+existing query rather than constructing the value in the controller.
+
 ## Controller responsibilities
 
 The controller should only:
@@ -119,8 +151,10 @@ The controller should only:
 2. Delegate once to the existing copy service.
 3. Map the simplified body to the source and destination arguments expected by that
    existing service.
-4. Return its mapped canonical result as `201 Created`.
-5. Let the existing global exception handling produce the public error response.
+4. Add the request-owned destination metadata (`targetListKey` and `targetParentId`)
+   to the canonical copied result through the existing mapper/service return path.
+5. Return its mapped canonical result as `201 Created`.
+6. Let the existing global exception handling produce the public error response.
 
 The controller must not:
 
@@ -207,13 +241,16 @@ The Angular adapter obtains the request values from the existing domain nodes:
     kind             <- sourceNode.kind
     sourceParentPath <- decoded parent portion of sourceNode.path
     sourceName       <- sourceNode.name
+    targetListKey    <- targetParent.listKey
     targetParentId   <- targetParent.id
     targetParentPath <- targetParent.path
 
-The adapter does not send `sourceNode.id`, either node's `listKey`, a destination
-`kind`, or a destination name. The complete server-relative parent paths already
-identify both SharePoint sites and document libraries. Deriving `sourceParentPath`
-from `sourceNode.path` is a local path operation and requires no backend lookup.
+The adapter does not send `sourceNode.id`, `sourceNode.listKey`, a destination `kind`,
+or a destination name. The complete server-relative parent paths already identify
+both SharePoint sites and document libraries for the copy call. The target list key is
+sent only because the returned domain node requires it and SharePoint does not provide
+it. Deriving `sourceParentPath` from `sourceNode.path` is a local path operation and
+requires no backend lookup.
 
 It maps the returned file/folder response through the existing frontend mapper.
 `FileSystemStore` remains pessimistic: only after success does it insert the copied
@@ -224,12 +261,16 @@ node, update the target parent count, and invalidate the destination listing.
 - The existing `POST /projects/{projectId}/documents/copy` route remains the only copy
   route and delegates once to the existing copy service.
 - Its public request contains exactly `kind`, `sourceParentPath`, `sourceName`,
-  `targetParentId`, and `targetParentPath`.
+  `targetListKey`, `targetParentId`, and `targetParentPath`.
 - The old nested source/destination DTO is replaced rather than extended.
 - No new service, SharePoint client, mapper, or authentication flow is introduced.
 - Working service internals are reused instead of rewritten from this document.
-- No list keys, unused source id, duplicated destination kind/name, or new SharePoint
-  preflight lookup is added to the public request.
+- No source list key, unused source id, duplicated destination kind/name, or new
+  SharePoint preflight lookup is added to the public request.
+- The response maps `listKey` from `targetListKey` and `parentId` from
+  `targetParentId`.
+- A copied file returns its canonical `sizeBytes`; a copied folder returns its real
+  `itemCount` rather than a fabricated zero.
 - The frontend does not calculate the final copied name.
 - File copy returns the canonical copied file.
 - Repeated same-folder file copy keeps every copy.

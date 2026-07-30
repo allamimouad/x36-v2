@@ -20,7 +20,9 @@
 - Copy is also the deliberate exception to id-only addressing: its existing backend
   service already accepts source/destination context and returns the copied item. The
   controller passes canonical decoded paths already carried by the frontend nodes
-  instead of adding unused ids, list keys, or another SharePoint preflight read.
+  instead of adding unused ids or another SharePoint preflight read. It also passes the
+  destination domain `listKey`, which SharePoint cannot return but the copied frontend
+  node requires.
 - Mutations return canonical SharePoint fields (Option A); delete returns 204. When
   mapping a renamed file, the Angular adapter preserves its unchanged `parentId`
   because SharePoint's `SP.File` resource does not expose `ParentFolder`.
@@ -53,10 +55,11 @@
   `parentFolderId`; nested creation uses the current folder's id. Move identifies
   `targetListKey` because its destination may be on another SharePoint site. Copy sends
   decoded source/target parent paths already present on the frontend nodes; those full
-  server-relative paths contain the site, library, and folder, so copy sends no source
-  or target list key. The backend compares those parent paths: a different-folder copy
-  keeps `sourceName`, while a same-folder copy uses the ` - Copy` form before applying
-  its existing `KeepBoth` collision handling.
+  server-relative paths contain the site, library, and folder, so copy needs no source
+  list key for SharePoint routing. It sends `targetListKey` so the backend can populate
+  the copied node's domain list context. The backend compares those parent paths: a
+  different-folder copy keeps `sourceName`, while a same-folder copy uses the
+  ` - Copy` form before applying its existing `KeepBoth` collision handling.
 - `move`/`copy` are action endpoints (not PATCH) because they do more than set a field
   (new path and parent relationship on the returned node, plus a possible cross-list
   copy+delete).
@@ -76,6 +79,7 @@
       "kind": "file",
       "sourceParentPath": "/sites/project/Documents",
       "sourceName": "report.pdf",
+      "targetListKey": "marketing",
       "targetParentId": "folder-guid",
       "targetParentPath": "/sites/project/Marketing/Target"
     }
@@ -106,6 +110,9 @@ design is agreed. The overview remains a compact route/index document.
   or list GUIDs.
 - Mutations stay node-based. Most adapters extract list keys and ids from the passed
   nodes; copy instead sends `kind`, the source parent path and name, and the target
-  parent id and path to its project-scoped path-based endpoint.
+  list key, parent id, and path to its project-scoped path-based endpoint.
+- The copy response maps `listKey` from the requested `targetListKey` and `parentId`
+  from `targetParentId`; SharePoint supplies the canonical copied fields. File responses
+  include the real `sizeBytes`, and folder responses include the real `itemCount`.
 - The adapter maps HTTP status → `FileSystemError` codes (409 → `name-collision`,
   404 → `not-found`, 403 → `permission-denied`, etc.).
