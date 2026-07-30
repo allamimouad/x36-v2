@@ -14,6 +14,10 @@
   SharePoint site URLs, list GUIDs, credentials, or backend access tokens.
 - Documents are addressed by SharePoint `UniqueId`. `kind` is additionally supplied for
   operations such as delete where SharePoint exposes separate file and folder APIs.
+- Copy is the deliberate exception to id-only addressing: its existing backend service
+  already accepts source/destination context and returns the copied item. The controller
+  passes canonical decoded paths already carried by the frontend nodes instead of
+  adding an unused id or another SharePoint preflight read.
 - Mutations return canonical SharePoint fields (Option A); delete returns 204. When
   mapping a renamed file, the Angular adapter preserves its unchanged `parentId`
   because SharePoint's `SP.File` resource does not expose `ParentFolder`.
@@ -38,15 +42,15 @@
     POST   /projects/{projectId}/document-lists/{listKey}/documents/{parentFolderId}/files?name={fileName}
     PATCH  /projects/{projectId}/document-lists/{listKey}/documents/{documentId}?kind=file|folder
     POST   /projects/{projectId}/document-lists/{sourceListKey}/documents/{documentId}/move
-    POST   /projects/{projectId}/document-lists/{sourceListKey}/documents/{documentId}/copy
+    POST   /projects/{projectId}/document-lists/{sourceListKey}/documents/copy
     DELETE /projects/{projectId}/document-lists/{listKey}/documents/{documentId}?kind=file|folder
 
 - Create addresses the parent folder in the URL and sends only the requested name.
   Creating directly inside a document list uses that list's root-folder id as
-  `parentFolderId`; nested creation uses the current folder's id. Move/copy bodies also
-  identify `targetListKey` because their destination may be on another SharePoint site.
-  Their detailed SharePoint implementations will be documented when those operations
-  are designed.
+  `parentFolderId`; nested creation uses the current folder's id. Move identifies
+  `targetListKey` because its destination may be on another SharePoint site. Copy also
+  sends decoded source/target paths already present on the frontend nodes so the
+  backend can call SharePoint's path-based native copy without preflight reads.
 - `move`/`copy` are action endpoints (not PATCH) because they do more than set a field
   (new path and parent relationship on the returned node, plus a possible cross-list
   copy+delete).
@@ -61,8 +65,15 @@
     POST /projects/123/document-lists/execution/documents/file-guid/move
     { "targetListKey": "marketing", "targetParentId": "folder-guid" }
 
-    POST /projects/123/document-lists/execution/documents/file-guid/copy
-    { "targetListKey": "marketing", "targetParentId": "folder-guid" }
+    POST /projects/123/document-lists/execution/documents/copy
+    {
+      "kind": "file",
+      "sourcePath": "/sites/project/Documents/report.pdf",
+      "sourceName": "report.pdf",
+      "targetListKey": "marketing",
+      "targetParentId": "folder-guid",
+      "targetParentPath": "/sites/project/Marketing/Target"
+    }
 
 ## Operation implementation guides
 
@@ -75,6 +86,8 @@ design is agreed. The overview remains a compact route/index document.
   canonical by-id read for updated path and audit metadata.
 - [DELETE document](backend-operations/delete.md) — complete contract and SharePoint
   implementation details.
+- [COPY document](backend-operations/copy.md) — controller integration over the
+  existing service that already performs copy and canonical post-copy lookup.
 - [UPLOAD file with Feign](backend-operations/upload-file-feign-buffered.md) —
   bounded first implementation using the existing authenticated Feign client.
 - [UPLOAD file with HTTP streaming](backend-operations/upload-file-http-streaming.md) —

@@ -109,6 +109,16 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
+- **COPY controller contract reuses the existing backend service** (2026-07-30):
+  added `docs/backend-operations/copy.md` and aligned the endpoint index. The task is
+  intentionally limited to exposing and minimally adapting the already implemented
+  copy-plus-canonical-lookup service through the existing controller, DTO, mapper,
+  client, and error infrastructure. It must not create a new service or reproduce
+  SharePoint copy/filter logic in the controller. The request carries canonical
+  source/target node paths already available in Angular and adds no unused source
+  `documentId` or SharePoint preflight lookup. File-Explorer-style repeated copy,
+  recursive folder copy including empty descendants, cross-list behavior, special
+  names, and post-copy lookup failure remain acceptance concerns.
 - **Compile-safe real upload adapter with one generated-client seam** (2026-07-30):
   `SharePointFileSystemApi.upload` no longer throws an implementation-pending error.
   It observes Angular HTTP events, deduplicates percentage callbacks, maps the final
