@@ -208,7 +208,8 @@
 
 ## Phase 4 — Drag and Drop
 
-**Goal**: full DnD matrix from SPEC §3.4, excluding external file drops (Phase 5).
+**Goal**: full DnD matrix from SPEC §3.4. External upload drops are implemented
+independently of the remaining internal move/copy drag state.
 
 ### Entry criteria
 - Phase 3 complete
@@ -227,7 +228,8 @@
 **Components**
 - `components/folder-tree/folder-tree.ts`:
   - Nodes become draggable (folders only, as tree only shows folders)
-  - Nodes are drop targets (accept drops from tree and table; external drops deferred to Phase 5)
+  - Nodes are drop targets (external file/folder upload is already implemented;
+    internal tree/table drops remain)
   - Visual highlight when `canDropOn` = true during drag
 - `components/file-table/file-table.ts`:
   - Rows draggable (both folders and files)
@@ -247,9 +249,10 @@
 - [ ] Multi-select drag moves all selected items sequentially with progress
 - [ ] Visual feedback is crisp: highlight appears on hover over valid target, disappears on leave
 - [ ] Cursor reflects operation (move arrow, copy plus-icon, no-drop)
+- [x] External OS files/folders upload into a hovered tree/right-pane folder, or the
+  current folder through the unused space below the table rows
 
 ### NOT in this phase
-- External file drops from OS
 - Upload
 
 ---
@@ -257,7 +260,7 @@
 ## Phase 5 — File and Folder Upload
 
 **Goal**: files and complete local folder trees upload through toolbar/context-menu
-pickers with progress. External OS drops remain deferred to drag-and-drop work.
+pickers or external OS drag-and-drop, with progress.
 
 ### Entry criteria
 - Phase 4 complete
@@ -277,6 +280,8 @@ pickers with progress. External OS drops remain deferred to drag-and-drop work.
   - exposes task/batch signals and file/folder enqueue operations
   - uses `showDirectoryPicker()` handles to preserve every directory, including empty
   - creates the uniquely named selected root and descendants parent-first before files
+  - shows every selected top-level folder immediately and prepares their trees one at a
+    time
   - uses `ConcurrencyQueue` with max 4 for file requests
   - supports cancel, eligible retry from byte zero, and clear completed
 - `services/directory-manifest.ts` — recursively enumerates directory/file handles
@@ -295,6 +300,10 @@ pickers with progress. External OS drops remain deferred to drag-and-drop work.
 - Empty-area and folder context menus expose the same choices and capture the selected
   SharePoint destination before the picker opens
 - File uses `<input type="file" multiple>`; Folder uses native `showDirectoryPicker()`
+- External file/folder drops reuse the same enqueue operations and upload panel;
+  right-pane folder rows and tree nodes are explicit targets, while the flexible
+  unused area below the table rows targets the currently open folder; header/file
+  rows are not targets
 - Adds upload panel to template (bottom-right fixed position)
 
 ### Acceptance checks
@@ -302,11 +311,14 @@ pickers with progress. External OS drops remain deferred to drag-and-drop work.
 - [ ] Folder action creates the selected root and all descendants, including empty-only trees
 - [ ] Duplicate selected roots use the backend-returned unique root name
 - [ ] Upload panel shows preparation and per-file progress
+- [ ] Multiple selected/dropped folders are all shown, with one preparing and the rest
+  queued
 - [ ] Four-at-a-time file concurrency is enforced
 - [ ] Cancel is best effort; network retry resends the complete file
 - [ ] Collisions fail without overwrite and files above 10 MiB fail before a request
 - [ ] Created folders/files appear in tree/table without a page refresh
 - [ ] Folder selection is browser-checked in Edge/Chrome over HTTPS
+- [ ] External file and nested/empty-folder drops are browser-checked in Edge/Chrome
 
 ---
 

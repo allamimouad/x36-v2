@@ -20,7 +20,13 @@ export interface UploadTask {
     errorCode?: FileSystemErrorCode;
 }
 
-export type UploadBatchStatus = 'preparing' | 'uploading' | 'done' | 'error' | 'cancelled';
+export type UploadBatchStatus =
+  | 'queued'
+  | 'preparing'
+  | 'uploading'
+  | 'done'
+  | 'error'
+  | 'cancelled';
 
 export interface UploadBatch {
     id: string;

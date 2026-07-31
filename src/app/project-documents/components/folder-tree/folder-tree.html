@@ -13,7 +13,11 @@
     <span
       class="pd-tree-node"
       [class.pd-tree-node-writing]="writingIds().has(node.key)"
+      [class.pd-tree-node-external-drop-target]="externalDropTargetId() === node.key"
       (contextmenu)="handleContextMenu($event, node)"
+      (dragenter)="onExternalFolderDragOver($event, node)"
+      (dragover)="onExternalFolderDragOver($event, node)"
+      (drop)="onExternalFolderDrop($event, node)"
     >
       <pr-file-system-icon name="folder" />
       @if (renamingId() === node.key) {

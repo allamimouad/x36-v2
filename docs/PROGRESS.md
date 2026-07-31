@@ -62,7 +62,9 @@
 
 ## Phase 4 — Drag and Drop
 
-- [ ] Not started — blocked by Phase 3
+- [x] External OS file/folder upload drops on tree folders, right-pane folders, and
+  the unused right-pane space below the table rows
+- [ ] Internal move/copy drag state and the remaining matrix
 
 ---
 
@@ -71,9 +73,12 @@
 - [x] Toolbar, empty-area, and folder context-menu Folder / File picker entry points
 - [x] Native Edge/Chrome directory traversal preserving empty descendants
 - [x] Parent-first remote folder creation followed by four-at-a-time file uploads
+- [x] Multiple top-level folders shown immediately and prepared sequentially
 - [x] Mock progress, cancellation, collision/size guards, retry, and store updates
 - [x] Collapsible upload panel with preparation and per-file status
 - [x] Focused upload/concurrency/manifest specs compile in the Karma bundle
+- [x] External drop decoding with modern handles, legacy directory traversal, and
+  plain-file fallback
 - [ ] Browser acceptance in Edge/Chrome over HTTPS and real-backend integration
 
 ---
@@ -113,6 +118,24 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
+- **External OS drag-and-drop reuses UploadService** (2026-07-31): desktop files and
+  folders can be dropped onto a visible right-pane folder, a tree folder, or the
+  flexible unused space below the right-pane rows. That current-folder zone grows to
+  fill all remaining height and retains a usable minimum when rows overflow the pane.
+  Folder rows and tree
+  labels own explicit native drag/drop handlers, prevent the browser default only for
+  valid external targets, and emit the destination to the container; header/file rows
+  are not current-folder targets. This replaces an initial full-table overlay and
+  bubbled DOM-target lookup that was visually intrusive and unreliable through the
+  PrimeNG tree. The container accepts only `DataTransfer` payloads containing files,
+  always advertises a copy cursor, and routes the result through the existing
+  `enqueueFiles` / `enqueueDirectory` paths. `ExternalDropService` captures browser
+  entries synchronously during the drop event, prefers
+  `getAsFileSystemHandle()`, adapts `webkitGetAsEntry()` directories when needed, and
+  drains every legacy reader batch. Existing folder manifests therefore preserve
+  nested and empty directories, while validation, collision handling, concurrency,
+  progress, cancellation, and retry remain single-sourced in `UploadService`.
+  Internal SharePoint move/copy drag is still separate and unimplemented.
 - **Backend-owned file action links wired in Angular** (2026-07-31): `FileNode` now
   accepts optional `onlineUrl`, `desktopUrl`, and `downloadUrl`. A component-scoped
   `FileLaunchService` validates the backend-provided capability links, opens Online in
@@ -183,7 +206,7 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
   `height` input and its host style binding. The whole component now has a fixed
   `height: 80vh` in `project-documents.scss`, keeping the existing rendered size while
   making every embedding consistent.
-- **Complete folder-tree upload uses browser enumeration plus existing operations** (2026-07-29): toolbar and context menus now expose Folder / File, matching the screenshot-defined action order. Multi-file selection uses the native file input; folder selection intentionally targets secure-context Edge/Chrome `showDirectoryPicker()` so the browser exposes directory handles as well as file handles. `directory-manifest.ts` records every directory—including empty descendants—without loading complete file bytes into application memory. `UploadService` creates the backend-uniquified selected root and each descendant sequentially, parent-first, through the existing `FileSystemStore.createFolder`; only after the full tree exists does it queue one existing `FileSystemApi.upload` call per file. File requests share a four-slot `ConcurrencyQueue`, capture their destination when the picker opens, report uploading/finalizing/completed states, abort best-effort, and retry only cancelled or typed network failures from byte zero. Collisions fail with `overwrite=false`; files above the agreed 10 MiB Feign limit fail before a request. The component-scoped queue/batch state is not persisted and introduces no backend directory-upload endpoint, ZIP, database, session, chunk protocol, or cleanup scheduler. The mock and store apply canonical returned nodes immediately; the new dumb upload panel shows folder preparation and one relative-path row per file. App/spec TypeScript, focused lint, the development build, and `git diff --check` pass. Karma builds all specs and starts when escalated but cannot launch because this environment has no Chrome/Chromium/Edge binary.
+- **Complete folder-tree upload uses browser enumeration plus existing operations** (2026-07-29; multi-root scheduling updated 2026-07-31): toolbar and context menus now expose Folder / File, matching the screenshot-defined action order. Multi-file selection uses the native file input; folder selection intentionally targets secure-context Edge/Chrome `showDirectoryPicker()` so the browser exposes directory handles as well as file handles. `directory-manifest.ts` records every directory—including empty descendants—without loading complete file bytes into application memory. `UploadService` registers every selected/dropped top-level folder immediately, then a single-worker queue traverses and creates one folder tree at a time; queued and preparing batches are distinguished in the panel. It creates the backend-uniquified selected root and each descendant sequentially, parent-first, through the existing `FileSystemStore.createFolder`; only after a tree exists does it queue one existing `FileSystemApi.upload` call per file. File requests independently share a four-slot `ConcurrencyQueue`, capture their destination when the picker opens, report uploading/finalizing/completed states, abort best-effort, and retry only cancelled or typed network failures from byte zero. Collisions fail with `overwrite=false`; files above the agreed 10 MiB Feign limit fail before a request. The component-scoped queue/batch state is not persisted and introduces no backend directory-upload endpoint, ZIP, database, session, chunk protocol, or cleanup scheduler. The mock and store apply canonical returned nodes immediately; the new dumb upload panel shows folder preparation and one relative-path row per file. App/spec TypeScript, focused lint, the development build, and `git diff --check` pass. Karma builds all specs and starts when escalated but cannot launch because this environment has no Chrome/Chromium/Edge binary.
 - **File and folder rename now share the inline editor** (2026-07-29): Rename File from the table context menu and F2 on a focused file now enter the same table-row editor already used by folders. Both kinds use the existing pessimistic rename handler, inline validation/collision feedback, Enter/blur submit, Escape cancel, write spinner, success notification, and network Retry. The file-only modal, its component/template, container state, and duplicate submit handler were deleted because no flow uses them. App/spec TypeScript compilation, the development build, focused lint of `project-documents.ts`, and `git diff --check` pass. Full lint reaches only a pre-existing line-length error in the user's uncommitted `mock-seed.ts` stress fixture plus the two known path-bar warnings.
 - **Initial upload implementation remains on the existing Feign client** (2026-07-29;
   SharePoint endpoint updated 2026-07-30): the immediate backend handoff is one raw
@@ -247,11 +270,16 @@ _Things noticed during implementation but not fixed in the current phase. Review
 - **Stale async results after a project switch** (2026-07-31, review finding):
   `copy` can start against project A, finish after project B has initialized,
   and then insert A's returned node into B's cache and alter B's parent count.
-  Resetting state on initialization does not invalidate independently awaited
-  requests. Treat this as an operation-wide P0 audit, not a copy-only patch:
-  mutations and reads must not write stale success, error, loading, or cleanup
-  state. A private store session-token guard is the current candidate because
-  token identity also handles A → B → A and requires no component changes; the
+  External-drop directory decoding has the same race before upload enqueueing:
+  a switch resets uploads, then the stale decode can finish and add A-targeted
+  tasks to B's panel. The single-worker directory-preparation queue adds another
+  symptom: aborting a stalled browser iterator does not release that queue, so a
+  B folder can remain behind A forever. Resetting state does not invalidate
+  independently awaited work or long-lived schedulers. Treat this as an
+  operation-wide P0 audit, not a copy-only or store-only patch: mutations, reads,
+  pre-enqueue orchestration, and queues must reject or stop waiting on stale
+  work. A project-session identity plus a fresh upload-preparation queue on reset
+  is the current candidate because identity also handles A → B → A; the
   backend-success/reconciliation behavior still needs a decision. Full write-up
   and acceptance cases: `docs/TODO.md` item 3. No runtime change yet.
 - **Copy endpoint project/list authorization** (2026-07-31, P0 review finding):
@@ -284,6 +312,40 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-07-31 — retained upload queue added to existing P0 audit**: documented
+  that aborting project A cannot release a single-worker preparation queue when
+  the browser directory iterator itself never settles, leaving project B queued
+  indefinitely. `docs/TODO.md` item 3 now requires a fresh preparation queue on
+  reset, an upload generation guard for abandoned callbacks, and stalled-iterator
+  A → B acceptance coverage. Documentation only; no runtime change yet.
+- **2026-07-31 — dropped folders now prepare sequentially**: fixed the unbounded
+  multi-directory preparation finding. Every top-level folder batch is registered and
+  displayed immediately, but a single-worker queue permits only one local traversal
+  and SharePoint folder-creation chain at a time. Waiting batches have an explicit
+  `queued` state and remain cancellable; file transfers retain their independent
+  four-request concurrency. Added a controlled three-folder scheduling spec.
+- **2026-07-31 — stale external-drop race added to existing P0 audit**: review
+  confirmed that a project switch can reset uploads while external directory
+  decoding is pending, after which the old decode can enqueue A-targeted tasks
+  into B's panel. Extended `docs/TODO.md` item 3 rather than creating a duplicate
+  issue. Its candidate solution and acceptance coverage now include asynchronous
+  work before upload enqueueing as well as store operations. Documentation only;
+  no runtime change yet.
+- **2026-07-31 — external-drop fallback captured synchronously**: fixed a review
+  finding where `DataTransfer.files` was read only after awaiting modern handle
+  resolution. Some browsers protect the drag data store after the drop callback
+  yields, which could make the plain-file fallback appear empty. The fallback is now
+  snapshotted before the first await; a regression spec simulates the collection
+  becoming inaccessible on the next microtask.
+- **2026-07-31 — external desktop upload drag-and-drop**: added external-only file
+  detection, modern/legacy dropped-directory decoding, explicit right-pane/tree folder
+  target events, a current-folder zone filling the unused space below rows, copy-cursor/drop
+  highlights, and reuse of the existing file/folder upload pipeline and panel. The
+  full-table overlay and bubbled tree-target lookup were replaced after browser
+  feedback. Focused decoding specs cover modern handles, multi-batch legacy traversal,
+  and the plain-file fallback. Internal
+  move/copy drag remains deferred; browser acceptance is still required. App/spec
+  TypeScript, focused lint, the development build, and diff-check pass.
 - **2026-07-31 — descendant-copy API verification queued**: documented the
   cache-incomplete frontend scenario and a disposable real-API test for 2026-08-01 in
   `docs/TODO.md` item 6. The mock already rejects the operation. The real backend

@@ -99,7 +99,8 @@ The `src/app/project-documents/` folder will be copied verbatim to another machi
 - Rename folders inline from the table/tree; rename files inline on F2 or via a context-menu dialog
 - Delete folder or file (confirmation; bulk-aware)
 - Move / copy (drag-and-drop, or cut/copy/paste)
-- Upload files or a complete local folder tree through the Upload menu
+- Upload files or a complete local folder tree through the Upload menu or an external
+  OS drag
 - Navigate into folder
 
 ### 3.3 Navigation
@@ -126,19 +127,23 @@ All scenarios must work:
 | 4 | Right pane (folder or file) | Tree (folder node) | Move item into target | Self/descendant guard |
 | 5 | Right pane (folder or file) | Right pane (folder row) | Move item into target | No self-drop |
 | 6 | Right-pane multi-selection | Any folder | Move all selected | Applied per-item |
-| 7 | External OS files | Right pane (anywhere) | Upload to current folder | — |
-| 8 | External OS files | Tree folder node | Upload into that folder | — |
+| 7 | External OS files/folders | Right pane (folder row) | Upload into that folder | — |
+| 8 | External OS files/folders | Unused right-pane space below rows | Upload to current folder | — |
+| 9 | External OS files/folders | Tree folder node | Upload into that folder | — |
 
 **Modifiers**:
-- Default drop = **move**
-- Hold **Ctrl** during drop = **copy**
+- Internal default drop = **move**
+- Hold **Ctrl** during an internal drop = **copy**
+- External OS drops are always uploads (`copy` cursor); modifiers do not change them
 - **Escape** during drag = cancel
 - Cursor reflects effect (`move` / `copy` / `no-drop`)
 
 **Visual feedback**:
 - Valid target: folder row/node highlights
 - Invalid: `cursor: no-drop`, no highlight
-- Empty right-pane drop zone: dashed border appears during drag
+- Current-folder target: the complete unused space below the rendered rows becomes a
+  dashed drop zone during an external drag. If rows fill the pane, it keeps a usable
+  minimum height at the bottom; the table/header/file rows do not become the target.
 
 ### 3.5 Right-click context menus
 
@@ -199,19 +204,34 @@ All scenarios must work:
 - Toolbar, empty-area, and folder context menus expose Folder / File choices
 - File selection uses a standard multi-file picker
 - Folder selection uses `showDirectoryPicker()` and selects one root per action
+- External desktop drops accept multiple top-level files and folders. A hovered
+  right-pane/tree folder is the destination; otherwise the right pane targets the
+  currently open folder only through the flexible unused space below the table rows.
+  Folder rows and tree labels own their native drag/drop listeners and call
+  `preventDefault()` on valid external targets; this avoids losing the drop through
+  PrimeNG event handling.
+  Header/file rows are not upload targets. Only `DataTransfer` payloads containing
+  files are intercepted, keeping external upload separate from future internal
+  move/copy drag state.
+- Dropped folders use `DataTransferItem.getAsFileSystemHandle()` when available and
+  fall back to the legacy File and Directory Entries API. Legacy readers are drained
+  until an empty batch so folders with more than 100 immediate children are not
+  truncated.
 - Folder upload first traverses the complete local tree, then creates the selected root
   with the backend's unique-name behavior and creates every descendant directory
   parent-first, including empty directories; files start only after directory creation
   succeeds
 - **Upload panel**: floating bottom-right, collapsible, shows folder preparation plus
-  active / queued / completed per-file work
+  active / queued / completed per-file work. When several top-level folders are
+  selected or dropped, every folder appears immediately; one folder tree at a time is
+  traversed and created, while the remaining folder batches are visibly queued
 - Per-file progress bar, best-effort cancel, and manual retry for network failures or
   cancelled files; retry always restarts from byte zero
-- **Concurrency limit**: 4 simultaneous uploads
+- **Concurrency limits**: one folder-tree preparation/creation chain and 4 simultaneous
+  file uploads
 - File collisions fail safely with `overwrite=false`; they are not automatically retried
 - Folder preparation and task state are in-memory only; no upload session, database row,
   chunk protocol, or refresh resume is introduced
-- External OS drag-and-drop is deferred to the drag-and-drop work
 - The initial backend uses one bounded raw-body request for files up to 10 MiB; a
   single-request streaming transport can remove that temporary limit without changing
   the frontend endpoint

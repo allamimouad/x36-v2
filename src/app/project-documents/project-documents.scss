@@ -222,6 +222,7 @@ $pd-control-height: 2.25rem;
 }
 
 .pd-table-pane {
+  position: relative;
   // Same flex-item gotcha as .pd-tree-pane: the nested-splitter marker lands on this
   // panel too, so the pane must be told to fill it.
   width: 100%;

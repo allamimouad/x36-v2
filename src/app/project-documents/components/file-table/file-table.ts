@@ -24,6 +24,7 @@ import type {
     ItemRenameRequest,
     NodeContextMenuRequest
 } from '../../models/context-menu-request.model';
+import type { ExternalFolderDropRequest } from '../../models/external-drop-request.model';
 import {
     FileSystemIcon
 } from '../../shared/file-system-icon/file-system-icon';
@@ -56,6 +57,9 @@ export class FileTable {
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);
     public readonly writingIds = input<ReadonlySet<string>>(new Set<string>());
+    public readonly externalDropTargetId = input<string | null>(null);
+    public readonly externalDragActive = input<boolean>(false);
+    public readonly currentFolderName = input<string>('');
 
     public readonly itemDoubleClicked = output<FileSystemNode>();
     public readonly itemFocused = output<string>();
@@ -64,6 +68,10 @@ export class FileTable {
     public readonly renameSubmitted = output<ItemRenameRequest>();
     public readonly renameCancelled = output();
     public readonly renameEdited = output();
+    public readonly externalFolderDragOver = output<ExternalFolderDropRequest>();
+    public readonly externalFolderDropped = output<ExternalFolderDropRequest>();
+    public readonly currentFolderDragOver = output<DragEvent>();
+    public readonly currentFolderDropped = output<DragEvent>();
 
     protected readonly rows = computed<RowVm[]>(() => {
         const out: RowVm[] = [];
@@ -175,6 +183,18 @@ export class FileTable {
     protected onCellMouseEnter(event: MouseEvent, cellId: string): void {
         const el = event.currentTarget as HTMLElement;
         this.tooltipSuppressedCellId.set(el.scrollWidth > el.clientWidth ? null : cellId);
+    }
+
+    protected onExternalFolderDragOver(event: DragEvent, row: RowVm): void {
+        if (isFolder(row.node)) {
+            this.externalFolderDragOver.emit({ event, target: row.node });
+        }
+    }
+
+    protected onExternalFolderDrop(event: DragEvent, row: RowVm): void {
+        if (isFolder(row.node)) {
+            this.externalFolderDropped.emit({ event, target: row.node });
+        }
     }
 
     private submitInlineRename(row: RowVm): void {

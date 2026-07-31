@@ -17,6 +17,7 @@ import type {
     ItemRenameRequest,
     NodeContextMenuRequest
 } from '../../models/context-menu-request.model';
+import type { ExternalFolderDropRequest } from '../../models/external-drop-request.model';
 import {
     FileSystemIcon
 } from '../../shared/file-system-icon/file-system-icon';
@@ -34,6 +35,7 @@ export class FolderTree {
     public readonly currentFolderId = input<string | null>(null);
     public readonly folderIdsWithLoadingChildren = input<string[]>([]);
     public readonly writingIds = input<ReadonlySet<string>>(new Set<string>());
+    public readonly externalDropTargetId = input<string | null>(null);
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);
 
@@ -44,6 +46,8 @@ export class FolderTree {
     public readonly renameSubmitted = output<ItemRenameRequest>();
     public readonly renameCancelled = output();
     public readonly renameEdited = output();
+    public readonly externalFolderDragOver = output<ExternalFolderDropRequest>();
+    public readonly externalFolderDropped = output<ExternalFolderDropRequest>();
 
     protected readonly selectedTreeNode = computed<TreeNode<FolderNode> | null>(() => {
         const id = this.currentFolderId();
@@ -117,6 +121,24 @@ export class FolderTree {
 
     protected onInlineRenameBlur(node: TreeNode<FolderNode>): void {
         this.submitInlineRename(node);
+    }
+
+    protected onExternalFolderDragOver(
+        event: DragEvent,
+        node: TreeNode<FolderNode>
+    ): void {
+        if (node.data) {
+            this.externalFolderDragOver.emit({ event, target: node.data });
+        }
+    }
+
+    protected onExternalFolderDrop(
+        event: DragEvent,
+        node: TreeNode<FolderNode>
+    ): void {
+        if (node.data) {
+            this.externalFolderDropped.emit({ event, target: node.data });
+        }
     }
 
     private submitInlineRename(node: TreeNode<FolderNode>): void {

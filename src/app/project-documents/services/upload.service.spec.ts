@@ -96,6 +96,44 @@ describe('UploadService', () => {
             .toBeTrue();
     });
 
+    it('shows every dropped folder but prepares their trees one at a time', async () => {
+        const firstGate = deferred();
+        const secondGate = deferred();
+        const thirdGate = deferred();
+        const preparations = [
+            uploads.enqueueDirectory(
+                gatedDirectory('First Folder', firstGate.promise),
+                executionRoot
+            ),
+            uploads.enqueueDirectory(
+                gatedDirectory('Second Folder', secondGate.promise),
+                executionRoot
+            ),
+            uploads.enqueueDirectory(
+                gatedDirectory('Third Folder', thirdGate.promise),
+                executionRoot
+            )
+        ];
+
+        expect(uploads.batches().map((batch) => batch.status))
+            .toEqual(['preparing', 'queued', 'queued']);
+
+        firstGate.resolve();
+        await waitForBatchStatus(uploads, 1, 'preparing');
+        expect(uploads.batches().map((batch) => batch.status))
+            .toEqual(['done', 'preparing', 'queued']);
+
+        secondGate.resolve();
+        await waitForBatchStatus(uploads, 2, 'preparing');
+        expect(uploads.batches().map((batch) => batch.status))
+            .toEqual(['done', 'done', 'preparing']);
+
+        thirdGate.resolve();
+        await Promise.all(preparations);
+        expect(uploads.batches().map((batch) => batch.status))
+            .toEqual(['done', 'done', 'done']);
+    });
+
     it('rejects an oversized file without calling the file-system upload operation', () => {
         const api = TestBed.inject(FileSystemApi);
         const upload = spyOn(api, 'upload').and.callThrough();
@@ -161,6 +199,36 @@ function fakeFile(name: string, contents: string): FileSystemFileHandle {
     } as FileSystemFileHandle;
 }
 
+function gatedDirectory(
+    name: string,
+    gate: Promise<undefined>,
+    children: readonly FileSystemHandleUnion[] = []
+): FileSystemDirectoryHandle {
+    return {
+        kind: 'directory',
+        name,
+        async *values(): AsyncIterableIterator<FileSystemHandleUnion> {
+            await gate;
+            for (const child of children) {
+                yield child;
+            }
+        }
+    } as FileSystemDirectoryHandle;
+}
+
+function deferred(): { promise: Promise<undefined>; resolve: () => undefined } {
+    let resolve = (): undefined => undefined;
+    const promise = new Promise<undefined>((done) => {
+        resolve = (): undefined => {
+            done(undefined);
+
+            return undefined;
+        };
+    });
+
+    return { promise, resolve };
+}
+
 function requireFolder(
     nodes: ReturnType<InstanceType<typeof FileSystemStore>['entities']>,
     path: string
@@ -187,5 +255,19 @@ async function waitForUploads(uploads: UploadService): Promise<void> {
             throw new Error('Uploads did not finish');
         }
         await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+}
+
+async function waitForBatchStatus(
+    uploads: UploadService,
+    index: number,
+    status: 'preparing'
+): Promise<void> {
+    const timeoutAt = Date.now() + 5_000;
+    while (uploads.batches()[index]?.status !== status) {
+        if (Date.now() > timeoutAt) {
+            throw new Error(`Batch ${index} did not reach ${status}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
     }
 }

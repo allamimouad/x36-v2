@@ -32,6 +32,7 @@ export class UploadPanel {
     protected readonly visibleBatches = computed(() =>
         this.batches().filter(
             (batch) =>
+                batch.status === 'queued' ||
                 batch.status === 'preparing' ||
                 batch.error !== undefined ||
                 (batch.status === 'done' && batch.fileCount === 0)
@@ -40,6 +41,7 @@ export class UploadPanel {
 
     protected readonly summary = computed(() => {
         const tasks = this.tasks();
+        const queued = this.batches().filter((batch) => batch.status === 'queued').length;
         const preparing = this.batches().filter((batch) => batch.status === 'preparing').length;
         const active = tasks.filter(
             (task) =>
@@ -48,7 +50,12 @@ export class UploadPanel {
                 task.status === 'finalizing'
         ).length;
         if (preparing > 0) {
-            return `${preparing} folder${preparing === 1 ? '' : 's'} preparing`;
+            const queuedSummary = queued > 0 ? `, ${queued} queued` : '';
+
+            return `${preparing} folder${preparing === 1 ? '' : 's'} preparing${queuedSummary}`;
+        }
+        if (queued > 0) {
+            return `${queued} folder${queued === 1 ? '' : 's'} queued`;
         }
         if (active > 0) {
             return `${active} upload${active === 1 ? '' : 's'} active`;
@@ -85,6 +92,8 @@ export class UploadPanel {
 
     protected batchStatus(batch: UploadBatch): string {
         switch (batch.status) {
+            case 'queued':
+                return 'Queued for preparation';
             case 'preparing':
                 return batch.directoryCount === 0
                     ? 'Reading folder structure…'

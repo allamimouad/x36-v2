@@ -4,128 +4,149 @@
       <p-progressSpinner styleClass="pd-spinner" strokeWidth="3" />
     </div>
   } @else {
-    <p-table [value]="rows()" dataKey="id" styleClass="pd-table" [scrollable]="true" scrollHeight="flex">
-    <ng-template pTemplate="header">
-      <tr>
-        <th pSortableColumn="name" style="width: 34%">
-          <div class="pd-th"><span class="pd-th-label">File Name</span> <p-sortIcon field="name" /></div>
-        </th>
-        <th pSortableColumn="typeLabel" style="width: 14%">
-          <div class="pd-th"><span class="pd-th-label">Type</span> <p-sortIcon field="typeLabel" /></div>
-        </th>
-        <th pSortableColumn="modifiedAt" style="width: 18%">
-          <div class="pd-th"><span class="pd-th-label">Last Modified</span> <p-sortIcon field="modifiedAt" /></div>
-        </th>
-        <th pSortableColumn="modifiedBy" style="width: 20%">
-          <div class="pd-th"><span class="pd-th-label">Last Modified By</span> <p-sortIcon field="modifiedBy" /></div>
-        </th>
-        <th pSortableColumn="sortSize" style="width: 14%" class="pd-col-size">
-          <div class="pd-th"><span class="pd-th-label">Size</span> <p-sortIcon field="sortSize" /></div>
-        </th>
-      </tr>
-    </ng-template>
-    <ng-template pTemplate="body" let-row>
-      <tr
-        [attr.data-testid]="'pd-row-' + row.id"
-        [class.pd-row-focused]="focusedId() === row.id"
-        [class.pd-row-writing]="writingIds().has(row.id)"
-        tabindex="0"
-        (click)="onRowClick(row)"
-        (keydown)="onRowKeydown($event, row)"
-        (dblclick)="onRowDblClick(row)"
-        (contextmenu)="onRowContextMenu($event, row)"
-        class="pd-row"
-        [class.pd-row-folder]="row.kind === 'folder'"
-      >
-        <td>
-          @if (renamingId() === row.id) {
-            <div class="pd-inline-rename">
-              <input
-                pInputText
-                #renameInput
-                type="text"
-                class="pd-inline-rename-input"
-                [value]="inlineRenameValue()"
-                [disabled]="writingIds().has(row.id)"
-                [attr.aria-invalid]="renameError() ? 'true' : null"
-                aria-label="Rename item"
-                (click)="$event.stopPropagation()"
-                (dblclick)="$event.stopPropagation()"
-                (input)="onInlineRenameInput($event)"
-                (keydown)="onInlineRenameKeydown($event, row)"
-                (blur)="onInlineRenameBlur(row)"
-              />
-              @if (renameError(); as error) {
-                <small class="pd-inline-rename-error" role="alert">{{ error }}</small>
-              }
-            </div>
-          } @else {
-            <span class="pd-name">
-              @if (row.kind === 'folder') {
-                <pr-file-system-icon name="folder" />
+    <div class="pd-table-scroll">
+      <p-table [value]="rows()" dataKey="id" styleClass="pd-table">
+        <ng-template pTemplate="header">
+          <tr>
+            <th pSortableColumn="name" style="width: 34%">
+              <div class="pd-th"><span class="pd-th-label">File Name</span> <p-sortIcon field="name" /></div>
+            </th>
+            <th pSortableColumn="typeLabel" style="width: 14%">
+              <div class="pd-th"><span class="pd-th-label">Type</span> <p-sortIcon field="typeLabel" /></div>
+            </th>
+            <th pSortableColumn="modifiedAt" style="width: 18%">
+              <div class="pd-th"><span class="pd-th-label">Last Modified</span> <p-sortIcon field="modifiedAt" /></div>
+            </th>
+            <th pSortableColumn="modifiedBy" style="width: 20%">
+              <div class="pd-th"><span class="pd-th-label">Last Modified By</span> <p-sortIcon field="modifiedBy" /></div>
+            </th>
+            <th pSortableColumn="sortSize" style="width: 14%" class="pd-col-size">
+              <div class="pd-th"><span class="pd-th-label">Size</span> <p-sortIcon field="sortSize" /></div>
+            </th>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="body" let-row>
+          <tr
+            [attr.data-testid]="'pd-row-' + row.id"
+            [class.pd-row-focused]="focusedId() === row.id"
+            [class.pd-row-writing]="writingIds().has(row.id)"
+            [class.pd-row-external-drop-target]="externalDropTargetId() === row.id"
+            tabindex="0"
+            (click)="onRowClick(row)"
+            (keydown)="onRowKeydown($event, row)"
+            (dblclick)="onRowDblClick(row)"
+            (contextmenu)="onRowContextMenu($event, row)"
+            (dragenter)="onExternalFolderDragOver($event, row)"
+            (dragover)="onExternalFolderDragOver($event, row)"
+            (drop)="onExternalFolderDrop($event, row)"
+            class="pd-row"
+            [class.pd-row-folder]="row.kind === 'folder'"
+          >
+            <td>
+              @if (renamingId() === row.id) {
+                <div class="pd-inline-rename">
+                  <input
+                    pInputText
+                    #renameInput
+                    type="text"
+                    class="pd-inline-rename-input"
+                    [value]="inlineRenameValue()"
+                    [disabled]="writingIds().has(row.id)"
+                    [attr.aria-invalid]="renameError() ? 'true' : null"
+                    aria-label="Rename item"
+                    (click)="$event.stopPropagation()"
+                    (dblclick)="$event.stopPropagation()"
+                    (input)="onInlineRenameInput($event)"
+                    (keydown)="onInlineRenameKeydown($event, row)"
+                    (blur)="onInlineRenameBlur(row)"
+                  />
+                  @if (renameError(); as error) {
+                    <small class="pd-inline-rename-error" role="alert">{{ error }}</small>
+                  }
+                </div>
               } @else {
-                <pr-file-system-icon [fileName]="row.node.name" />
+                <span class="pd-name">
+                  @if (row.kind === 'folder') {
+                    <pr-file-system-icon name="folder" />
+                  } @else {
+                    <pr-file-system-icon [fileName]="row.node.name" />
+                  }
+                  <span
+                    class="pd-name-text"
+                    [pTooltip]="row.name"
+                    tooltipPosition="top"
+                    tooltipStyleClass="pd-cell-tooltip"
+                    [showDelay]="300"
+                    [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':name'"
+                    (mouseenter)="onCellMouseEnter($event, row.id + ':name')"
+                    >{{ row.name }}</span
+                  >
+                  @if (writingIds().has(row.id)) {
+                    <span class="material-symbols-outlined pd-write-spinner" aria-hidden="true">progress_activity</span>
+                  }
+                </span>
               }
+            </td>
+            <td class="pd-muted">
               <span
-                class="pd-name-text"
-                [pTooltip]="row.name"
+                class="pd-cell-text"
+                [pTooltip]="row.typeLabel"
                 tooltipPosition="top"
                 tooltipStyleClass="pd-cell-tooltip"
                 [showDelay]="300"
-                [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':name'"
-                (mouseenter)="onCellMouseEnter($event, row.id + ':name')"
-                >{{ row.name }}</span
+                [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':type'"
+                (mouseenter)="onCellMouseEnter($event, row.id + ':type')"
+                >{{ row.typeLabel }}</span
               >
-              @if (writingIds().has(row.id)) {
-                <span class="material-symbols-outlined pd-write-spinner" aria-hidden="true">progress_activity</span>
-              }
-            </span>
-          }
-        </td>
-        <td class="pd-muted">
-          <span
-            class="pd-cell-text"
-            [pTooltip]="row.typeLabel"
-            tooltipPosition="top"
-            tooltipStyleClass="pd-cell-tooltip"
-            [showDelay]="300"
-            [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':type'"
-            (mouseenter)="onCellMouseEnter($event, row.id + ':type')"
-            >{{ row.typeLabel }}</span
-          >
-        </td>
-        <td class="pd-muted">
-          <span
-            class="pd-cell-text"
-            [pTooltip]="(row.modifiedAt | date: 'dd-MM-yyyy HH:mm') ?? ''"
-            tooltipPosition="top"
-            tooltipStyleClass="pd-cell-tooltip"
-            [showDelay]="300"
-            [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':modified'"
-            (mouseenter)="onCellMouseEnter($event, row.id + ':modified')"
-            >{{ row.modifiedAt | date: 'dd-MM-yyyy HH:mm' }}</span
-          >
-        </td>
-        <td class="pd-muted">
-          <span
-            class="pd-cell-text"
-            [pTooltip]="row.modifiedBy"
-            tooltipPosition="top"
-            tooltipStyleClass="pd-cell-tooltip"
-            [showDelay]="300"
-            [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':modifiedBy'"
-            (mouseenter)="onCellMouseEnter($event, row.id + ':modifiedBy')"
-            >{{ row.modifiedBy }}</span
-          >
-        </td>
-        <td class="pd-col-size pd-muted">{{ row.sizeLabel }}</td>
-      </tr>
-    </ng-template>
-    <ng-template pTemplate="emptymessage">
-      <tr>
-        <td colspan="5" class="pd-empty">This folder is empty.</td>
-      </tr>
-    </ng-template>
-    </p-table>
+            </td>
+            <td class="pd-muted">
+              <span
+                class="pd-cell-text"
+                [pTooltip]="(row.modifiedAt | date: 'dd-MM-yyyy HH:mm') ?? ''"
+                tooltipPosition="top"
+                tooltipStyleClass="pd-cell-tooltip"
+                [showDelay]="300"
+                [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':modified'"
+                (mouseenter)="onCellMouseEnter($event, row.id + ':modified')"
+                >{{ row.modifiedAt | date: 'dd-MM-yyyy HH:mm' }}</span
+              >
+            </td>
+            <td class="pd-muted">
+              <span
+                class="pd-cell-text"
+                [pTooltip]="row.modifiedBy"
+                tooltipPosition="top"
+                tooltipStyleClass="pd-cell-tooltip"
+                [showDelay]="300"
+                [tooltipDisabled]="tooltipSuppressedCellId() === row.id + ':modifiedBy'"
+                (mouseenter)="onCellMouseEnter($event, row.id + ':modifiedBy')"
+                >{{ row.modifiedBy }}</span
+              >
+            </td>
+            <td class="pd-col-size pd-muted">{{ row.sizeLabel }}</td>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="emptymessage">
+          <tr>
+            <td colspan="5" class="pd-empty">This folder is empty.</td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </div>
+    <div
+      class="pd-current-folder-space"
+      [class.pd-current-folder-drop-zone]="externalDragActive()"
+      [attr.role]="externalDragActive() ? 'status' : null"
+      (dragenter)="currentFolderDragOver.emit($event)"
+      (dragover)="currentFolderDragOver.emit($event)"
+      (drop)="currentFolderDropped.emit($event)"
+    >
+      @if (externalDragActive()) {
+        <span class="material-symbols-outlined pd-current-folder-drop-icon" aria-hidden="true">
+          drive_folder_upload
+        </span>
+        <span>Drop into “{{ currentFolderName() }}”</span>
+      }
+    </div>
   }
 </div>

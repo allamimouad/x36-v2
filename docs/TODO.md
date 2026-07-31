@@ -28,10 +28,18 @@
 
 ## 3. A stale async result can be written into a newly selected project
 
-- **Where**: `src/app/project-documents/stores/file-system.store.ts`, currently
-  visible in `copy`: it starts the API call with the current project id, awaits
-  the response, and then unconditionally inserts the returned node and adjusts
-  the destination parent's child count.
+- **Where**:
+  - `src/app/project-documents/stores/file-system.store.ts`, currently visible
+    in `copy`: it starts the API call with the current project id, awaits the
+    response, and then unconditionally inserts the returned node and adjusts
+    the destination parent's child count;
+  - `src/app/project-documents/project-documents.ts`, in the external-drop
+    upload flow: it awaits `ExternalDropService.read(...)` before enqueuing the
+    decoded files/directories, without checking that the project session is
+    still the one in which the drop started;
+  - `src/app/project-documents/services/upload.service.ts`: `reset()` aborts
+    directory-preparation controllers but retains the same single-worker
+    `directoryPreparationQueue`.
 - **Problem**: a request belongs to the project session in which it started, but
   its response may arrive after that session has been replaced. For example:
   1. A copy starts in project A.
@@ -43,19 +51,47 @@
   Resetting the stores on project change is therefore necessary but not
   sufficient: it removes the old state immediately, but it does not cancel or
   invalidate already awaited `firstValueFrom(...)` operations.
+
+  The same reset timing affects an external drop before it reaches the upload
+  queue:
+  1. Decoding a dropped directory starts in project A.
+  2. The host switches to B; `uploads.reset()` clears and aborts the old queue.
+  3. A's decoding finishes after that reset and enqueues new tasks targeting A's
+     folder into B's active upload panel.
+
+  This is the same project-session invalidation bug, not a separate upload
+  issue.
+
+  The retained preparation queue also creates an availability failure. If
+  project A's browser directory iterator stalls inside `handle.values()`,
+  aborting its controller cannot force that pending browser promise to settle.
+  After switching to B, a B directory is placed behind A's still-occupied
+  worker and can remain `queued` indefinitely even though the visible upload
+  state was reset.
 - **Confirmed scope**: `copy` demonstrates the race. Before fixing it, audit
   every project-scoped asynchronous store operation, including create, rename,
   delete, move, upload, child/path reads, and their success, error, loading, and
-  `finally` state writes. A copy-only guard would leave the same class of bug
-  elsewhere.
-- **Candidate design to evaluate**: keep this entirely private to
-  `FileSystemStore`; no extra state or lifecycle work should be required in
-  `ProjectDocuments`. Replace a private project-session token whenever project
-  initialization begins. Each asynchronous operation captures the token before
-  starting and, after every await, applies state only if that exact token is
-  still active. Use token identity rather than only comparing `projectId`, so a
-  rapid A → B → A switch cannot make an old request from the first A session
-  look current.
+  `finally` state writes. The audit must also cover project-scoped asynchronous
+  orchestration before a store/service owns the operation, especially external
+  drop decoding before upload enqueueing. It must also audit queues and other
+  long-lived schedulers owned by project-scoped services: clearing their visible
+  task state is not enough when an old worker can block new-session work. A
+  copy-only or store-only guard would leave the same class of bug elsewhere.
+- **Candidate design to evaluate**: establish one project-session identity that
+  is replaced whenever project initialization begins. Each asynchronous store
+  operation captures it before starting and, after every await, applies state
+  only if that exact session is still active. Pre-enqueue orchestration such as
+  external-drop decoding must capture the same identity (or an equivalently
+  invalidated upload generation) and stop before creating tasks when it is
+  stale. `UploadService.reset()` must also replace its single-worker directory
+  preparation queue, so the new session never waits for a non-cooperative old
+  iterator; queued/preparing callbacks capture the corresponding upload
+  generation and ignore late completion from abandoned queues. Use identity
+  rather than only comparing `projectId`, so a rapid A → B → A switch cannot
+  make work from the first A session look current. Keep this plumbing private
+  to the store/services where practical; the newly confirmed pre-enqueue and
+  scheduler windows mean the solution cannot be assumed to live only inside
+  `FileSystemStore`.
 - **Important mutation caveat**: ignoring a stale response protects the
   frontend cache, but the backend mutation may already have succeeded. The fix
   must not automatically retry it or report that it failed. We still need to
@@ -69,6 +105,15 @@
   - every mutation is guarded, not only copy;
   - stale read successes and failures cannot overwrite the active project's
     entities, errors, or loading markers;
+  - delayed external-drop decoding followed by A → B cannot enqueue a task or
+    batch after `uploads.reset()`, and no A target appears in B's upload panel;
+  - the same external-drop guard rejects work from the first session after an
+    A → B → A switch;
+  - when A's directory iterator never settles, switching to B gives B a fresh
+    preparation worker and its first directory advances from `queued` without
+    waiting for A;
+  - if the abandoned A iterator later resumes, its generation cannot create
+    folders, enqueue files, or update B's batch state;
   - the chosen backend-success/reconciliation behavior is explicit and tested.
 - **Status / priority**: confirmed cross-project correctness risk (P0);
   documentation only for now. The candidate design is not yet an implementation

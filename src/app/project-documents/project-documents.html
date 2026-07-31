@@ -141,7 +141,14 @@
     [style]="{ height: '100%' }"
   >
     <ng-template #panel>
-      <aside class="pd-tree-pane" aria-label="Folder trees">
+      <aside
+        class="pd-tree-pane"
+        aria-label="Folder trees"
+        (dragenter)="onExternalSurfaceDragOver($event, 'tree')"
+        (dragover)="onExternalSurfaceDragOver($event, 'tree')"
+        (dragleave)="onExternalDragLeave($event)"
+        (drop)="onExternalDropOutsideTarget($event)"
+      >
         <!-- One tree-section template, parameterized per list; the arrangement below
              picks how to lay the sections out (resizable split when both lists exist,
              full height otherwise). -->
@@ -153,6 +160,9 @@
               [currentFolderId]="navigation.currentFolderId()"
               [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
               [writingIds]="writingIds()"
+              [externalDropTargetId]="
+                externalDropSurface() === 'tree' ? externalDropTargetId() : null
+              "
               [renamingId]="inlineRenameSurface() === 'tree' ? navigation.renamingId() : null"
               [renameError]="inlineRenameError()"
               (nodeSelected)="onTreeNodeSelected($event)"
@@ -162,6 +172,8 @@
               (renameSubmitted)="onInlineRenameRequested($event)"
               (renameCancelled)="cancelInlineRename()"
               (renameEdited)="inlineRenameError.set(null)"
+              (externalFolderDragOver)="onExternalFolderDragOver($event, 'tree')"
+              (externalFolderDropped)="onExternalFolderDrop($event)"
             />
           </section>
         </ng-template>
@@ -204,7 +216,14 @@
       </aside>
     </ng-template>
     <ng-template #panel>
-      <main class="pd-table-pane" aria-label="Folder contents">
+      <main
+        class="pd-table-pane"
+        aria-label="Folder contents"
+        (dragenter)="onExternalSurfaceDragOver($event, 'table')"
+        (dragover)="onExternalSurfaceDragOver($event, 'table')"
+        (dragleave)="onExternalDragLeave($event)"
+        (drop)="onExternalDropOutsideTarget($event)"
+      >
         @if (currentFolderError(); as currentError) {
           <div class="pd-unavailable" role="status">
             <span class="material-symbols-outlined pd-unavailable-icon" aria-hidden="true">warning</span>
@@ -219,6 +238,11 @@
             [renamingId]="inlineRenameSurface() === 'table' ? navigation.renamingId() : null"
             [renameError]="inlineRenameError()"
             [writingIds]="writingIds()"
+            [externalDropTargetId]="
+              externalDropSurface() === 'table' ? externalDropTargetId() : null
+            "
+            [externalDragActive]="currentFolderDropActive()"
+            [currentFolderName]="navigation.currentFolder()?.name ?? ''"
             (itemDoubleClicked)="onItemDoubleClicked($event)"
             (itemFocused)="onItemFocused($event)"
             (itemContextMenuRequested)="onNodeContextMenu($event)"
@@ -226,6 +250,10 @@
             (renameSubmitted)="onInlineRenameRequested($event)"
             (renameCancelled)="cancelInlineRename()"
             (renameEdited)="inlineRenameError.set(null)"
+            (externalFolderDragOver)="onExternalFolderDragOver($event, 'table')"
+            (externalFolderDropped)="onExternalFolderDrop($event)"
+            (currentFolderDragOver)="onExternalCurrentFolderDragOver($event)"
+            (currentFolderDropped)="onExternalCurrentFolderDrop($event)"
           />
         }
       </main>

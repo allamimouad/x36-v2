@@ -44,6 +44,7 @@ import { FileSystemError } from './models/file-system-error.model';
 import { FileSystemApi } from './services/file-system-api';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
 import { ClipboardService } from './services/clipboard.service';
+import { ExternalDropService } from './services/external-drop.service';
 import { FileLaunchService } from './services/file-launch.service';
 import {
     NotificationService,
@@ -64,6 +65,7 @@ import type {
     ItemRenameRequest,
     NodeContextMenuRequest
 } from './models/context-menu-request.model';
+import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
 
 const DELETE_CONFIRMATION_KEY = 'project-documents-delete';
 const DEFAULT_FOLDER_NAME = 'New folder';
@@ -101,6 +103,7 @@ type InlineRenameSurface = 'tree' | 'table';
         { provide: FileSystemReader, useExisting: FileSystemStore },
         NavigationStore,
         ClipboardService,
+        ExternalDropService,
         FileLaunchService,
         MessageService,
         ConfirmationService,
@@ -118,6 +121,7 @@ export class ProjectDocuments {
     protected readonly fileSystem = inject(FileSystemStore);
     protected readonly navigation = inject(NavigationStore);
     protected readonly clipboard = inject(ClipboardService);
+    protected readonly externalDrops = inject(ExternalDropService);
     protected readonly fileLauncher = inject(FileLaunchService);
     protected readonly notifications = inject(NotificationService);
     protected readonly confirmation = inject(ConfirmationService);
@@ -137,6 +141,17 @@ export class ProjectDocuments {
     protected readonly pasting = signal(false);
     protected readonly toolbarUploadItems = signal<MenuItem[]>([]);
     protected readonly uploadPanelCollapsed = signal(false);
+    protected readonly externalDropTargetId = signal<string | null>(null);
+    protected readonly externalDropSurface = signal<'table' | 'tree' | null>(null);
+    protected readonly currentFolderDropActive = computed(() => {
+        if (this.externalDropSurface() !== 'table' || this.currentFolderError()) {
+            return false;
+        }
+        const currentFolderId = this.navigation.currentFolderId();
+        const targetId = this.externalDropTargetId();
+
+        return currentFolderId !== null && (targetId === null || targetId === currentFolderId);
+    });
 
     /** Address-bar edit state (owned here; PathBar is a controlled child). */
     protected readonly pathEditing = signal(false);
@@ -423,6 +438,64 @@ export class ProjectDocuments {
                 this.notifications.error(error);
             }
         }
+    }
+
+    protected onExternalSurfaceDragOver(
+        event: DragEvent,
+        surface: 'table' | 'tree'
+    ): void {
+        if (!this.externalDrops.containsFiles(event.dataTransfer)) { return; }
+        this.externalDropSurface.set(surface);
+        this.externalDropTargetId.set(null);
+    }
+
+    protected onExternalFolderDragOver(
+        request: ExternalFolderDropRequest,
+        surface: 'table' | 'tree'
+    ): void {
+        const { event, target } = request;
+        if (!this.externalDrops.containsFiles(event.dataTransfer)) { return; }
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.dataTransfer) { event.dataTransfer.dropEffect = 'copy'; }
+        this.externalDropTargetId.set(target.id);
+        this.externalDropSurface.set(surface);
+    }
+
+    protected onExternalCurrentFolderDragOver(event: DragEvent): void {
+        const target = this.navigation.currentFolder();
+        if (!target || this.currentFolderError()) { return; }
+        this.onExternalFolderDragOver({ event, target }, 'table');
+    }
+
+    protected onExternalDragLeave(event: DragEvent): void {
+        const pane = event.currentTarget;
+        const nextTarget = event.relatedTarget;
+        if (
+            pane instanceof Node &&
+            nextTarget instanceof Node &&
+            pane.contains(nextTarget)
+        ) {
+            return;
+        }
+        this.clearExternalDropState();
+    }
+
+    protected onExternalDropOutsideTarget(event: DragEvent): void {
+        if (!this.externalDrops.containsFiles(event.dataTransfer)) { return; }
+        event.preventDefault();
+        event.stopPropagation();
+        this.clearExternalDropState();
+    }
+
+    protected async onExternalFolderDrop(
+        request: ExternalFolderDropRequest
+    ): Promise<void> {
+        await this.uploadExternalDrop(request.event, request.target);
+    }
+
+    protected async onExternalCurrentFolderDrop(event: DragEvent): Promise<void> {
+        await this.uploadExternalDrop(event, this.navigation.currentFolder());
     }
 
     protected async onInlineRenameRequested(request: ItemRenameRequest): Promise<void> {
@@ -886,6 +959,41 @@ export class ProjectDocuments {
         // Keep the action available for a stale clipboard id so pasteInto can clear it
         // and explain what happened; known sources must remain in their own list.
         return source === undefined || source.listKey === target.listKey;
+    }
+
+    private async uploadExternalDrop(
+        event: DragEvent,
+        target: FolderNode | null
+    ): Promise<void> {
+        const dataTransfer = event.dataTransfer;
+        if (!this.externalDrops.containsFiles(dataTransfer) || !dataTransfer) { return; }
+        event.preventDefault();
+        event.stopPropagation();
+        this.clearExternalDropState();
+        if (!target || this.fileSystem.isInitializing()) { return; }
+
+        try {
+            const selection = await this.externalDrops.read(dataTransfer);
+            if (selection.files.length === 0 && selection.directories.length === 0) {
+                this.notifications.warning('No supported files or folders were found.');
+
+                return;
+            }
+            this.uploadPanelCollapsed.set(false);
+            this.uploads.enqueueFiles(selection.files, target);
+            await Promise.all(
+                selection.directories.map((directory) =>
+                    this.uploads.enqueueDirectory(directory, target)
+                )
+            );
+        } catch (error) {
+            this.notifications.error(error);
+        }
+    }
+
+    private clearExternalDropState(): void {
+        this.externalDropTargetId.set(null);
+        this.externalDropSurface.set(null);
     }
 
     private startInlineRename(

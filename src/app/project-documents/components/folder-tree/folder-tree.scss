@@ -21,6 +21,11 @@
   border-radius: 6px;
 }
 
+:host ::ng-deep .pd-tree .p-tree-node-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 // Drive the node hover off the shared feature token so the tree and the file
 // table hover in the same color. Overriding the component token (not the rule)
 // keeps PrimeNG's selected-node handling intact.
@@ -29,10 +34,13 @@
 }
 
 .pd-tree-node {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 0.5rem;
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
+  padding: 0.1rem 0.2rem;
 }
 
 .pd-tree-node pr-file-system-icon {
@@ -67,6 +75,13 @@
 
 .pd-tree-node-writing {
   opacity: 0.65;
+}
+
+.pd-tree-node-external-drop-target {
+  border-radius: 4px;
+  background: var(--pd-selection-bg);
+  outline: 1px solid var(--pd-accent);
+  outline-offset: 1px;
 }
 
 .pd-write-spinner {

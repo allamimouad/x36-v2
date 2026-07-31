@@ -25,7 +25,8 @@ export class UploadService {
     private readonly fileSystem = inject(FileSystemStore);
     private readonly config = inject(FILE_MANAGER_CONFIG);
     private readonly destroyRef = inject(DestroyRef);
-    private readonly queue = new ConcurrencyQueue(this.config.uploadConcurrency);
+    private readonly fileUploadQueue = new ConcurrencyQueue(this.config.uploadConcurrency);
+    private readonly directoryPreparationQueue = new ConcurrencyQueue(1);
     private readonly taskControllers = new Map<string, AbortController>();
     private readonly batchControllers = new Map<string, AbortController>();
     private readonly _tasks = signal<UploadTask[]>([]);
@@ -68,75 +69,84 @@ export class UploadService {
                 id: batchId,
                 rootName: rootHandle.name,
                 targetParentId: target.id,
-                status: 'preparing',
+                status: 'queued',
                 directoryCount: 0,
                 createdDirectoryCount: 0,
                 fileCount: 0
             }
         ]);
 
+        let preparationStarted = false;
         try {
-            const manifest = await buildDirectoryManifest(rootHandle, controller.signal);
-            this.assertValidDirectories(manifest.directories);
-            this.updateBatch(batchId, {
-                directoryCount: manifest.directories.length,
-                fileCount: manifest.files.length
-            });
-
-            const remoteFolders = new Map<string, FolderNode>();
-            for (const localDirectory of manifest.directories) {
+            await this.directoryPreparationQueue.enqueue(async () => {
                 this.throwIfCancelled(controller.signal);
-                const parentId = localDirectory.parentRelativePath === null
-                    ? target.id
-                    : remoteFolders.get(localDirectory.parentRelativePath)?.id;
-                if (!parentId) {
-                    throw new FileSystemError(
-                        'not-found',
-                        `Parent folder was not created for ${localDirectory.relativePath}`
-                    );
-                }
-                const created = await this.fileSystem.createFolder(
-                    parentId,
-                    localDirectory.name
-                );
-                remoteFolders.set(localDirectory.relativePath, created);
+                preparationStarted = true;
+                this.updateBatch(batchId, { status: 'preparing' });
+                const manifest = await buildDirectoryManifest(rootHandle, controller.signal);
+                this.assertValidDirectories(manifest.directories);
                 this.updateBatch(batchId, {
-                    rootName:
-                        localDirectory.parentRelativePath === null
-                            ? created.name
-                            : this.batch(batchId)?.rootName ?? rootHandle.name,
-                    createdDirectoryCount:
-                        (this.batch(batchId)?.createdDirectoryCount ?? 0) + 1
+                    directoryCount: manifest.directories.length,
+                    fileCount: manifest.files.length
                 });
-            }
 
-            this.throwIfCancelled(controller.signal);
-            for (const localFile of manifest.files) {
-                const remoteParent = remoteFolders.get(localFile.parentRelativePath);
-                if (!remoteParent) {
-                    throw new FileSystemError(
-                        'not-found',
-                        `Destination folder was not created for ${localFile.relativePath}`
+                const remoteFolders = new Map<string, FolderNode>();
+                for (const localDirectory of manifest.directories) {
+                    this.throwIfCancelled(controller.signal);
+                    const parentId = localDirectory.parentRelativePath === null
+                        ? target.id
+                        : remoteFolders.get(localDirectory.parentRelativePath)?.id;
+                    if (!parentId) {
+                        throw new FileSystemError(
+                            'not-found',
+                            `Parent folder was not created for ${localDirectory.relativePath}`
+                        );
+                    }
+                    const created = await this.fileSystem.createFolder(
+                        parentId,
+                        localDirectory.name
+                    );
+                    remoteFolders.set(localDirectory.relativePath, created);
+                    this.updateBatch(batchId, {
+                        rootName:
+                            localDirectory.parentRelativePath === null
+                                ? created.name
+                                : this.batch(batchId)?.rootName ?? rootHandle.name,
+                        createdDirectoryCount:
+                            (this.batch(batchId)?.createdDirectoryCount ?? 0) + 1
+                    });
+                }
+
+                this.throwIfCancelled(controller.signal);
+                for (const localFile of manifest.files) {
+                    const remoteParent = remoteFolders.get(localFile.parentRelativePath);
+                    if (!remoteParent) {
+                        throw new FileSystemError(
+                            'not-found',
+                            `Destination folder was not created for ${localFile.relativePath}`
+                        );
+                    }
+                    this.addManifestFileTask(
+                        localFile,
+                        remoteParent,
+                        batchId,
+                        manifest.root.name,
+                        remoteFolders.get(manifest.root.relativePath)?.name
+                            ?? manifest.root.name
                     );
                 }
-                this.addManifestFileTask(
-                    localFile,
-                    remoteParent,
-                    batchId,
-                    manifest.root.name,
-                    remoteFolders.get(manifest.root.relativePath)?.name ?? manifest.root.name
-                );
-            }
-            this.updateBatch(batchId, {
-                status: manifest.files.length === 0 ? 'done' : 'uploading'
+                this.updateBatch(batchId, {
+                    status: manifest.files.length === 0 ? 'done' : 'uploading'
+                });
+                this.refreshBatch(batchId);
             });
-            this.refreshBatch(batchId);
         } catch (error) {
             const cancelled = controller.signal.aborted || isCancellation(error);
             this.updateBatch(batchId, {
                 status: cancelled ? 'cancelled' : 'error',
                 error: cancelled
-                    ? 'Folder upload was cancelled. Already-created folders were kept.'
+                    ? preparationStarted
+                        ? 'Folder upload was cancelled. Already-created folders were kept.'
+                        : 'Folder preparation was cancelled.'
                     : uploadErrorMessage(error)
             });
         } finally {
@@ -158,8 +168,16 @@ export class UploadService {
 
     public cancelBatch(id: string): void {
         const batch = this.batch(id);
-        if (!batch || batch.status !== 'preparing') { return; }
+        if (!batch || (batch.status !== 'queued' && batch.status !== 'preparing')) {
+            return;
+        }
         this.batchControllers.get(id)?.abort();
+        if (batch.status === 'queued') {
+            this.updateBatch(id, {
+                status: 'cancelled',
+                error: 'Folder preparation was cancelled.'
+            });
+        }
     }
 
     public retryTask(id: string): void {
@@ -187,6 +205,7 @@ export class UploadService {
         this._batches.update((batches) =>
             batches.filter(
                 (batch) =>
+                    batch.status === 'queued' ||
                     batch.status === 'preparing' ||
                     batch.status === 'uploading' ||
                     remainingBatchIds.has(batch.id)
@@ -251,7 +270,7 @@ export class UploadService {
     }
 
     private scheduleTask(id: string): void {
-        void this.queue.enqueue(async () => {
+        void this.fileUploadQueue.enqueue(async () => {
             const queued = this.task(id);
             if (this.destroyed || !queued || queued.status !== 'queued') { return; }
             const controller = new AbortController();
