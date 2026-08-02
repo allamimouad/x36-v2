@@ -312,6 +312,11 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-08-03 — temporary backend file-link handoff created**: kept the stable
+  file-link contract unchanged and added a concise, disposable communication file at
+  `docs/handoffs/file-links-backend-follow-up.md` for the other laptop/LLM. It contains
+  the agreed three-point reply covering mapper context, initial extension support,
+  and farm-origin versus full-site URL handling.
 - **2026-07-31 — retained upload queue added to existing P0 audit**: documented
   that aborting project A cannot release a single-worker preparation queue when
   the browser directory iterator itself never settles, leaving project B queued
