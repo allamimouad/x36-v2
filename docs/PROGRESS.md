@@ -119,6 +119,15 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
+- **Frontend upload ceiling aligned to streaming backend** (2026-08-05): raised the
+  shared `FILE_MANAGER_CONFIG.maxUploadSizeBytes` default from the temporary 10 MiB
+  Feign ceiling to 250 MiB. `UploadService` still rejects oversized files before an
+  HTTP request and `MockFileSystemApi` enforces the same injected value. The focused
+  boundary spec now overrides the browser `File.size` metadata instead of allocating
+  a 250 MiB test buffer. Angular upload progress continues to measure browser-to-backend
+  transfer only: at 100% the task is `finalizing`, and it becomes `done` only after the
+  backend response confirms SharePoint completion.
+
 - **Single-item delete confirmation is inline** (2026-08-04): replaced the global
   PrimeNG confirmation dialog with two icon-only controls beside the affected name on
   the initiating table/tree surface. Cancel (`close`) receives focus; Confirm (`check`)

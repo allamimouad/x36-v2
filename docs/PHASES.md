@@ -274,7 +274,7 @@ pickers or external OS drag-and-drop, with progress.
   preparation state
 
 **Mock**
-- Implement `MockFileSystemApi.upload` — simulated incremental progress, 10 MiB guard,
+- Implement `MockFileSystemApi.upload` — simulated incremental progress, 250 MiB guard,
   collision detection, `AbortSignal`, and the final persisted `FileNode`
 
 **Services**
@@ -317,7 +317,7 @@ pickers or external OS drag-and-drop, with progress.
   queued
 - [ ] Four-at-a-time file concurrency is enforced
 - [ ] Cancel is best effort; network retry resends the complete file
-- [ ] Collisions fail without overwrite and files above 10 MiB fail before a request
+- [ ] Collisions fail without overwrite and files above 250 MiB fail before a request
 - [ ] Created folders/files appear in tree/table without a page refresh
 - [ ] Folder selection is browser-checked in Edge/Chrome over HTTPS
 - [ ] External file and nested/empty-folder drops are browser-checked in Edge/Chrome

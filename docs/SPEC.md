@@ -233,9 +233,8 @@ All scenarios must work:
 - File collisions fail safely with `overwrite=false`; they are not automatically retried
 - Folder preparation and task state are in-memory only; no upload session, database row,
   chunk protocol, or refresh resume is introduced
-- The initial backend uses one bounded raw-body request for files up to 10 MiB; a
-  single-request streaming transport can remove that temporary limit without changing
-  the frontend endpoint
+- The frontend and streaming backend accept one bounded raw-body request per file up
+  to the configurable 250 MiB limit without changing the endpoint
 
 ---
 
@@ -656,7 +655,7 @@ Name collision on rename/move/copy/upload:
 ```ts
 export interface FileManagerConfig {
   libraryRootName: string;       // display name for root, e.g. "Documents"
-  maxUploadSizeBytes: number;    // default 10 MiB
+  maxUploadSizeBytes: number;    // default 250 MiB
   uploadConcurrency: number;     // default 4
   bulkOpConcurrency: number;     // default 4
 }

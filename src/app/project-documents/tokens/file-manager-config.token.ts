@@ -9,7 +9,7 @@ export interface FileManagerConfig {
 
 export const DEFAULT_FILE_MANAGER_CONFIG: FileManagerConfig = {
     libraryRootName: 'Documents',
-    maxUploadSizeBytes: 10 * 1024 * 1024,
+    maxUploadSizeBytes: 250 * 1024 * 1024,
     uploadConcurrency: 4,
     bulkOpConcurrency: 4
 };

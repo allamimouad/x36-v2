@@ -31,7 +31,7 @@ describe('UploadService', () => {
                     provide: FILE_MANAGER_CONFIG,
                     useValue: {
                         libraryRootName: 'Documents',
-                        maxUploadSizeBytes: 10 * 1024 * 1024,
+                        maxUploadSizeBytes: 250 * 1024 * 1024,
                         uploadConcurrency: 2,
                         bulkOpConcurrency: 4
                     }
@@ -137,10 +137,10 @@ describe('UploadService', () => {
     it('rejects an oversized file without calling the file-system upload operation', () => {
         const api = TestBed.inject(FileSystemApi);
         const upload = spyOn(api, 'upload').and.callThrough();
-        const oversized = new File(
-            [new Uint8Array(10 * 1024 * 1024 + 1)],
-            'oversized.bin'
-        );
+        const oversized = new File(['content'], 'oversized.bin');
+        Object.defineProperty(oversized, 'size', {
+            value: 250 * 1024 * 1024 + 1
+        });
 
         uploads.enqueueFiles([oversized], executionRoot);
 
