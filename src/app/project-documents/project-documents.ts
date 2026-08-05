@@ -13,14 +13,12 @@ import {
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import {
-    ConfirmationService,
     MessageService,
     type MenuItem,
     type ToastMessageOptions,
     type TreeNode
 } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
-import { ConfirmDialog } from 'primeng/confirmdialog';
 import { ContextMenu } from 'primeng/contextmenu';
 import { InputTextModule } from 'primeng/inputtext';
 import { Menu } from 'primeng/menu';
@@ -67,7 +65,6 @@ import type {
 } from './models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
 
-const DELETE_CONFIRMATION_KEY = 'project-documents-delete';
 const DEFAULT_FOLDER_NAME = 'New folder';
 
 interface ProjectDocumentsMenuData {
@@ -75,7 +72,12 @@ interface ProjectDocumentsMenuData {
     testId: string;
 }
 
-type InlineRenameSurface = 'tree' | 'table';
+type NodeSurface = 'tree' | 'table';
+
+interface PendingDelete {
+    node: FileSystemNode;
+    surface: NodeSurface;
+}
 
 @Component({
     selector: 'pr-project-documents',
@@ -90,7 +92,6 @@ type InlineRenameSurface = 'tree' | 'table';
         ContextMenuItem,
         UploadPanel,
         ButtonModule,
-        ConfirmDialog,
         ContextMenu,
         InputTextModule,
         Menu,
@@ -106,7 +107,6 @@ type InlineRenameSurface = 'tree' | 'table';
         ExternalDropService,
         FileLaunchService,
         MessageService,
-        ConfirmationService,
         NotificationService,
         UploadService,
         { provide: FileSystemApi, useClass: MockFileSystemApi }
@@ -124,19 +124,28 @@ export class ProjectDocuments {
     protected readonly externalDrops = inject(ExternalDropService);
     protected readonly fileLauncher = inject(FileLaunchService);
     protected readonly notifications = inject(NotificationService);
-    protected readonly confirmation = inject(ConfirmationService);
     protected readonly uploads = inject(UploadService);
     protected readonly config = inject(FILE_MANAGER_CONFIG);
     protected readonly notificationKey = PROJECT_DOCUMENTS_TOAST_KEY;
-    protected readonly deleteConfirmationKey = DELETE_CONFIRMATION_KEY;
     protected readonly contextMenu = viewChild<ContextMenu>('contextMenu');
     protected readonly uploadMenu = viewChild<Menu>('uploadMenu');
     protected readonly fileInput = viewChild<ElementRef<HTMLInputElement>>('fileInput');
 
     protected readonly writingIds = signal<ReadonlySet<string>>(new Set<string>());
     protected readonly inlineRenameError = signal<string | null>(null);
-    protected readonly inlineRenameSurface = signal<InlineRenameSurface | null>(null);
-    protected readonly focusedSurface = signal<InlineRenameSurface>('table');
+    protected readonly inlineRenameSurface = signal<NodeSurface | null>(null);
+    protected readonly focusedSurface = signal<NodeSurface>('table');
+    protected readonly pendingDelete = signal<PendingDelete | null>(null);
+    protected readonly treeDeleteConfirmationId = computed(() => {
+        const pending = this.pendingDelete();
+
+        return pending?.surface === 'tree' ? pending.node.id : null;
+    });
+    protected readonly tableDeleteConfirmationId = computed(() => {
+        const pending = this.pendingDelete();
+
+        return pending?.surface === 'table' ? pending.node.id : null;
+    });
     protected readonly creatingFolder = signal(false);
     protected readonly pasting = signal(false);
     protected readonly toolbarUploadItems = signal<MenuItem[]>([]);
@@ -345,6 +354,24 @@ export class ProjectDocuments {
         }
     }
 
+    @HostListener('document:keydown.escape', ['$event'])
+    protected onEscape(event: Event): void {
+        if (!this.pendingDelete()) { return; }
+        event.preventDefault();
+        event.stopPropagation();
+        this.cancelDeleteConfirmation();
+    }
+
+    @HostListener('document:pointerdown', ['$event'])
+    protected onDocumentPointerDown(event: PointerEvent): void {
+        if (!this.pendingDelete()) { return; }
+        const target = event.target;
+        if (target instanceof Element && target.closest('[data-pd-delete-confirmation]')) {
+            return;
+        }
+        this.cancelDeleteConfirmation();
+    }
+
     protected onItemFocused(id: string): void {
         this.inlineRenameError.set(null);
         this.focusedSurface.set('table');
@@ -537,20 +564,23 @@ export class ProjectDocuments {
         this.navigation.endRename();
     }
 
-    protected requestDelete(node: FileSystemNode): void {
+    protected requestDelete(node: FileSystemNode, surface: NodeSurface): void {
         if (node.parentId === null || this.isWriting(node.id)) { return; }
-        const kind = isFolder(node) ? 'folder' : 'file';
-        this.confirmation.confirm({
-            key: DELETE_CONFIRMATION_KEY,
-            header: `Delete ${kind}`,
-            message: `Delete “${node.name}”? This action cannot be undone.`,
-            acceptLabel: 'Delete',
-            rejectLabel: 'Cancel',
-            defaultFocus: 'reject',
-            acceptButtonProps: { severity: 'danger' },
-            rejectButtonProps: { severity: 'secondary', outlined: true },
-            accept: () => void this.deleteNode(node)
-        });
+        this.cancelInlineRename();
+        this.focusedSurface.set(surface);
+        this.navigation.focus(node.id);
+        this.pendingDelete.set({ node, surface });
+    }
+
+    protected confirmDelete(node: FileSystemNode): void {
+        const pending = this.pendingDelete();
+        if (!pending || pending.node.id !== node.id) { return; }
+        this.pendingDelete.set(null);
+        void this.deleteNode(pending.node);
+    }
+
+    protected cancelDeleteConfirmation(): void {
+        this.pendingDelete.set(null);
     }
 
     protected async deleteNode(node: FileSystemNode): Promise<void> {
@@ -617,6 +647,7 @@ export class ProjectDocuments {
     }
 
     protected onTreeNodeSelected(id: string): void {
+        this.cancelDeleteConfirmation();
         this.focusedSurface.set('tree');
         this.closePathEditor();
         this.navigation.navigateTo(id);
@@ -632,6 +663,7 @@ export class ProjectDocuments {
 
     protected onItemDoubleClicked(node: FileSystemNode): void {
         if (!isFolder(node)) { return; }
+        this.cancelDeleteConfirmation();
         const ctx = this.navigation.currentBreadcrumb();
         const currentId = this.navigation.currentFolderId();
         // In a resolved (typed-path) context, navigating into a direct child stays
@@ -650,6 +682,7 @@ export class ProjectDocuments {
     }
 
     protected async onSegmentClicked(seg: PathSegment): Promise<void> {
+        this.cancelDeleteConfirmation();
         if (seg.id) {
             this.closePathEditor();
             this.navigation.navigateTo(seg.id);
@@ -671,6 +704,7 @@ export class ProjectDocuments {
 
     /** Address-bar submit: validate the list key, resolve the path, open the target. */
     protected async onPathSubmitted(raw: string): Promise<void> {
+        this.cancelDeleteConfirmation();
         const segments = raw
             .trim()
             .replace(/^\/+|\/+$/g, '')
@@ -703,6 +737,7 @@ export class ProjectDocuments {
 
     /** Up: re-resolve the parent path for typed-path folders; otherwise normal up. */
     protected async onUp(): Promise<void> {
+        this.cancelDeleteConfirmation();
         const ctx = this.navigation.currentBreadcrumb();
         if (ctx) {
             if (ctx.path === '') {
@@ -728,16 +763,19 @@ export class ProjectDocuments {
     }
 
     protected onBack(): void {
+        this.cancelDeleteConfirmation();
         this.closePathEditor();
         this.navigation.back();
     }
 
     protected onForward(): void {
+        this.cancelDeleteConfirmation();
         this.closePathEditor();
         this.navigation.forward();
     }
 
     protected onEditRequested(): void {
+        this.cancelDeleteConfirmation();
         this.pathError.set(null);
         this.pathEditing.set(true);
     }
@@ -752,6 +790,7 @@ export class ProjectDocuments {
     }
 
     protected onRefresh(): void {
+        this.cancelDeleteConfirmation();
         if (this.fileSystem.isInitializing()) { return; }
         // No valid current folder (failed or empty initialization): retry the whole
         // project connection. rxMethod accepts an imperative value, so this re-runs
@@ -783,7 +822,7 @@ export class ProjectDocuments {
 
     private folderContextMenu(
         folder: FolderNode,
-        source: InlineRenameSurface
+        source: NodeSurface
     ): MenuItem[] {
         const locked = this.isWriting(folder.id);
         const root = folder.parentId === null;
@@ -803,7 +842,7 @@ export class ProjectDocuments {
                 void this.pasteInto(folder);
             }, locked || !this.canPaste(folder)),
             this.menuItem('Delete Folder', 'delete', 'pd-menu-delete-folder', () => {
-                this.requestDelete(folder);
+                this.requestDelete(folder, source);
             }, root || locked),
             { separator: true },
             this.menuItem(
@@ -853,7 +892,7 @@ export class ProjectDocuments {
                 this.copyToClipboard(file);
             }, locked),
             this.menuItem('Delete File', 'delete', 'pd-menu-delete-file', () => {
-                this.requestDelete(file);
+                this.requestDelete(file, 'table');
             }, locked),
             { separator: true },
             this.menuItem('Download File', 'download', 'pd-menu-download-file', () => {
@@ -998,9 +1037,10 @@ export class ProjectDocuments {
 
     private startInlineRename(
         node: FileSystemNode,
-        surface: InlineRenameSurface
+        surface: NodeSurface
     ): void {
         if (node.parentId === null || this.isWriting(node.id)) { return; }
+        this.cancelDeleteConfirmation();
         this.inlineRenameError.set(null);
         this.inlineRenameSurface.set(surface);
         this.focusedSurface.set(surface);
@@ -1065,6 +1105,7 @@ export class ProjectDocuments {
 
     /** Runs after every completed initialization (first load, project switch, retry). */
     private onProjectInitialized(roots: DocumentListRoots): void {
+        this.cancelDeleteConfirmation();
         this.notifications.clear();
         this.clipboard.clear();
         this.closePathEditor();

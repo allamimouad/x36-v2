@@ -57,6 +57,7 @@ export class FileTable {
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);
     public readonly writingIds = input<ReadonlySet<string>>(new Set<string>());
+    public readonly deleteConfirmationId = input<string | null>(null);
     public readonly externalDropTargetId = input<string | null>(null);
     public readonly externalDragActive = input<boolean>(false);
     public readonly currentFolderName = input<string>('');
@@ -68,6 +69,8 @@ export class FileTable {
     public readonly renameSubmitted = output<ItemRenameRequest>();
     public readonly renameCancelled = output();
     public readonly renameEdited = output();
+    public readonly deleteConfirmed = output<FileSystemNode>();
+    public readonly deleteCancelled = output();
     public readonly externalFolderDragOver = output<ExternalFolderDropRequest>();
     public readonly externalFolderDropped = output<ExternalFolderDropRequest>();
     public readonly currentFolderDragOver = output<DragEvent>();
@@ -116,6 +119,8 @@ export class FileTable {
     protected readonly tooltipSuppressedCellId = signal<string | null>(null);
     protected readonly inlineRenameValue = signal('');
     private readonly inlineRenameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput');
+    private readonly deleteCancelButton =
+        viewChild<ElementRef<HTMLButtonElement>>('deleteCancelButton');
 
     constructor() {
         effect(() => {
@@ -128,6 +133,10 @@ export class FileTable {
                 inputElement.select();
             }
         });
+        effect(() => {
+            if (!this.deleteConfirmationId()) { return; }
+            this.deleteCancelButton()?.nativeElement.focus();
+        });
     }
 
     protected onRowDblClick(row: RowVm): void {
@@ -139,7 +148,9 @@ export class FileTable {
     }
 
     protected onRowKeydown(event: KeyboardEvent, row: RowVm): void {
-        if (event.target instanceof HTMLInputElement) { return; }
+        if (event.target instanceof HTMLElement && event.target.closest('input, button')) {
+            return;
+        }
         if (event.key !== 'Enter' && event.key !== ' ') { return; }
         event.preventDefault();
         this.onRowClick(row);
@@ -178,6 +189,20 @@ export class FileTable {
 
     protected onInlineRenameBlur(row: RowVm): void {
         this.submitInlineRename(row);
+    }
+
+    protected confirmDelete(event: Event, node: FileSystemNode): void {
+        event.stopPropagation();
+        this.deleteConfirmed.emit(node);
+    }
+
+    protected cancelDelete(event: Event): void {
+        event.stopPropagation();
+        this.deleteCancelled.emit();
+    }
+
+    protected onDeleteButtonKeydown(event: KeyboardEvent): void {
+        if (event.key !== 'Escape') { event.stopPropagation(); }
     }
 
     protected onCellMouseEnter(event: MouseEvent, cellId: string): void {

@@ -49,6 +49,7 @@
 - [x] `services/notification.service.ts` (typed error mapping, scoped `p-toast`, Retry action, partial-root + read-error routing)
 - [x] Dialog component: conflict-resolution shell
 - [x] Context menu and inline rename wiring
+- [x] Inline single-item delete confirmation on the initiating table/tree surface
 - [x] Online/local file launch and direct SharePoint download frontend wiring
 
 ---
@@ -98,8 +99,8 @@ _What should the next session work on?_
 
 1. Browser-check Folder / File selection, the upload panel, cancellation, and a local
    tree containing nested empty folders in Edge/Chrome.
-2. Browser-check the three context-menu variants, hover submenus, dialog sizing, and
-   forced write errors.
+2. Browser-check the three context-menu variants, hover submenus, inline delete
+   confirmation, and forced write errors.
 3. Run the Phase 2 acceptance checks for create, F2/inline rename, delete confirmation,
    and tree/table synchronization.
 4. Run Karma locally with Chrome/Edge installed (the agent environment can build the
@@ -118,6 +119,14 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
+- **Single-item delete confirmation is inline** (2026-08-04): replaced the global
+  PrimeNG confirmation dialog with two icon-only controls beside the affected name on
+  the initiating table/tree surface. Cancel (`close`) receives focus; Confirm (`check`)
+  retains danger styling. Escape, outside pointer interaction, navigation, refresh,
+  project switching, rename, or another action dismisses the transient state. Confirm
+  clears the controls and reuses the existing pessimistic delete/write-spinner/cache-
+  pruning/toast flow. `FileTable` and `FolderTree` remain dumb through signal inputs and
+  outputs; focused component specs cover surface isolation, focus, and event behavior.
 - **External OS drag-and-drop reuses UploadService** (2026-07-31): desktop files and
   folders can be dropped onto a visible right-pane folder, a tree folder, or the
   flexible unused space below the right-pane rows. That current-folder zone grows to
@@ -204,8 +213,8 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
   cannot execute because the environment has no Chrome binary.
 - **ProjectDocuments height is component-owned CSS** (2026-07-29): removed the public
   `height` input and its host style binding. The whole component now has a fixed
-  `height: 80vh` in `project-documents.scss`, keeping the existing rendered size while
-  making every embedding consistent.
+  `height: 85vh` in `project-documents.scss` (increased from `80vh` on 2026-08-04),
+  keeping every embedding consistent.
 - **Complete folder-tree upload uses browser enumeration plus existing operations** (2026-07-29; multi-root scheduling updated 2026-07-31): toolbar and context menus now expose Folder / File, matching the screenshot-defined action order. Multi-file selection uses the native file input; folder selection intentionally targets secure-context Edge/Chrome `showDirectoryPicker()` so the browser exposes directory handles as well as file handles. `directory-manifest.ts` records every directory—including empty descendants—without loading complete file bytes into application memory. `UploadService` registers every selected/dropped top-level folder immediately, then a single-worker queue traverses and creates one folder tree at a time; queued and preparing batches are distinguished in the panel. It creates the backend-uniquified selected root and each descendant sequentially, parent-first, through the existing `FileSystemStore.createFolder`; only after a tree exists does it queue one existing `FileSystemApi.upload` call per file. File requests independently share a four-slot `ConcurrencyQueue`, capture their destination when the picker opens, report uploading/finalizing/completed states, abort best-effort, and retry only cancelled or typed network failures from byte zero. Collisions fail with `overwrite=false`; files above the agreed 10 MiB Feign limit fail before a request. The component-scoped queue/batch state is not persisted and introduces no backend directory-upload endpoint, ZIP, database, session, chunk protocol, or cleanup scheduler. The mock and store apply canonical returned nodes immediately; the new dumb upload panel shows folder preparation and one relative-path row per file. App/spec TypeScript, focused lint, the development build, and `git diff --check` pass. Karma builds all specs and starts when escalated but cannot launch because this environment has no Chrome/Chromium/Edge binary.
 - **File and folder rename now share the inline editor** (2026-07-29): Rename File from the table context menu and F2 on a focused file now enter the same table-row editor already used by folders. Both kinds use the existing pessimistic rename handler, inline validation/collision feedback, Enter/blur submit, Escape cancel, write spinner, success notification, and network Retry. The file-only modal, its component/template, container state, and duplicate submit handler were deleted because no flow uses them. App/spec TypeScript compilation, the development build, focused lint of `project-documents.ts`, and `git diff --check` pass. Full lint reaches only a pre-existing line-length error in the user's uncommitted `mock-seed.ts` stress fixture plus the two known path-bar warnings.
 - **Initial upload implementation remains on the existing Feign client** (2026-07-29;
@@ -312,6 +321,14 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-08-04 — inline delete confirmation**: removed `p-confirmDialog` and its
+  component-scoped service, added initiating-surface-only Cancel/Confirm icon controls
+  to table rows and tree nodes, outside/Escape/navigation dismissal, Cancel autofocus,
+  accessibility labels, and focused component specs. App/spec TypeScript, focused
+  lint, development build, diff-check, and the full Karma bundle compile pass. Full
+  lint retains only the user's existing long mock-seed fixture error plus the two known
+  path-bar warnings; Karma execution remains blocked by sandbox port binding. A visual
+  follow-up increased the component-owned height from `80vh` to `85vh`.
 - **2026-08-03 — temporary backend file-link handoff created**: kept the stable
   file-link contract unchanged and added a concise, disposable communication file at
   `docs/handoffs/file-links-backend-follow-up.md` for the other laptop/LLM. It contains

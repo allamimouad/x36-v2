@@ -109,10 +109,54 @@
 }
 
 .pd-name-text {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pd-inline-delete-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: auto;
+}
+
+.pd-inline-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pd-text-muted);
+  font: inherit;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--pd-border);
+    background: var(--pd-hover-bg);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--pd-accent);
+    outline-offset: 1px;
+  }
+
+  .material-symbols-outlined {
+    font-size: 1.1rem;
+    line-height: 1;
+    user-select: none;
+  }
+}
+
+.pd-inline-delete-confirm {
+  color: var(--pd-danger);
 }
 
 .pd-name pr-file-system-icon {

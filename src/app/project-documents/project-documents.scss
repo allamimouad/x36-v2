@@ -5,7 +5,7 @@
   @include theme.color-tokens;
 
   display: block;
-  height: 80vh;
+  height: 85vh;
   // Typeface for the whole feature: declared on the host (not the page body) so the
   // component brings its own typography wherever it is embedded; children inherit.
   font-family:

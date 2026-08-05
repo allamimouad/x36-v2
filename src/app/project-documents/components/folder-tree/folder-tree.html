@@ -44,6 +44,37 @@
       } @else {
         <span class="pd-tree-label">{{ node.label }}</span>
       }
+      @if (deleteConfirmationId() === node.key) {
+        <span class="pd-inline-delete-actions" data-pd-delete-confirmation>
+          <button
+            #deleteCancelButton
+            type="button"
+            class="pd-inline-delete-button pd-inline-delete-cancel"
+            title="Cancel delete"
+            [attr.aria-label]="'Cancel deleting ' + node.label"
+            [attr.data-testid]="'pd-delete-cancel-' + node.key"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="cancelDelete($event)"
+            (dblclick)="$event.stopPropagation()"
+            (keydown)="onDeleteButtonKeydown($event)"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+          <button
+            type="button"
+            class="pd-inline-delete-button pd-inline-delete-confirm"
+            title="Confirm delete"
+            [attr.aria-label]="'Confirm deleting ' + node.label"
+            [attr.data-testid]="'pd-delete-confirm-' + node.key"
+            (pointerdown)="$event.stopPropagation()"
+            (click)="confirmDelete($event, node)"
+            (dblclick)="$event.stopPropagation()"
+            (keydown)="onDeleteButtonKeydown($event)"
+          >
+            <span class="material-symbols-outlined" aria-hidden="true">check</span>
+          </button>
+        </span>
+      }
       @if (writingIds().has(node.key)) {
         <span class="material-symbols-outlined pd-write-spinner" aria-hidden="true">progress_activity</span>
       }

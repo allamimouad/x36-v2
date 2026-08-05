@@ -165,6 +165,7 @@
               "
               [renamingId]="inlineRenameSurface() === 'tree' ? navigation.renamingId() : null"
               [renameError]="inlineRenameError()"
+              [deleteConfirmationId]="treeDeleteConfirmationId()"
               (nodeSelected)="onTreeNodeSelected($event)"
               (nodeExpanded)="onTreeNodeExpanded($event)"
               (nodeCollapsed)="onTreeNodeCollapsed($event)"
@@ -172,6 +173,8 @@
               (renameSubmitted)="onInlineRenameRequested($event)"
               (renameCancelled)="cancelInlineRename()"
               (renameEdited)="inlineRenameError.set(null)"
+              (deleteConfirmed)="confirmDelete($event)"
+              (deleteCancelled)="cancelDeleteConfirmation()"
               (externalFolderDragOver)="onExternalFolderDragOver($event, 'tree')"
               (externalFolderDropped)="onExternalFolderDrop($event)"
             />
@@ -238,6 +241,7 @@
             [renamingId]="inlineRenameSurface() === 'table' ? navigation.renamingId() : null"
             [renameError]="inlineRenameError()"
             [writingIds]="writingIds()"
+            [deleteConfirmationId]="tableDeleteConfirmationId()"
             [externalDropTargetId]="
               externalDropSurface() === 'table' ? externalDropTargetId() : null
             "
@@ -250,6 +254,8 @@
             (renameSubmitted)="onInlineRenameRequested($event)"
             (renameCancelled)="cancelInlineRename()"
             (renameEdited)="inlineRenameError.set(null)"
+            (deleteConfirmed)="confirmDelete($event)"
+            (deleteCancelled)="cancelDeleteConfirmation()"
             (externalFolderDragOver)="onExternalFolderDragOver($event, 'table')"
             (externalFolderDropped)="onExternalFolderDrop($event)"
             (currentFolderDragOver)="onExternalCurrentFolderDragOver($event)"
@@ -283,9 +289,4 @@
     />
   }
 
-  <p-confirmDialog
-    [key]="deleteConfirmationKey"
-    appendTo="body"
-    styleClass="pd-delete-dialog"
-  />
 </div>

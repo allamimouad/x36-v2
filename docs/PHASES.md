@@ -139,13 +139,15 @@
 **Container**
 - Wires context menu actions to store methods
 - Starts inline rename for files and folders, including after the backend confirms
-  folder creation; opens the delete confirmation and handles results
+  folder creation; shows single-item delete confirmation inline on the initiating
+  table/tree surface and handles results
 - Shows `p-toast` and `p-confirmDialog` at top level
 
 ### Acceptance checks
 - [ ] Create via button or context menu persists a unique default name, then opens inline rename
 - [ ] Folder rename stays inline in the table/tree; file rename works through F2 or its dialog
-- [ ] Delete via context menu shows confirmation, deletes on confirm
+- [ ] Delete via context menu shows inline Cancel/Confirm icon buttons on the initiating
+  surface and deletes only on confirm
 - [ ] Pessimistic writes show an in-flight affordance and update the cache only after the API confirms success
 - [ ] Error messages are user-friendly (no raw error codes)
 - [ ] Tree and table stay in sync — rename a folder in the tree, the table reflects it (if visible)

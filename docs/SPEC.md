@@ -97,7 +97,8 @@ The `src/app/project-documents/` folder will be copied verbatim to another machi
 
 - Create folder server-first with the default name `New folder`, then immediately enter inline rename
 - Rename folders inline from the table/tree; rename files inline on F2 or via a context-menu dialog
-- Delete folder or file (confirmation; bulk-aware)
+- Delete folder or file (single-item confirmation is inline on the initiating table/tree
+  surface; bulk confirmation remains bulk-aware)
 - Move / copy (drag-and-drop, or cut/copy/paste)
 - Upload files or a complete local folder tree through the Upload menu or an external
   OS drag

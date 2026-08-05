@@ -38,6 +38,7 @@ export class FolderTree {
     public readonly externalDropTargetId = input<string | null>(null);
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);
+    public readonly deleteConfirmationId = input<string | null>(null);
 
     public readonly nodeSelected = output<string>();
     public readonly nodeExpanded = output<string>();
@@ -46,6 +47,8 @@ export class FolderTree {
     public readonly renameSubmitted = output<ItemRenameRequest>();
     public readonly renameCancelled = output();
     public readonly renameEdited = output();
+    public readonly deleteConfirmed = output<FolderNode>();
+    public readonly deleteCancelled = output();
     public readonly externalFolderDragOver = output<ExternalFolderDropRequest>();
     public readonly externalFolderDropped = output<ExternalFolderDropRequest>();
 
@@ -61,6 +64,8 @@ export class FolderTree {
     );
     protected readonly inlineRenameValue = signal('');
     private readonly inlineRenameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput');
+    private readonly deleteCancelButton =
+        viewChild<ElementRef<HTMLButtonElement>>('deleteCancelButton');
 
     constructor() {
         effect(() => {
@@ -72,6 +77,10 @@ export class FolderTree {
                 inputElement.focus();
                 inputElement.select();
             }
+        });
+        effect(() => {
+            if (!this.deleteConfirmationId()) { return; }
+            this.deleteCancelButton()?.nativeElement.focus();
         });
     }
 
@@ -121,6 +130,20 @@ export class FolderTree {
 
     protected onInlineRenameBlur(node: TreeNode<FolderNode>): void {
         this.submitInlineRename(node);
+    }
+
+    protected confirmDelete(event: Event, node: TreeNode<FolderNode>): void {
+        event.stopPropagation();
+        if (node.data) { this.deleteConfirmed.emit(node.data); }
+    }
+
+    protected cancelDelete(event: Event): void {
+        event.stopPropagation();
+        this.deleteCancelled.emit();
+    }
+
+    protected onDeleteButtonKeydown(event: KeyboardEvent): void {
+        if (event.key !== 'Escape') { event.stopPropagation(); }
     }
 
     protected onExternalFolderDragOver(

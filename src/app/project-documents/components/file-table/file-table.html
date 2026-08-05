@@ -81,6 +81,37 @@
                     (mouseenter)="onCellMouseEnter($event, row.id + ':name')"
                     >{{ row.name }}</span
                   >
+                  @if (deleteConfirmationId() === row.id) {
+                    <span class="pd-inline-delete-actions" data-pd-delete-confirmation>
+                      <button
+                        #deleteCancelButton
+                        type="button"
+                        class="pd-inline-delete-button pd-inline-delete-cancel"
+                        title="Cancel delete"
+                        [attr.aria-label]="'Cancel deleting ' + row.node.name"
+                        [attr.data-testid]="'pd-delete-cancel-' + row.id"
+                        (pointerdown)="$event.stopPropagation()"
+                        (click)="cancelDelete($event)"
+                        (dblclick)="$event.stopPropagation()"
+                        (keydown)="onDeleteButtonKeydown($event)"
+                      >
+                        <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="pd-inline-delete-button pd-inline-delete-confirm"
+                        title="Confirm delete"
+                        [attr.aria-label]="'Confirm deleting ' + row.node.name"
+                        [attr.data-testid]="'pd-delete-confirm-' + row.id"
+                        (pointerdown)="$event.stopPropagation()"
+                        (click)="confirmDelete($event, row.node)"
+                        (dblclick)="$event.stopPropagation()"
+                        (keydown)="onDeleteButtonKeydown($event)"
+                      >
+                        <span class="material-symbols-outlined" aria-hidden="true">check</span>
+                      </button>
+                    </span>
+                  }
                   @if (writingIds().has(row.id)) {
                     <span class="material-symbols-outlined pd-write-spinner" aria-hidden="true">progress_activity</span>
                   }
