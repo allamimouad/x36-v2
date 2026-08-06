@@ -41,10 +41,10 @@ describe('UploadService', () => {
         fileSystem = TestBed.inject(FileSystemStore);
         uploads = TestBed.inject(UploadService);
         const roots = await fileSystem.initialize('project-123');
-        if (roots.execution.status !== 'loaded') {
+        if (roots.EXECUTION.status !== 'loaded') {
             throw new Error('Expected execution root');
         }
-        executionRoot = roots.execution.root;
+        executionRoot = roots.EXECUTION.root;
     });
 
     it('creates the complete directory tree before uploading its files', async () => {

@@ -40,16 +40,16 @@ describe('FileSystemStore project-scoped API contract', () => {
         const listDocumentRoot = spyOn(api, 'listDocumentRoot').and.callThrough();
 
         const roots = await store.initialize('project-123');
-        const executionRoot = requireRoot(roots.execution, 'execution');
-        const marketingRoot = requireRoot(roots.marketing, 'marketing');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
+        const marketingRoot = requireRoot(roots.MARKETING, 'marketing');
 
         expect(listDocumentRoot).toHaveBeenCalledTimes(2);
-        expect(listDocumentRoot).toHaveBeenCalledWith('project-123', 'execution');
-        expect(listDocumentRoot).toHaveBeenCalledWith('project-123', 'marketing');
+        expect(listDocumentRoot).toHaveBeenCalledWith('project-123', 'EXECUTION');
+        expect(listDocumentRoot).toHaveBeenCalledWith('project-123', 'MARKETING');
         expect(store.projectId()).toBe('project-123');
         expect(store.initializedRoots()).toBe(roots);
-        expect(executionRoot.listKey).toBe('execution');
-        expect(marketingRoot.listKey).toBe('marketing');
+        expect(executionRoot.listKey).toBe('EXECUTION');
+        expect(marketingRoot.listKey).toBe('MARKETING');
         expect(store.folderIdsWithLoadedChildren()).toContain(executionRoot.id);
         expect(store.folderIdsWithLoadedChildren()).toContain(marketingRoot.id);
         expect(
@@ -58,7 +58,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(
             store.entities()
                 .filter((node) => node.parentId === executionRoot.id)
-                .every((node) => node.listKey === 'execution')
+                .every((node) => node.listKey === 'EXECUTION')
         ).toBeTrue();
     });
 
@@ -75,7 +75,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         const roots = await waitForInitializedRoots(store);
 
         expect(store.projectId()).toBe('project-123');
-        expect(roots.marketing.status).toBe('loaded');
+        expect(roots.MARKETING.status).toBe('loaded');
         expect(store.isInitializing()).toBeFalse();
 
         // Give the cancelled slow-project load time to have completed had it survived:
@@ -88,15 +88,15 @@ describe('FileSystemStore project-scoped API contract', () => {
     it('initializes the available root when the other document list is not found', async () => {
         const originalListDocumentRoot = api.listDocumentRoot.bind(api);
         spyOn(api, 'listDocumentRoot').and.callFake((projectId, listKey) =>
-            listKey === 'execution'
+            listKey === 'EXECUTION'
                 ? throwError(() => new FileSystemError('not-found', 'Execution list not found'))
                 : originalListDocumentRoot(projectId, listKey)
         );
 
         const roots = await store.initialize('project-123');
 
-        expect(roots.execution.status).toBe('not-found');
-        const marketingRoot = requireRoot(roots.marketing, 'marketing');
+        expect(roots.EXECUTION.status).toBe('not-found');
+        const marketingRoot = requireRoot(roots.MARKETING, 'marketing');
         expect(store.projectId()).toBe('project-123');
         expect(store.folderIdsWithLoadedChildren()).toEqual([marketingRoot.id]);
         expect(store.entities()).toContain(marketingRoot);
@@ -108,17 +108,17 @@ describe('FileSystemStore project-scoped API contract', () => {
         async () => {
             const originalListDocumentRoot = api.listDocumentRoot.bind(api);
             spyOn(api, 'listDocumentRoot').and.callFake((projectId, listKey) =>
-                listKey === 'execution'
+                listKey === 'EXECUTION'
                     ? throwError(() => new FileSystemError('network', 'Network unavailable'))
                     : originalListDocumentRoot(projectId, listKey)
             );
 
             const roots = await store.initialize('project-123');
 
-            expect(roots.execution.status).toBe('error');
-            if (roots.execution.status !== 'error') { throw new Error('Expected execution error'); }
-            expect(roots.execution.error.code).toBe('network');
-            const marketingRoot = requireRoot(roots.marketing, 'marketing');
+            expect(roots.EXECUTION.status).toBe('error');
+            if (roots.EXECUTION.status !== 'error') { throw new Error('Expected execution error'); }
+            expect(roots.EXECUTION.error.code).toBe('network');
+            const marketingRoot = requireRoot(roots.MARKETING, 'marketing');
             expect(store.projectId()).toBe('project-123');
             expect(store.folderIdsWithLoadedChildren()).toEqual([marketingRoot.id]);
             expect(store.entities()).toContain(marketingRoot);
@@ -135,8 +135,8 @@ describe('FileSystemStore project-scoped API contract', () => {
 
             const roots = await store.initialize('project-123');
 
-            expect(roots.execution.status).toBe('not-found');
-            expect(roots.marketing.status).toBe('not-found');
+            expect(roots.EXECUTION.status).toBe('not-found');
+            expect(roots.MARKETING.status).toBe('not-found');
             expect(store.projectId()).toBe('project-123');
             expect(store.initializedRoots()).toBe(roots);
             expect(store.folderIdsWithLoadedChildren()).toEqual([]);
@@ -178,7 +178,7 @@ describe('FileSystemStore project-scoped API contract', () => {
 
     it('keeps a typed transient error while retaining an already-loaded listing', async () => {
         const roots = await store.initialize('project-123');
-        const executionRoot = requireRoot(roots.execution, 'execution');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
         spyOn(api, 'listDocuments').and.returnValue(
             throwError(() => new FileSystemError('network', 'Technical transport details'))
         );
@@ -192,7 +192,7 @@ describe('FileSystemStore project-scoped API contract', () => {
 
     it('passes the initialized project id to mutation operations', async () => {
         const roots = await store.initialize('project-123');
-        const executionRoot = requireRoot(roots.execution, 'execution');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
         const createFolder = spyOn(api, 'createFolder').and.callThrough();
 
         await store.createFolder(executionRoot.id, 'New folder');
@@ -206,21 +206,21 @@ describe('FileSystemStore project-scoped API contract', () => {
 
     it('keeps the canonical unique folder name returned by the backend', async () => {
         const roots = await store.initialize('project-123');
-        const executionRoot = requireRoot(roots.execution, 'execution');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
 
         const first = await store.createFolder(executionRoot.id, 'New folder');
         const second = await store.createFolder(executionRoot.id, 'New folder');
         const third = await store.createFolder(executionRoot.id, 'New folder');
 
         expect(first.name).toBe('New folder');
-        expect(first.listKey).toBe('execution');
+        expect(first.listKey).toBe('EXECUTION');
         expect(second.name).toBe('New folder (1)');
         expect(third.name).toBe('New folder (2)');
         expect(store.entityMap()[second.id]?.name).toBe('New folder (1)');
     });
 
     it('leaves the store unchanged when a write fails', async () => {
-        const { execution: root } = await store.initialize('project-123');
+        const { EXECUTION: root } = await store.initialize('project-123');
         const executionRoot = requireRoot(root, 'execution');
         const countBefore = store.entities().length;
         const itemCountBefore = (store.entityMap()[executionRoot.id] as FolderNode).itemCount;
@@ -279,7 +279,7 @@ describe('FileSystemStore project-scoped API contract', () => {
 
     it('passes the selected node list context to delete', async () => {
         const roots = await store.initialize('project-123');
-        const executionRoot = requireRoot(roots.execution, 'execution');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
         const source = store.entities().find(
             (node) => isFolder(node) && node.parentId === executionRoot.id
         );
@@ -288,12 +288,12 @@ describe('FileSystemStore project-scoped API contract', () => {
 
         await store.delete(source.id);
 
-        expect(source.listKey).toBe('execution');
+        expect(source.listKey).toBe('EXECUTION');
         expect(deleteNode).toHaveBeenCalledOnceWith('project-123', source);
     });
 
     it('move replaces the cached subtree with the returned node and removed ids', async () => {
-        const { execution: root } = await store.initialize('project-123');
+        const { EXECUTION: root } = await store.initialize('project-123');
         const executionRoot = requireRoot(root, 'execution');
         const tops = store
             .entities()
@@ -326,8 +326,8 @@ describe('FileSystemStore project-scoped API contract', () => {
 
     it('uses the destination list context when moving across document lists', async () => {
         const roots = await store.initialize('project-123');
-        const executionRoot = requireRoot(roots.execution, 'execution');
-        const marketingRoot = requireRoot(roots.marketing, 'marketing');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
+        const marketingRoot = requireRoot(roots.MARKETING, 'marketing');
         const source = store.entities().find(
             (node) => isFolder(node) && node.parentId === executionRoot.id
         );
@@ -337,13 +337,13 @@ describe('FileSystemStore project-scoped API contract', () => {
 
         const moved = store.entityMap()[source.id];
         expect(moved?.parentId).toBe(marketingRoot.id);
-        expect(moved?.listKey).toBe('marketing');
+        expect(moved?.listKey).toBe('MARKETING');
     });
 
     it('copies across document lists using the destination context', async () => {
         const roots = await store.initialize('project-123');
-        const executionRoot = requireRoot(roots.execution, 'execution');
-        const marketingRoot = requireRoot(roots.marketing, 'marketing');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
+        const marketingRoot = requireRoot(roots.MARKETING, 'marketing');
         const source = store.entities().find(
             (node) => isFolder(node) && node.parentId === executionRoot.id
         );
@@ -358,12 +358,12 @@ describe('FileSystemStore project-scoped API contract', () => {
                 node.parentId === marketingRoot.id &&
                 node.name === source.name
         );
-        expect(copied?.listKey).toBe('marketing');
+        expect(copied?.listKey).toBe('MARKETING');
     });
 
     it('keeps repeated same-folder copies with File Explorer names', async () => {
         const roots = await store.initialize('project-123');
-        const executionRoot = requireRoot(roots.execution, 'execution');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
         const source = store.entities().find(
             (node) => !isFolder(node) && node.parentId === executionRoot.id
         );
@@ -389,7 +389,7 @@ describe('FileSystemStore project-scoped API contract', () => {
 
     it('returns a copied folder with its real child count', async () => {
         const roots = await store.initialize('project-123');
-        const executionRoot = requireRoot(roots.execution, 'execution');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
         const source = store.entities().find(
             (node): node is FolderNode =>
                 isFolder(node) &&
@@ -414,7 +414,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         await store.initialize('project-123');
 
         const { folder, canonicalPath } = await store.loadPathListing(
-            'execution',
+            'EXECUTION',
             'contracts/VENDORS'
         );
 
@@ -428,9 +428,9 @@ describe('FileSystemStore project-scoped API contract', () => {
 
     it('loadPathListing with an empty path returns the list root', async () => {
         const roots = await store.initialize('project-123');
-        const marketingRoot = requireRoot(roots.marketing, 'marketing');
+        const marketingRoot = requireRoot(roots.MARKETING, 'marketing');
 
-        const { folder, canonicalPath } = await store.loadPathListing('marketing', '');
+        const { folder, canonicalPath } = await store.loadPathListing('MARKETING', '');
 
         expect(canonicalPath).toBe('');
         expect(folder.id).toBe(marketingRoot.id);
@@ -439,7 +439,7 @@ describe('FileSystemStore project-scoped API contract', () => {
     it('loadPathListing rejects an unknown path and clears the resolving flag', async () => {
         await store.initialize('project-123');
 
-        await expectAsync(store.loadPathListing('execution', 'Nope/Missing')).toBeRejected();
+        await expectAsync(store.loadPathListing('EXECUTION', 'Nope/Missing')).toBeRejected();
         expect(store.isResolvingPath()).toBeFalse();
     });
 });

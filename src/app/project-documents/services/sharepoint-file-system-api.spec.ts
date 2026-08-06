@@ -19,7 +19,7 @@ import { SharePointFileSystemApi } from './sharepoint-file-system-api';
 describe('SharePointFileSystemApi', () => {
     const parent: FolderNode = {
         kind: 'folder',
-        listKey: 'execution',
+        listKey: 'EXECUTION',
         id: 'parent-id',
         path: '/sites/project/Documents',
         name: 'Documents',
@@ -30,7 +30,7 @@ describe('SharePointFileSystemApi', () => {
     };
     const uploaded: FileNode = {
         kind: 'file',
-        listKey: 'execution',
+        listKey: 'EXECUTION',
         id: 'file-id',
         path: '/sites/project/Documents/report.pdf',
         name: 'report.pdf',
@@ -41,7 +41,7 @@ describe('SharePointFileSystemApi', () => {
     };
     const target: FolderNode = {
         kind: 'folder',
-        listKey: 'execution',
+        listKey: 'EXECUTION',
         id: 'target-id',
         path: '/sites/project/Documents/Target',
         name: 'Target',
@@ -52,7 +52,7 @@ describe('SharePointFileSystemApi', () => {
     };
     const crossListTarget: FolderNode = {
         ...target,
-        listKey: 'marketing',
+        listKey: 'MARKETING',
         id: 'marketing-target-id',
         path: '/sites/project/Marketing/Target',
         parentId: 'marketing-root-id'
@@ -171,7 +171,7 @@ describe('SharePointFileSystemApi', () => {
 
         const request = http.expectOne((candidate) =>
             candidate.url ===
-                '/projects/project%201/document-lists/execution/documents/parent-id/files'
+                '/projects/project%201/document-lists/EXECUTION/documents/parent-id/files'
         );
         expect(request.request.method).toBe('POST');
         expect(request.request.body).toBe(file);

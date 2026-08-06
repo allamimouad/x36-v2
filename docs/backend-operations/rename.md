@@ -13,7 +13,7 @@
       "name": "Renamed document.docx"
     }
 
-- `listKey`: `execution` or `marketing`; required because the two lists may use
+- `listKey`: `EXECUTION` or `MARKETING`; required because the two lists may use
   different SharePoint sites.
 - `documentId`: the file or folder's SharePoint `UniqueId` GUID.
 - `kind`: `file` or `folder`; required because SharePoint exposes distinct by-id
@@ -32,7 +32,7 @@ Successful response:
 
     {
       "kind": "folder",
-      "listKey": "execution",
+      "listKey": "EXECUTION",
       "id": "unchanged-sharepoint-unique-id",
       "path": "/sites/project/Documents/Renamed folder",
       "name": "Renamed folder",

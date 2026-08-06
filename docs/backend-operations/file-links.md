@@ -13,7 +13,7 @@ ready-to-use links:
 ```json
 {
   "kind": "file",
-  "listKey": "execution",
+  "listKey": "EXECUTION",
   "id": "sharepoint-unique-id",
   "path": "/sites/project/Documents/Reports/report.docx",
   "name": "report.docx",

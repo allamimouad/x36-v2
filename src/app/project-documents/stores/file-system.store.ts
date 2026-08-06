@@ -160,11 +160,11 @@ export const FileSystemStore = signalStore(
         };
 
         const _applyInitialize = (loadedRoots: RootLoadResult[]): DocumentListRoots => {
-            // forkJoin preserves DOCUMENT_LIST_KEYS order: [execution, marketing].
+            // forkJoin preserves DOCUMENT_LIST_KEYS order: [EXECUTION, MARKETING].
             const [execution, marketing] = loadedRoots;
             const roots: DocumentListRoots = {
-                execution: execution.root,
-                marketing: marketing.root
+                EXECUTION: execution.root,
+                MARKETING: marketing.root
             };
             const nodes = loadedRoots.flatMap(({ listing }): FileSystemNode[] =>
                 listing ? [listing.currentFolder, ...listing.folders, ...listing.files] : []

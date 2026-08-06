@@ -36,8 +36,8 @@ describe('NavigationStore', () => {
         fs = TestBed.inject(FileSystemStore);
         nav = TestBed.inject(NavigationStore);
         const roots = await fs.initialize('test-project');
-        if (roots.execution.status !== 'loaded') { throw new Error('Expected execution root'); }
-        rootId = roots.execution.root.id;
+        if (roots.EXECUTION.status !== 'loaded') { throw new Error('Expected execution root'); }
+        rootId = roots.EXECUTION.root.id;
         docsId = byPath('/execution/Contracts');
         sharedId = byPath('/execution/Schedules');
     });
@@ -162,7 +162,7 @@ describe('NavigationStore', () => {
 
 const fakeRoot: FolderNode = {
     kind: 'folder',
-    listKey: 'execution',
+    listKey: 'EXECUTION',
     id: 'root',
     path: '/',
     name: '',
@@ -174,7 +174,7 @@ const fakeRoot: FolderNode = {
 
 const fakeDocs: FolderNode = {
     kind: 'folder',
-    listKey: 'execution',
+    listKey: 'EXECUTION',
     id: 'docs',
     path: '/Documents',
     name: 'Documents',
@@ -186,7 +186,7 @@ const fakeDocs: FolderNode = {
 
 const fakeShared: FolderNode = {
     kind: 'folder',
-    listKey: 'execution',
+    listKey: 'EXECUTION',
     id: 'shared',
     path: '/Shared',
     name: 'Shared',
@@ -407,10 +407,10 @@ describe('NavigationStore load triggering', () => {
         nav.navigateTo(fakeRoot.id);
         reader.loadChildrenSpy.calls.reset();
 
-        nav.openResolvedFolder(fakeDocs.id, { listKey: 'execution', path: 'Documents' });
+        nav.openResolvedFolder(fakeDocs.id, { listKey: 'EXECUTION', path: 'Documents' });
 
         expect(nav.currentFolderId()).toBe(fakeDocs.id);
-        expect(nav.currentBreadcrumb()).toEqual({ listKey: 'execution', path: 'Documents' });
+        expect(nav.currentBreadcrumb()).toEqual({ listKey: 'EXECUTION', path: 'Documents' });
         expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
     });
 
@@ -419,7 +419,7 @@ describe('NavigationStore load triggering', () => {
         nav.navigateTo(fakeDocs.id);
         nav.back(); // forward to docs is now available
 
-        nav.openResolvedFolder(fakeShared.id, { listKey: 'execution', path: 'Shared' });
+        nav.openResolvedFolder(fakeShared.id, { listKey: 'EXECUTION', path: 'Shared' });
 
         expect(nav.canGoForward()).toBe(false);
         expect(nav.history().length).toBe(2);
@@ -427,7 +427,7 @@ describe('NavigationStore load triggering', () => {
 
     it('Back/Forward restores resolved breadcrumb context without reloading it', () => {
         nav.navigateTo(fakeRoot.id);
-        nav.openResolvedFolder(fakeDocs.id, { listKey: 'execution', path: 'Documents' });
+        nav.openResolvedFolder(fakeDocs.id, { listKey: 'EXECUTION', path: 'Documents' });
 
         nav.back();
         expect(nav.currentFolderId()).toBe(fakeRoot.id);
@@ -436,12 +436,12 @@ describe('NavigationStore load triggering', () => {
 
         nav.forward();
         expect(nav.currentFolderId()).toBe(fakeDocs.id);
-        expect(nav.currentBreadcrumb()).toEqual({ listKey: 'execution', path: 'Documents' });
+        expect(nav.currentBreadcrumb()).toEqual({ listKey: 'EXECUTION', path: 'Documents' });
         expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
     });
 
     it('pathSegments builds path-based segments for a resolved entry', () => {
-        nav.openResolvedFolder(fakeDocs.id, { listKey: 'execution', path: 'Documents' });
+        nav.openResolvedFolder(fakeDocs.id, { listKey: 'EXECUTION', path: 'Documents' });
 
         const segs = nav.pathSegments();
         expect(segs.map((s) => s.label)).toEqual(['execution', 'Documents']);
@@ -452,7 +452,7 @@ describe('NavigationStore load triggering', () => {
 
     it('builds the full path-based breadcrumb even when ancestors are not cached', () => {
     // Only the target id (fakeDocs) is in the fake cache; 'Contracts'/'2026' are not.
-        nav.openResolvedFolder(fakeDocs.id, { listKey: 'execution', path: 'Contracts/2026' });
+        nav.openResolvedFolder(fakeDocs.id, { listKey: 'EXECUTION', path: 'Contracts/2026' });
 
         const segs = nav.pathSegments();
         expect(segs.map((s) => s.label)).toEqual(['execution', 'Contracts', '2026']);

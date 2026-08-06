@@ -130,6 +130,11 @@ export class ProjectDocuments {
     protected readonly contextMenu = viewChild<ContextMenu>('contextMenu');
     protected readonly uploadMenu = viewChild<Menu>('uploadMenu');
     protected readonly fileInput = viewChild<ElementRef<HTMLInputElement>>('fileInput');
+    protected readonly canOpenCurrentFolderInSharePoint = computed(() => {
+        const folder = this.navigation.currentFolder();
+
+        return folder !== null && this.fileLauncher.canOpenSharePointWeb(folder);
+    });
 
     protected readonly writingIds = signal<ReadonlySet<string>>(new Set<string>());
     protected readonly inlineRenameError = signal<string | null>(null);
@@ -180,13 +185,13 @@ export class ProjectDocuments {
     });
 
     /** One tree section per document list, each rooted at its list root. */
-    protected readonly executionTree = computed(() => this.buildTreeSection('execution'));
-    protected readonly marketingTree = computed(() => this.buildTreeSection('marketing'));
+    protected readonly executionTree = computed(() => this.buildTreeSection('EXECUTION'));
+    protected readonly marketingTree = computed(() => this.buildTreeSection('MARKETING'));
     protected readonly executionRootAvailable = computed(
-        () => this.fileSystem.initializedRoots()?.execution.status === 'loaded'
+        () => this.fileSystem.initializedRoots()?.EXECUTION.status === 'loaded'
     );
     protected readonly marketingRootAvailable = computed(
-        () => this.fileSystem.initializedRoots()?.marketing.status === 'loaded'
+        () => this.fileSystem.initializedRoots()?.MARKETING.status === 'loaded'
     );
 
     /** Both lists available → the tree pane becomes a resizable vertical split. */
@@ -196,19 +201,23 @@ export class ProjectDocuments {
 
     /** Context objects for the shared tree-section template (one per list). */
     protected readonly marketingSectionContext = computed(() => ({
-        label: DOCUMENT_LIST_LABELS.marketing,
+        label: DOCUMENT_LIST_LABELS.MARKETING,
         nodes: this.marketingTree()
     }));
 
     protected readonly executionSectionContext = computed(() => ({
-        label: DOCUMENT_LIST_LABELS.execution,
+        label: DOCUMENT_LIST_LABELS.EXECUTION,
         nodes: this.executionTree()
     }));
 
     /** The editable path for the current folder, seeded into the address-bar input. */
     protected readonly currentEditablePath = computed<string>(() => {
         const ctx = this.navigation.currentBreadcrumb();
-        if (ctx) { return ctx.path ? `${ctx.listKey}/${ctx.path}` : ctx.listKey; }
+        if (ctx) {
+            const displayListKey = ctx.listKey.toLowerCase();
+
+            return ctx.path ? `${displayListKey}/${ctx.path}` : displayListKey;
+        }
         // Cached navigation: every node carries its document-list context.
         const id = this.navigation.currentFolderId();
         const map = this.fileSystem.entityMap();
@@ -225,7 +234,7 @@ export class ProjectDocuments {
             cursor = map[cursor.parentId];
         }
 
-        return listKey ? [listKey, ...names].join('/') : '';
+        return listKey ? [listKey.toLowerCase(), ...names].join('/') : '';
     });
 
     protected readonly isCurrentLoading = computed(() => {
@@ -711,9 +720,13 @@ export class ProjectDocuments {
             .split('/')
             .filter((segment) => segment.length > 0);
         const first = segments[0]?.toLowerCase();
-        const listKey = DOCUMENT_LIST_KEYS.find((key) => key === first);
+        const listKey = DOCUMENT_LIST_KEYS.find((key) => key.toLowerCase() === first);
         if (!listKey) {
-            this.pathError.set(`Path must start with ${DOCUMENT_LIST_KEYS.join(' or ')}.`);
+            this.pathError.set(
+                `Path must start with ${DOCUMENT_LIST_KEYS
+                    .map((key) => key.toLowerCase())
+                    .join(' or ')}.`
+            );
 
             return;
         }
@@ -801,6 +814,11 @@ export class ProjectDocuments {
             return;
         }
         this.navigation.refresh();
+    }
+
+    protected openCurrentFolderInSharePoint(): void {
+        const folder = this.navigation.currentFolder();
+        if (folder) { this.fileLauncher.openSharePointWeb(folder); }
     }
 
     /**
@@ -1082,7 +1100,9 @@ export class ProjectDocuments {
                 key: folder.id,
                 // Section header already carries the full label; the root node shows
                 // the short name.
-                label: isRoot ? `${listKey[0].toUpperCase()}${listKey.slice(1)}` : folder.name,
+                label: isRoot
+                    ? `${listKey[0]}${listKey.slice(1).toLowerCase()}`
+                    : folder.name,
                 data: folder,
                 leaf: isLoaded && childFolders.length === 0,
                 expanded: expanded.has(folder.id),
@@ -1099,8 +1119,8 @@ export class ProjectDocuments {
         this.notifications.clear();
         this.clipboard.clear();
         this.closePathEditor();
-        const marketingRoot = this.rootFromStatus(roots.marketing);
-        const executionRoot = this.rootFromStatus(roots.execution);
+        const marketingRoot = this.rootFromStatus(roots.MARKETING);
+        const executionRoot = this.rootFromStatus(roots.EXECUTION);
         const currentRoot = marketingRoot ?? executionRoot;
         this.logRootLoadErrors(roots);
         // No root at all: leave navigation untouched — `bootstrapError` derives the

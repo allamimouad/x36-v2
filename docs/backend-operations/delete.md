@@ -7,7 +7,7 @@
 
     DELETE /projects/{projectId}/document-lists/{listKey}/documents/{documentId}?kind={kind}
 
-- `listKey`: `execution` or `marketing`; required because the two lists may use
+- `listKey`: `EXECUTION` or `MARKETING`; required because the two lists may use
   different SharePoint sites.
 - `documentId`: the node's SharePoint `UniqueId` GUID.
 - `kind`: `file` or `folder`; required because SharePoint has distinct by-id APIs.

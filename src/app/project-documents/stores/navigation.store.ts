@@ -352,9 +352,18 @@ export const NavigationStore = signalStore(
 /** Path-based segments from listKey + canonical path (ancestors may be uncached). */
 function buildResolvedSegments(ctx: ResolvedBreadcrumbContext, currentId: string): PathSegment[] {
     if (!ctx.path) {
-        return [{ label: ctx.listKey, listKey: ctx.listKey, path: '', id: currentId }];
+        return [{
+            label: ctx.listKey.toLowerCase(),
+            listKey: ctx.listKey,
+            path: '',
+            id: currentId
+        }];
     }
-    const segs: PathSegment[] = [{ label: ctx.listKey, listKey: ctx.listKey, path: '' }];
+    const segs: PathSegment[] = [{
+        label: ctx.listKey.toLowerCase(),
+        listKey: ctx.listKey,
+        path: ''
+    }];
     const names = ctx.path.split('/');
     let prefix = '';
     names.forEach((name, i) => {
@@ -380,7 +389,12 @@ function buildCachedSegments(
     while (n) {
         if (!isFolder(n)) { break; }
         if (n.parentId === null) {
-            segs.unshift({ label: n.listKey, id: n.id, listKey: n.listKey, path: '' });
+            segs.unshift({
+                label: n.listKey.toLowerCase(),
+                id: n.id,
+                listKey: n.listKey,
+                path: ''
+            });
             break;
         }
         segs.unshift({ label: n.name, id: n.id });

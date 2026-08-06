@@ -45,7 +45,7 @@ Stores **MUST NOT know about SharePoint**. They depend on an abstract `FileSyste
 
 `services/mock/` contains the mock/dev backend and unit-test double (`mock-file-system-api.ts`, `mock-seed.ts`, `mock-config.token.ts`). It is used by the default local `ProjectDocuments` provider until the SharePoint laptop swaps that provider to `SharePointFileSystemApi` — after which the directory (plus the two store specs, if tests aren't kept) can be deleted in one go. (Named `mock`, not `testing`: the target repo's `eslint-plugin-boundaries` config classifies `testing` folders as shared test utilities forbidden from importing feature code.)
 
-The interface uses generic terminology (`projectId`, `listKey`, `id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. A project has **two document lists**, selected by the domain `listKey` (`'execution' | 'marketing'`); the backend maps each to one of the project's SharePoint document libraries. The lists may live on the same SharePoint site or on different sites. `id` is a stable, opaque UUID for the entity's lifetime within its list context. `path` is the mutable, human-readable backend path. In the mock, `id` is a `crypto.randomUUID()` value; in the SharePoint adapter, `id = UniqueId` and `path = ServerRelativeUrl`. Every node carries its domain `listKey`, allowing the adapter to resolve `(projectId, listKey)` to the correct backend-owned site/library configuration without exposing that configuration to the frontend. Retrieval is split: `listDocumentRoot(projectId, listKey)` returns a list's root, and `listDocuments(projectId, parent)` returns a folder's direct children; the adapter extracts `parent.listKey` and `parent.id` for the list-scoped backend route. Root-list load status is handled per list: a loaded root renders; a `not-found` root is hidden; any other root-load error does not discard the other loaded list. If both roots are `not-found`, the table area shows "No documents found for this project." Mutations take full `FolderNode` / `FileSystemNode` arguments. List-scoped adapters obtain their routing context from the nodes; copy is the exception and maps the nodes to complete source/destination server-relative parent paths while also sending the destination domain `listKey` needed on the returned node. It sends no source list key. No internal id↔url mapping cache.
+The interface uses generic terminology (`projectId`, `listKey`, `id`, `path`, `name`) — no SharePoint-specific terms like `serverRelativeUrl` leak out. A project has **two document lists**, selected by the domain `listKey` (`'EXECUTION' | 'MARKETING'`); the frontend deliberately uses the same uppercase values as the backend contract. The lists may live on the same SharePoint site or on different sites. `id` is a stable, opaque UUID for the entity's lifetime within its list context. `path` is the mutable, human-readable backend path. In the mock, `id` is a `crypto.randomUUID()` value; in the SharePoint adapter, `id = UniqueId` and `path = ServerRelativeUrl`. Every node carries its domain `listKey`, allowing the adapter to resolve `(projectId, listKey)` to the correct backend-owned site/library configuration without exposing that configuration to the frontend. Retrieval is split: `listDocumentRoot(projectId, listKey)` returns a list's root, and `listDocuments(projectId, parent)` returns a folder's direct children; the adapter extracts `parent.listKey` and `parent.id` for the list-scoped backend route. Root-list load status is handled per list: a loaded root renders; a `not-found` root is hidden; any other root-load error does not discard the other loaded list. If both roots are `not-found`, the table area shows "No documents found for this project." Mutations take full `FolderNode` / `FileSystemNode` arguments. List-scoped adapters obtain their routing context from the nodes; copy is the exception and maps the nodes to complete source/destination server-relative parent paths while also sending the destination domain `listKey` needed on the returned node. It sends no source list key. Address-bar labels remain lowercase and parsing is case-insensitive. No internal id↔url mapping cache.
 
 ### 2.3 Signal Store for entities, plain signals for simple state
 `FileSystemStore` uses `withEntities` because folders and files are viewed in multiple places (tree + table) and must stay in sync. `NavigationStore` uses Signal Store because it owns navigation history, expansion, focus, selection, rename state, and file-system-derived computeds. Small command-style state uses plain signal services; `ClipboardService` is a plain injectable service with `signal()` / `computed()`, not a Signal Store. Simple component-local state stays as plain `signal()` inside the component — don't over-store.
@@ -159,6 +159,9 @@ All scenarios must work:
 - Root folders cannot be renamed or deleted. Actions whose workflows are not implemented yet remain visible but disabled, preserving the final menu structure.
 - File actions consume backend-provided `onlineUrl`, `desktopUrl`, and `downloadUrl`
   capabilities. A missing or unsafe link disables only its corresponding action.
+- The header's `View in SharePoint (web)` action consumes the current folder's
+  backend-provided `webUrl`. It opens the exact current folder and is disabled when
+  the URL is missing or unsafe.
 - Online opens in a new browser tab; Local application launches an allow-listed
   Microsoft Office URI; Download navigates directly to SharePoint without Angular or
   the application backend relaying the file bytes.
@@ -257,6 +260,7 @@ export interface FolderNode {
   itemCount: number;
   createdAt: string;       // ISO
   modifiedAt: string;      // ISO
+  webUrl?: string;         // absolute SharePoint browser URL for this folder
 }
 
 export interface FileNode {
@@ -290,7 +294,7 @@ export function isFolder(n: FileSystemNode): n is FolderNode {
 // services/file-system-api.ts
 import type { Observable } from 'rxjs';
 
-export type DocumentListKey = 'execution' | 'marketing';
+export type DocumentListKey = 'EXECUTION' | 'MARKETING';
 
 export abstract class FileSystemApi {
   /** List the root of one document list (`listKey`) with its direct children. */
@@ -359,7 +363,7 @@ The copy request does not send source/destination wrapper objects, the source
 `listKey`, `node.id`, a duplicated destination `kind`, or a destination name. The
 complete parent paths identify the SharePoint sites and document libraries for the
 copy operation. `targetListKey` is still required because SharePoint does not return
-the frontend's domain value (`execution` or `marketing`); the backend maps it onto the
+the frontend's domain value (`EXECUTION` or `MARKETING`); the backend maps it onto the
 returned node. The backend compares the parent paths before copying: different parent
 paths keep `node.name` unchanged, while equal parent paths select the File-Explorer
 ` - Copy` form. Existing `KeepBoth` logic then resolves any collision and the response

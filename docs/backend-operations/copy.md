@@ -38,7 +38,7 @@ controller or a second copy endpoint.
       "kind": "file",
       "sourceParentPath": "/sites/project/Documents",
       "sourceName": "report.pdf",
-      "targetListKey": "marketing",
+      "targetListKey": "MARKETING",
       "targetParentId": "target-folder-guid",
       "targetParentPath": "/sites/project/Marketing/Target"
     }
@@ -49,7 +49,7 @@ controller or a second copy endpoint.
   `ServerRelativeUrl`. It already identifies the source site and document library.
 - `sourceName`: the source node's canonical leaf name, including its extension when it
   is a file.
-- `targetListKey`: the destination domain list key, `execution` or `marketing`.
+- `targetListKey`: the destination domain list key, `EXECUTION` or `MARKETING`.
   SharePoint does not return this application-owned value, so the backend uses it to
   populate the copied node's response.
 - `targetParentId`: the destination folder's id, retained because the existing service
@@ -106,7 +106,7 @@ File example:
 
     {
       "kind": "file",
-      "listKey": "marketing",
+      "listKey": "MARKETING",
       "id": "new-sharepoint-unique-id",
       "path": "/sites/project/Marketing/Target/report.pdf",
       "name": "report.pdf",

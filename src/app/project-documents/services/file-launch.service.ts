@@ -1,6 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { inject, Injectable } from '@angular/core';
-import type { FileNode } from '../models/file-system-node.model';
+import type { FileNode, FolderNode } from '../models/file-system-node.model';
 
 const DESKTOP_PROTOCOLS = [
     'ms-word',
@@ -20,6 +20,10 @@ const DESKTOP_URL_PATTERN = new RegExp(
 export class FileLaunchService {
     private readonly document = inject(DOCUMENT);
 
+    public canOpenSharePointWeb(folder: FolderNode): boolean {
+        return this.safeWebUrl(folder.webUrl) !== null;
+    }
+
     public canOpenOnline(file: FileNode): boolean {
         return this.safeWebUrl(file.onlineUrl) !== null;
     }
@@ -32,17 +36,12 @@ export class FileLaunchService {
         return this.safeWebUrl(file.downloadUrl) !== null;
     }
 
-    public openOnline(file: FileNode): boolean {
-        const url = this.safeWebUrl(file.onlineUrl);
-        const view = this.document.defaultView;
-        if (!url || !view) { return false; }
-        try {
-            view.open(url, '_blank', 'noopener');
+    public openSharePointWeb(folder: FolderNode): boolean {
+        return this.openWebUrl(folder.webUrl);
+    }
 
-            return true;
-        } catch {
-            return false;
-        }
+    public openOnline(file: FileNode): boolean {
+        return this.openWebUrl(file.onlineUrl);
     }
 
     public openDesktop(file: FileNode): boolean {
@@ -86,6 +85,19 @@ export class FileLaunchService {
             return safeProtocol && !url.username && !url.password ? url.href : null;
         } catch {
             return null;
+        }
+    }
+
+    private openWebUrl(value: string | undefined): boolean {
+        const url = this.safeWebUrl(value);
+        const view = this.document.defaultView;
+        if (!url || !view) { return false; }
+        try {
+            view.open(url, '_blank', 'noopener');
+
+            return true;
+        } catch {
+            return false;
         }
     }
 

@@ -97,7 +97,7 @@ describe('FileTable', () => {
 
 const folder: FolderNode = {
     kind: 'folder',
-    listKey: 'execution',
+    listKey: 'EXECUTION',
     id: 'folder-1',
     path: '/Documents/Reports',
     name: 'Reports',
@@ -109,7 +109,7 @@ const folder: FolderNode = {
 
 const file: FileNode = {
     kind: 'file',
-    listKey: 'execution',
+    listKey: 'EXECUTION',
     id: 'file-1',
     path: '/Documents/report.docx',
     name: 'report.docx',

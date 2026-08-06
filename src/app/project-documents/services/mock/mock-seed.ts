@@ -354,8 +354,8 @@ const MARKETING_SEED: SeedFolderSpec[] = [
 ];
 
 const SEED_BY_LIST: Record<DocumentListKey, SeedFolderSpec[]> = {
-    execution: EXECUTION_SEED,
-    marketing: MARKETING_SEED
+    EXECUTION: EXECUTION_SEED,
+    MARKETING: MARKETING_SEED
 };
 
 export function buildSeed(): SeedResult {
@@ -366,7 +366,7 @@ export function buildSeed(): SeedResult {
     for (const listKey of DOCUMENT_LIST_KEYS) {
         const seed = SEED_BY_LIST[listKey];
         const rootId = crypto.randomUUID();
-        const rootPath = `${ROOT_PATH}${listKey}`;
+        const rootPath = `${ROOT_PATH}${listKey.toLowerCase()}`;
         const root: FolderNode = {
             kind: 'folder',
             listKey,

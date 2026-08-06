@@ -14,7 +14,7 @@
 - Copy is the path-based exception: its existing controller/service consumes complete
   source and destination `ServerRelativeUrl` parent paths, which already identify both
   SharePoint sites and document libraries.
-- `listKey` is the domain key `'execution' | 'marketing'`; the frontend never receives
+- `listKey` is the domain key `'EXECUTION' | 'MARKETING'`; the frontend never receives
   list GUIDs, credentials, backend access tokens, or configured client details.
 - Documents are addressed by SharePoint `UniqueId`. `kind` is additionally supplied for
   operations such as delete where SharePoint exposes separate file and folder APIs.
@@ -33,7 +33,7 @@
     GET /projects/{projectId}/document-lists/{listKey}/documents/{folderId}/children
     GET /projects/{projectId}/document-lists/{listKey}/documents/resolve-path?path=Contracts/2026
 
-- `listKey` = `execution` | `marketing`. It selects the SharePoint site/library; the
+- `listKey` = `EXECUTION` | `MARKETING`. It selects the SharePoint site/library; the
   folder id selects the entity within that location.
 - **Response** of the first two = the `DocumentListing` shape: `{ currentFolder, folders,
   files }` — includes the folder's own metadata, not just its children.
@@ -68,21 +68,21 @@
   require copy+delete).
 
 ## Example bodies
-    POST /projects/123/document-lists/execution/documents/parent-folder-guid/folders
+    POST /projects/123/document-lists/EXECUTION/documents/parent-folder-guid/folders
     { "name": "New folder" }
 
-    PATCH /projects/123/document-lists/execution/documents/file-guid?kind=file
+    PATCH /projects/123/document-lists/EXECUTION/documents/file-guid?kind=file
     { "name": "New Name.docx" }
 
-    POST /projects/123/document-lists/execution/documents/file-guid/move
-    { "targetListKey": "marketing", "targetParentId": "folder-guid" }
+    POST /projects/123/document-lists/EXECUTION/documents/file-guid/move
+    { "targetListKey": "MARKETING", "targetParentId": "folder-guid" }
 
     POST /projects/123/documents/copy
     {
       "kind": "file",
       "sourceParentPath": "/sites/project/Documents",
       "sourceName": "report.pdf",
-      "targetListKey": "execution",
+      "targetListKey": "EXECUTION",
       "targetParentId": "folder-guid",
       "targetParentPath": "/sites/project/Documents/Target"
     }

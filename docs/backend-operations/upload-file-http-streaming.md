@@ -32,7 +32,7 @@ configuration and token provider.
 
     {raw file bytes}
 
-- `listKey`: `execution` or `marketing`.
+- `listKey`: `EXECUTION` or `MARKETING`.
 - `parentFolderId`: the destination folder's SharePoint `UniqueId` GUID.
 - `name`: the decoded file name, including its extension.
 - The request body is the file itself, not JSON, Base64, multipart, or `FormData`.
@@ -46,7 +46,7 @@ Successful response:
 
     {
       "kind": "file",
-      "listKey": "execution",
+      "listKey": "EXECUTION",
       "id": "sharepoint-returned-unique-id",
       "path": "/sites/project/Documents/report.pdf",
       "name": "report.pdf",

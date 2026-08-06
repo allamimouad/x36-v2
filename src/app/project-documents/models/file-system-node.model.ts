@@ -13,6 +13,7 @@ export interface FolderNode {
     createdAt: string;
     modifiedAt: string;
     modifiedBy?: string;
+    webUrl?: string;
 }
 
 export interface FileNode {

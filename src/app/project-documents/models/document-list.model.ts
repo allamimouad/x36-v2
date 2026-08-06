@@ -7,13 +7,13 @@ import type { FolderNode } from './file-system-node.model';
  * Every node carries its list key so the backend can resolve the correct site and
  * document library even when the two lists do not share a SharePoint site.
  */
-export type DocumentListKey = 'execution' | 'marketing';
+export type DocumentListKey = 'EXECUTION' | 'MARKETING';
 
-export const DOCUMENT_LIST_KEYS: readonly DocumentListKey[] = ['execution', 'marketing'];
+export const DOCUMENT_LIST_KEYS: readonly DocumentListKey[] = ['EXECUTION', 'MARKETING'];
 
 export const DOCUMENT_LIST_LABELS: Record<DocumentListKey, string> = {
-    execution: 'Execution Documents',
-    marketing: 'Marketing Documents'
+    EXECUTION: 'Execution Documents',
+    MARKETING: 'Marketing Documents'
 };
 
 export type DocumentListRootStatus =

@@ -13,7 +13,7 @@
       "name": "New folder"
     }
 
-- `listKey`: `execution` or `marketing`; required because the two lists may use
+- `listKey`: `EXECUTION` or `MARKETING`; required because the two lists may use
   different SharePoint sites.
 - `parentFolderId`: the destination parent folder's SharePoint `UniqueId` GUID.
 - `name`: the requested decoded folder name. The New folder UI sends exactly
@@ -28,7 +28,7 @@ Successful response:
 
     {
       "kind": "folder",
-      "listKey": "execution",
+      "listKey": "EXECUTION",
       "id": "sharepoint-returned-unique-id",
       "path": "/sites/project/Documents/New folder (1)",
       "name": "New folder (1)",

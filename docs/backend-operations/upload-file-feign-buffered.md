@@ -30,7 +30,7 @@ existing names and patterns found in the backend.
 
     {raw file bytes}
 
-- `listKey`: `execution` or `marketing`; required because the two lists may use
+- `listKey`: `EXECUTION` or `MARKETING`; required because the two lists may use
   different SharePoint sites.
 - `parentFolderId`: the destination folder's SharePoint `UniqueId` GUID.
 - `name`: the decoded file name, including its extension.
@@ -46,7 +46,7 @@ Successful response:
 
     {
       "kind": "file",
-      "listKey": "execution",
+      "listKey": "EXECUTION",
       "id": "sharepoint-returned-unique-id",
       "path": "/sites/project/Documents/report.pdf",
       "name": "report.pdf",

@@ -40,6 +40,30 @@
 
   <header class="pd-header">
     <h1 class="pd-title">{{ config.libraryRootName }}</h1>
+    <button
+      pButton
+      type="button"
+      severity="secondary"
+      size="small"
+      [outlined]="true"
+      [disabled]="!canOpenCurrentFolderInSharePoint()"
+      [title]="
+        canOpenCurrentFolderInSharePoint()
+          ? 'Open the current folder in SharePoint'
+          : 'SharePoint web link unavailable'
+      "
+      data-testid="pd-btn-view-sharepoint-web"
+      (click)="openCurrentFolderInSharePoint()"
+    >
+      <img
+        src="assets/icons/sharepoint-file-type-icons/sharepoint.svg"
+        width="18"
+        height="18"
+        alt=""
+        aria-hidden="true"
+      />
+      <span>View in SharePoint (web)</span>
+    </button>
   </header>
 
   <div class="pd-toolbar-row">

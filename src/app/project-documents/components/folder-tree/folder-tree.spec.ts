@@ -50,7 +50,7 @@ describe('FolderTree inline delete confirmation', () => {
 
 const root: FolderNode = {
     kind: 'folder',
-    listKey: 'execution',
+    listKey: 'EXECUTION',
     id: 'root-1',
     path: '/Documents',
     name: 'Execution',
@@ -62,7 +62,7 @@ const root: FolderNode = {
 
 const child: FolderNode = {
     kind: 'folder',
-    listKey: 'execution',
+    listKey: 'EXECUTION',
     id: 'folder-1',
     path: '/Documents/Reports',
     name: 'Reports',

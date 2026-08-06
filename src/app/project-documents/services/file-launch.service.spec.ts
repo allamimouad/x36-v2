@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import type { FileNode } from '../models/file-system-node.model';
+import type { FileNode, FolderNode } from '../models/file-system-node.model';
 import { FileLaunchService } from './file-launch.service';
 
 describe('FileLaunchService', () => {
@@ -21,6 +21,28 @@ describe('FileLaunchService', () => {
         expect(service.canDownload(node({
             downloadUrl: 'https://user:password@sharepoint.test/file.pdf'
         }))).toBeFalse();
+    });
+
+    it('exposes only safe absolute SharePoint folder links', () => {
+        expect(service.canOpenSharePointWeb(folder({
+            webUrl: 'https://sharepoint.test/sites/project/Documents/Contracts'
+        }))).toBeTrue();
+        expect(service.canOpenSharePointWeb(folder({
+            webUrl: 'javascript:alert(1)'
+        }))).toBeFalse();
+    });
+
+    it('opens a safe SharePoint folder link in a new tab', () => {
+        const open = spyOn(window, 'open');
+
+        expect(service.openSharePointWeb(folder({
+            webUrl: 'https://sharepoint.test/sites/project/Documents/Contracts'
+        }))).toBeTrue();
+        expect(open).toHaveBeenCalledOnceWith(
+            'https://sharepoint.test/sites/project/Documents/Contracts',
+            '_blank',
+            'noopener'
+        );
     });
 
     it('accepts supported Office edit and view URI schemes', () => {
@@ -54,12 +76,27 @@ describe('FileLaunchService', () => {
 function node(overrides: Partial<FileNode>): FileNode {
     return {
         kind: 'file',
-        listKey: 'execution',
+        listKey: 'EXECUTION',
         id: 'file-1',
         path: '/Documents/report.docx',
         name: 'report.docx',
         parentId: 'folder-1',
         sizeBytes: 10,
+        createdAt: '2026-07-31T00:00:00.000Z',
+        modifiedAt: '2026-07-31T00:00:00.000Z',
+        ...overrides
+    };
+}
+
+function folder(overrides: Partial<FolderNode>): FolderNode {
+    return {
+        kind: 'folder',
+        listKey: 'EXECUTION',
+        id: 'folder-1',
+        path: '/Documents',
+        name: 'Documents',
+        parentId: null,
+        itemCount: 0,
         createdAt: '2026-07-31T00:00:00.000Z',
         modifiedAt: '2026-07-31T00:00:00.000Z',
         ...overrides
