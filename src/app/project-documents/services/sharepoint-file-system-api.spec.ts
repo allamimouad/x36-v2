@@ -106,19 +106,33 @@ describe('SharePointFileSystemApi', () => {
         expect(result).toEqual(copied);
     });
 
-    it('rejects a cross-list copy before sending an HTTP request', () => {
-        let receivedError: unknown;
+    it('sends a cross-list copy request with the destination context', () => {
+        const copied: FileNode = {
+            ...uploaded,
+            listKey: crossListTarget.listKey,
+            id: 'cross-list-copy-id',
+            path: `${crossListTarget.path}/${uploaded.name}`,
+            parentId: crossListTarget.id
+        };
+        let result: FileSystemNode | undefined;
 
-        api.copy('project', uploaded, crossListTarget).subscribe({
-            error: (error: unknown) => {
-                receivedError = error;
-            }
+        api.copy('project', uploaded, crossListTarget).subscribe((node) => {
+            result = node;
         });
 
-        expect(receivedError).toEqual(
-            jasmine.objectContaining<FileSystemError>({ code: 'cross-list-copy' })
-        );
-        http.expectNone('/projects/project/documents/copy');
+        const request = http.expectOne('/projects/project/documents/copy');
+        expect(request.request.method).toBe('POST');
+        expect(request.request.body).toEqual({
+            kind: 'file',
+            sourceParentPath: parent.path,
+            sourceName: uploaded.name,
+            targetListKey: crossListTarget.listKey,
+            targetParentId: crossListTarget.id,
+            targetParentPath: crossListTarget.path
+        });
+        request.flush(copied);
+
+        expect(result).toEqual(copied);
     });
 
     it('maps a missing copy source or destination to not-found', () => {

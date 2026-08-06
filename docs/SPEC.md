@@ -96,7 +96,11 @@ The `src/app/project-documents/` folder will be copied verbatim to another machi
 ### 3.2 Core operations
 
 - Create folder server-first with the default name `New folder`, then immediately enter inline rename
-- Rename folders inline from the table/tree; rename files inline on F2 or via a context-menu dialog
+- Rename folders inline from the table/tree; rename files inline on F2 or from the
+  context menu. A file rename input shows only the editable basename; its existing
+  extension is hidden during editing and restored in the complete name sent to the API.
+- Execution and marketing roots load independently. When at least one root is available,
+  a missing or failed companion root stays hidden and does not raise a user notification.
 - Delete folder or file (single-item confirmation is inline on the initiating table/tree
   surface; bulk confirmation remains bulk-aware)
 - Move / copy (drag-and-drop, or cut/copy/paste)
@@ -165,10 +169,8 @@ All scenarios must work:
 - Clipboard: `{ ids: ReadonlySet<string>, mode: 'cut' | 'copy' | null }` in `ClipboardService`
 - Cut items render at 50% opacity until pasted or cleared
 - Paste cut into same folder: no-op (silent)
-- Copy/paste is limited to the source node's document list:
-  `source.listKey === destination.listKey`. Cross-list Paste is disabled in the UI,
-  and both `FileSystemStore` and the concrete frontend adapters reject it before an
-  API request.
+- Copy/paste supports destinations in either document list of the current project,
+  including when Execution and Marketing resolve to different SharePoint sites.
 - Paste copy always keeps both through the backend's canonical collision handling; the
   frontend neither predicts the final name nor prompts for one
 - On successful move after cut: clear clipboard
@@ -365,12 +367,9 @@ returns the canonical final name. The frontend never chooses the target name or
 calculates a suffix. The source parent path is derived locally from `node.path`,
 without a backend lookup.
 
-The implemented frontend permits this call only when `node.listKey ===
-newParent.listKey`; the menu, store, SharePoint adapter, and mock adapter all enforce
-that same-list rule. This is defense in depth and a UX rule, not a backend
-authorization boundary: a caller can bypass Angular. The current path-based public
-contract still requires the backend hardening tracked in `docs/TODO.md` item 5 before
-it can be considered project/list-bound.
+The frontend permits this call when `node.listKey` and `newParent.listKey` differ.
+The current path-based public contract still requires the backend hardening tracked
+in `docs/TODO.md` item 5 before it can be considered project/list-bound.
 
 For the returned node, the backend maps `listKey` from `targetListKey` and `parentId`
 from `targetParentId`. SharePoint supplies the canonical `id`, `path`, `name`,

@@ -213,15 +213,6 @@ export class SharePointFileSystemApi extends FileSystemApi {
         node: FileSystemNode,
         newParent: FolderNode
     ): Observable<FileSystemNode> {
-        if (node.listKey !== newParent.listKey) {
-            return throwError(
-                () => new FileSystemError(
-                    'cross-list-copy',
-                    'Cannot copy items between document lists'
-                )
-            );
-        }
-
         return this.requestCopy(projectId, node, newParent).pipe(
             catchError((error: unknown) => throwError(() => this.mapCopyError(error)))
         );

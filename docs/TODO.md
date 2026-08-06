@@ -182,35 +182,35 @@
   can access it. `targetListKey`, `targetParentId`, and `targetParentPath` can also
   contradict one another. This is a project-boundary authorization risk, not only
   malformed input.
-- **Product rule now implemented in the frontend**: copy/paste is same-list only
-  (`source.listKey === destination.listKey`). `ProjectDocuments` disables an
-  ineligible Paste, and `FileSystemStore`, `SharePointFileSystemApi`, and
-  `MockFileSystemApi` reject `cross-list-copy` before HTTP. This prevents accidental
-  cross-list use in Angular but is not a security control because callers can bypass
-  the frontend.
+- **Product rule now implemented in the frontend**: copy/paste may cross between the
+  current project's Execution and Marketing document lists, including when they
+  resolve to different SharePoint sites. The frontend sends the same path-based copy
+  request for same-list and cross-list destinations.
 - **Backend design to decide**: prefer an id-based, list-scoped public operation,
   for example
-  `POST /projects/{projectId}/document-lists/{listKey}/documents/{sourceId}/copy`
-  with `kind` and `targetParentId`. The backend should authorize `projectId`, resolve
-  its configured list root, resolve both ids in that list, verify both canonical
-  locations are descendants of the configured root, construct the paths itself, and
-  only then delegate to the existing copy service.
+  `POST /projects/{projectId}/document-lists/{sourceListKey}/documents/{sourceId}/copy`
+  with `kind`, `targetListKey`, and `targetParentId`. The backend should authorize
+  `projectId`, resolve both configured list roots, resolve each id in its corresponding
+  list, verify both canonical locations are descendants of those roots, construct the
+  paths itself, and only then delegate to the existing copy service.
 - **If the path DTO is retained**: the backend must still resolve the configured
-  root for `(projectId, listKey)`, reject source/target paths outside it, prove the
-  source and destination use the same list, resolve `targetParentId`, and require its
-  canonical path to equal `targetParentPath`. Prefix checks must be normalized and
-  segment-aware rather than raw string-prefix comparisons.
+  source and target roots for the current project, reject paths outside them, resolve
+  `targetParentId` under `targetListKey`, and require its canonical path to equal
+  `targetParentPath`. Prefix checks must be normalized and segment-aware rather than
+  raw string-prefix comparisons. Adding `sourceListKey` is the clearest way to select
+  the source configuration without guessing from `sourceParentPath`.
 - **Acceptance coverage**:
   - a modified request cannot copy from or into another project, list, library, or
     accessible SharePoint location;
-  - source and destination must both resolve beneath the configured root for the
-    same `listKey`;
+  - source and destination must each resolve beneath the configured root selected for
+    its domain list;
   - a mismatched target id/path/list key is rejected before the copy mutation;
   - the backend, not Angular, constructs or validates every SharePoint location used
     by the existing copy service;
-  - valid same-list copies retain the canonical KeepBoth behavior and response.
+  - valid same-list and cross-list copies retain the canonical KeepBoth behavior and
+    response.
 - **Status / priority**: unresolved backend authorization boundary (P0). The
-  same-list frontend restriction is implemented, but it does not close this item.
+  frontend permission to copy across lists does not close this item.
 
 ## 6. Confirm the real API rejects descendant folder copies
 

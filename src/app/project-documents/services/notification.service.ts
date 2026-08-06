@@ -54,8 +54,6 @@ export class NotificationService {
                 return 'That name is not valid.';
             case 'descendant-move':
                 return 'A folder cannot be placed inside itself or one of its subfolders.';
-            case 'cross-list-copy':
-                return 'Items can only be copied within the same document list.';
             case 'permission-denied':
                 return 'You do not have permission to perform this action.';
             case 'network':

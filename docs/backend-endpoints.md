@@ -55,13 +55,14 @@
   Creating directly inside a document list uses that list's root-folder id as
   `parentFolderId`; nested creation uses the current folder's id. Move identifies
   `targetListKey` because its destination may be on another SharePoint site. Copy is
-  frontend-limited to a destination with the same `listKey` as its source. The current
-  adapter sends decoded source/target parent paths already present on the frontend
-  nodes and sends `targetListKey` for the returned node's domain context. This
-  path-based public contract still needs the backend project/list ownership hardening
-  tracked in `docs/TODO.md` item 5. The backend compares the parent paths: a
-  different-folder copy keeps `sourceName`, while a same-folder copy uses the
-  ` - Copy` form before applying its existing `KeepBoth` collision handling.
+  supported between the current project's document lists, including when they resolve
+  to different SharePoint sites. The current adapter sends decoded source/target parent
+  paths already present on the frontend nodes and sends `targetListKey` for the returned
+  node's domain context. This path-based public contract still needs the backend
+  project/list ownership hardening tracked in `docs/TODO.md` item 5. The backend
+  compares the parent paths: a different-folder copy keeps `sourceName`, while a
+  same-folder copy uses the ` - Copy` form before applying its existing `KeepBoth`
+  collision handling.
 - `move`/`copy` are action endpoints (not PATCH) because they do more than set a field
   (new path and parent relationship on the returned node; a cross-list move may also
   require copy+delete).

@@ -502,12 +502,6 @@ export const FileSystemStore = signalStore(
                     `Target folder not found in cache: ${targetParentId}`
                 );
             }
-            if (source.listKey !== targetParent.listKey) {
-                throw new FileSystemError(
-                    'cross-list-copy',
-                    'Cannot copy items between document lists'
-                );
-            }
             if (isFolder(source) && _cachedSubtreeIds(id).includes(targetParentId)) {
                 throw new FileSystemError(
                     'descendant-move',

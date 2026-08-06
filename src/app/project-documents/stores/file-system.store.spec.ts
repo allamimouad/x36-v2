@@ -340,7 +340,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(moved?.listKey).toBe('marketing');
     });
 
-    it('rejects copying across document lists before calling the API', async () => {
+    it('copies across document lists using the destination context', async () => {
         const roots = await store.initialize('project-123');
         const executionRoot = requireRoot(roots.execution, 'execution');
         const marketingRoot = requireRoot(roots.marketing, 'marketing');
@@ -350,16 +350,15 @@ describe('FileSystemStore project-scoped API contract', () => {
         if (!source) { throw new Error('Expected execution source folder'); }
         const copy = spyOn(api, 'copy').and.callThrough();
 
-        await expectAsync(store.copy(source.id, marketingRoot.id)).toBeRejectedWith(
-            jasmine.objectContaining<FileSystemError>({ code: 'cross-list-copy' })
-        );
+        await store.copy(source.id, marketingRoot.id);
 
-        expect(copy).not.toHaveBeenCalled();
-        expect(
-            store.entities().some(
-                (node) => node.parentId === marketingRoot.id && node.name === source.name
-            )
-        ).toBeFalse();
+        expect(copy).toHaveBeenCalledOnceWith('project-123', source, marketingRoot);
+        const copied = store.entities().find(
+            (node) => node.id !== source.id &&
+                node.parentId === marketingRoot.id &&
+                node.name === source.name
+        );
+        expect(copied?.listKey).toBe('marketing');
     });
 
     it('keeps repeated same-folder copies with File Explorer names', async () => {

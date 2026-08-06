@@ -177,7 +177,8 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
   and performs the existing pessimistic `FileSystemStore.copy`. The source remains on
   the clipboard so repeated paste works, one paste runs at a time, editable fields keep
   native clipboard behavior, roots cannot be copied, and folder-to-self/descendant
-  copies are rejected.
+  copies are rejected. Copy may cross between the current project's Execution and
+  Marketing document lists, including when they resolve to different SharePoint sites.
   `SharePointFileSystemApi.copy` now sends exactly `kind`, `sourceParentPath`,
   `sourceName`, `targetListKey`, `targetParentId`, and `targetParentPath` to the
   project-scoped endpoint and maps HTTP failures to typed errors. The mock simulates
@@ -303,10 +304,10 @@ _Things noticed during implementation but not fixed in the current phase. Review
 - **Copy endpoint project/list authorization** (2026-07-31, P0 review finding):
   the current path-based copy DTO does not require the backend to prove that its
   client-controlled source/target paths and target id belong to `projectId`'s
-  configured list. Angular now enforces same-list copy in the menu, store, real
-  adapter, and mock adapter, but that is not a security boundary. Prefer a
-  list-scoped id-based backend request, or strictly validate canonical path/id/list
-  agreement before mutation. Full write-up: `docs/TODO.md` item 5.
+  configured lists. Angular permits cross-list copy, so the backend must resolve and
+  authorize the source and destination contexts independently. Prefer a list-scoped
+  id-based backend request, or strictly validate canonical path/id/list agreement
+  before mutation. Full write-up: `docs/TODO.md` item 5.
 - **Ambiguous copy failures can be duplicated by Retry** (2026-07-31, review
   finding): a copy may succeed in SharePoint before its response or canonical
   lookup fails, but the frontend maps timeout/transport/`5xx` failures to
@@ -389,6 +390,13 @@ _One line per session, newest at top. Include date, phase, what was completed, a
   This does not solve the backend project/list authorization boundary, which is
   recorded as P0 in `docs/TODO.md` item 5. App/spec TypeScript, focused lint, the
   development build, and diff-check pass.
+- **2026-08-06 — cross-list frontend copy enabled**: removed the earlier same-list
+  restriction after Execution-to-Marketing copy was verified against the target
+  SharePoint environment. Paste is available across both document trees; the store,
+  real adapter, and mock adapter all send/perform the operation. The existing HTTP
+  payload is unchanged and continues to carry the source parent path plus destination
+  list key/id/path. Cross-list adapter and store coverage now assert success. Backend
+  project/list ownership validation remains the P0 work in `docs/TODO.md` item 5.
 - **2026-07-31 — ambiguous copy Retry documented for later**: recorded the
   duplicate-copy risk in `docs/TODO.md` item 4 and the deferred-issues summary
   above. The review confirmed that a `network` classification does not establish

@@ -187,12 +187,6 @@ export class MockFileSystemApi extends FileSystemApi {
         return this.write(() => {
             const source = this.requireNode(node.id);
             const target = this.requireFolder(newParent.id);
-            if (source.listKey !== target.listKey) {
-                throw new FileSystemError(
-                    'cross-list-copy',
-                    'Cannot copy items between document lists'
-                );
-            }
             if (isFolder(source) && this.isAncestorOrSelf(source.id, target.id)) {
                 throw new FileSystemError(
                     'descendant-move',

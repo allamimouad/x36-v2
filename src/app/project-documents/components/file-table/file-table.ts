@@ -126,7 +126,12 @@ export class FileTable {
         effect(() => {
             const renamingId = this.renamingId();
             const row = this.rows().find((candidate) => candidate.id === renamingId);
-            if (row) { this.inlineRenameValue.set(row.node.name); }
+            if (row) {
+                const editableName = row.kind === 'file'
+                    ? fileNameParts(row.node.name).base
+                    : row.node.name;
+                this.inlineRenameValue.set(editableName);
+            }
             const inputElement = this.inlineRenameInput()?.nativeElement;
             if (inputElement) {
                 inputElement.focus();
@@ -223,7 +228,17 @@ export class FileTable {
     }
 
     private submitInlineRename(row: RowVm): void {
-        this.renameSubmitted.emit({ node: row.node, name: this.inlineRenameValue() });
+        const editedName = this.inlineRenameValue();
+        if (row.kind === 'folder') {
+            this.renameSubmitted.emit({ node: row.node, name: editedName });
+
+            return;
+        }
+
+        const { ext } = fileNameParts(row.node.name);
+        const trimmedBase = editedName.trim();
+        const completeName = ext && trimmedBase ? `${trimmedBase}.${ext}` : editedName;
+        this.renameSubmitted.emit({ node: row.node, name: completeName });
     }
 }
 

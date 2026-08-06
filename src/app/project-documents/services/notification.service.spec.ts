@@ -30,7 +30,6 @@ describe('NotificationService', () => {
                 'descendant-move',
                 'A folder cannot be placed inside itself or one of its subfolders.'
             ],
-            ['cross-list-copy', 'Items can only be copied within the same document list.'],
             ['permission-denied', 'You do not have permission to perform this action.'],
             ['network', 'Connection problem — try again.'],
             ['cancelled', 'The operation was cancelled.'],

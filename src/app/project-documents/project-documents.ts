@@ -984,20 +984,10 @@ export class ProjectDocuments {
         return this.notifications.userMessageFor(error);
     }
 
-    private canPaste(target: FolderNode): boolean {
-        if (
-            this.pasting() ||
-            this.clipboard.mode() !== 'copy' ||
-            this.clipboard.ids().size !== 1
-        ) {
-            return false;
-        }
-        const sourceId = this.clipboard.ids().values().next().value;
-        const source = sourceId ? this.fileSystem.entityMap()[sourceId] : undefined;
-
-        // Keep the action available for a stale clipboard id so pasteInto can clear it
-        // and explain what happened; known sources must remain in their own list.
-        return source === undefined || source.listKey === target.listKey;
+    private canPaste(_target: FolderNode): boolean {
+        return !this.pasting() &&
+            this.clipboard.mode() === 'copy' &&
+            this.clipboard.ids().size === 1;
     }
 
     private async uploadExternalDrop(
@@ -1112,7 +1102,7 @@ export class ProjectDocuments {
         const marketingRoot = this.rootFromStatus(roots.marketing);
         const executionRoot = this.rootFromStatus(roots.execution);
         const currentRoot = marketingRoot ?? executionRoot;
-        this.notifyRootLoadErrors(roots, currentRoot !== null);
+        this.logRootLoadErrors(roots);
         // No root at all: leave navigation untouched — `bootstrapError` derives the
         // message from the same roots result.
         if (!currentRoot) { return; }
@@ -1147,20 +1137,10 @@ export class ProjectDocuments {
             : 'Documents could not be loaded. Try refreshing.';
     }
 
-    private notifyRootLoadErrors(roots: DocumentListRoots, hasUsableRoot: boolean): void {
+    private logRootLoadErrors(roots: DocumentListRoots): void {
         for (const key of DOCUMENT_LIST_KEYS) {
             const root = roots[key];
             if (root.status !== 'error') { continue; }
-            if (hasUsableRoot) {
-                this.notifications.error(
-                    root.error,
-                    this.retryForReadError(root.error, () => {
-                        this.fileSystem.connectProject(this.projectId());
-                    })
-                );
-
-                continue;
-            }
             console.error(`[project-documents] ${key} documents could not be loaded`, root.error);
         }
     }

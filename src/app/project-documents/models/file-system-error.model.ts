@@ -3,7 +3,6 @@ export type FileSystemErrorCode =
   | 'name-collision'
   | 'invalid-name'
   | 'descendant-move'
-  | 'cross-list-copy'
   | 'permission-denied'
   | 'network'
   | 'cancelled'

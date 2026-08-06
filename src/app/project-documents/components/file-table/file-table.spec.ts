@@ -2,7 +2,7 @@ import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import type { FileNode, FolderNode } from '../../models/file-system-node.model';
 import { FileTable } from './file-table';
 
-describe('FileTable inline delete confirmation', () => {
+describe('FileTable', () => {
     let fixture: ComponentFixture<FileTable>;
 
     beforeEach(async () => {
@@ -43,8 +43,55 @@ describe('FileTable inline delete confirmation', () => {
         expect(focused).not.toHaveBeenCalled();
     });
 
+    it('hides a file extension while renaming and restores it on submit', async () => {
+        fixture.componentRef.setInput('renamingId', file.id);
+        fixture.detectChanges();
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const input = renameInput();
+        const submitted = jasmine.createSpy('submitted');
+        fixture.componentInstance.renameSubmitted.subscribe(submitted);
+
+        expect(input.value).toBe('report');
+
+        input.value = 'renamed-report';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+        expect(submitted).toHaveBeenCalledOnceWith({ node: file, name: 'renamed-report.docx' });
+    });
+
+    it('keeps the complete folder name editable', async () => {
+        fixture.componentRef.setInput('renamingId', folder.id);
+        fixture.detectChanges();
+        await fixture.whenStable();
+        fixture.detectChanges();
+
+        const input = renameInput();
+        const submitted = jasmine.createSpy('submitted');
+        fixture.componentInstance.renameSubmitted.subscribe(submitted);
+
+        expect(input.value).toBe('Reports');
+
+        input.value = 'Reports.2026';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+        expect(submitted).toHaveBeenCalledOnceWith({ node: folder, name: 'Reports.2026' });
+    });
+
     function button(testId: string): HTMLButtonElement | null {
         return fixture.nativeElement.querySelector(`[data-testid="${testId}"]`);
+    }
+
+    function renameInput(): HTMLInputElement {
+        const input = fixture.nativeElement.querySelector('.pd-inline-rename-input');
+        if (!(input instanceof HTMLInputElement)) {
+            throw new Error('Expected inline rename input');
+        }
+
+        return input;
     }
 });
 
