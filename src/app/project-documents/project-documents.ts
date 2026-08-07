@@ -299,43 +299,6 @@ export class ProjectDocuments {
         this.observeReadErrors();
     }
 
-    @HostListener('document:keydown.F5', ['$event'])
-    protected onF5(event: Event): void {
-        event.preventDefault();
-        this.onRefresh();
-    }
-
-    @HostListener('document:keydown.F2', ['$event'])
-    protected onF2(event: Event): void {
-        if (this.pathEditing()) { return; }
-        const id = this.navigation.focusedId();
-        const node = id ? this.fileSystem.entityMap()[id] : undefined;
-        if (node?.parentId === undefined || node.parentId === null || this.isWriting(node.id)) {
-            return;
-        }
-        event.preventDefault();
-        if (isFolder(node)) {
-            const surface = this.focusedSurface() === 'table' &&
-                node.parentId === this.navigation.currentFolderId()
-                ? 'table'
-                : 'tree';
-            this.startInlineRename(node, surface);
-
-            return;
-        }
-        if (node.parentId === this.navigation.currentFolderId()) {
-            this.startInlineRename(node, 'table');
-        }
-    }
-
-    @HostListener('document:keydown.escape', ['$event'])
-    protected onEscape(event: Event): void {
-        if (!this.pendingDelete()) { return; }
-        event.preventDefault();
-        event.stopPropagation();
-        this.cancelDeleteConfirmation();
-    }
-
     @HostListener('document:pointerdown', ['$event'])
     protected onDocumentPointerDown(event: PointerEvent): void {
         if (!this.pendingDelete()) { return; }

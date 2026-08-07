@@ -86,7 +86,7 @@
 - [ ] Current folder is highlighted in the tree
 - [ ] Back / forward / up buttons work and disable correctly
 - [ ] Breadcrumb clicks navigate correctly
-- [ ] Refresh (F5 or toolbar button) re-fetches current folder
+- [ ] Refresh toolbar button re-fetches current folder
 - [ ] Store unit tests pass
 - [ ] No code references SharePoint or `serverRelativeUrl`
 
@@ -94,7 +94,6 @@
 - Any mutation (create/rename/delete/move/copy/upload)
 - Context menus
 - Selection beyond visual highlight
-- Keyboard shortcuts (except F5)
 - Drag-and-drop
 - Clipboard
 - Dialogs
@@ -126,7 +125,6 @@
 - `services/interaction/notification.service.ts` — component-scoped wrapper around `MessageService`; methods: `success(message)`, `error(error, retry?)`, `warning(message)`, `info(message)`, `userMessageFor(error)`, `clear()`. `ProjectDocuments` decides inline state vs toast from typed store errors; retry actions use the custom `p-toast` template.
 
 **Components**
-- `components/dialogs/conflict-resolution-dialog.ts` — shell only (used in Phase 4 for bulk move/copy; for Phase 2 single ops, errors show as toast)
 - `components/folder-tree/folder-tree.ts` — emit folder context-menu requests; the container supplies the shared menu from SPEC §3.5
 - `components/file-table/file-table.ts` — add:
   - Context menu per row
@@ -145,7 +143,7 @@
 
 ### Acceptance checks
 - [ ] Create via button or context menu persists a unique default name, then opens inline rename
-- [ ] Folder rename stays inline in the table/tree; file rename works through F2 or its dialog
+- [ ] Folder and file rename stay inline in the table/tree
 - [ ] Delete via context menu shows inline Cancel/Confirm icon buttons on the initiating
   surface and deletes only on confirm
 - [ ] Pessimistic writes show an in-flight affordance and update the cache only after the API confirms success
@@ -158,14 +156,13 @@
 - Bulk operations
 - Drag-and-drop
 - Clipboard (cut/copy/paste)
-- Keyboard shortcuts beyond F2
 - Upload
 
 ---
 
-## Phase 3 — Selection, Keyboard, Clipboard
+## Phase 3 — Selection and Clipboard
 
-**Goal**: power-user workflows. Multi-select, all keyboard shortcuts, cut/copy/paste.
+**Goal**: multi-select and cut/copy/paste workflows.
 
 ### Entry criteria
 - Phase 2 complete
@@ -186,21 +183,13 @@
   - Cut items render at 50% opacity (read from `ClipboardService`)
   - Context menu adds: Cut, Copy, Paste (if clipboard not empty); folder-menu Paste
     targets the right-clicked folder without opening it first
-- `project-documents.ts`:
-  - `@HostListener` or signal-based key handler for all shortcuts (SPEC §3.8)
-  - Handles Escape to clear selection / close menus
-  - Handles Ctrl+A, Delete (confirm if bulk), F2, Enter, Backspace, Alt+Left/Right/Up, Ctrl+X/C/V, Ctrl+N
-
 ### Acceptance checks
-- [ ] Click / Ctrl+Click / Shift+Click behaviors match spec
-- [ ] Ctrl+A selects all in current folder
+- [ ] Multi-selection behavior matches the specification
 - [ ] Delete on multi-selection shows bulk confirm ("Delete 5 items?"), deletes sequentially with progress
 - [ ] Bulk errors: succeeded items stay deleted, failed items remain, summary toast shown
 - [ ] Cut + Paste moves items; Copy + Paste copies items only within the same
   document list
-- [ ] Cut items are visually dimmed; clear on successful paste or Escape
-- [ ] All keyboard shortcuts work as specified
-- [ ] Backspace only triggers up-nav when focus is in right pane and no input/dialog open
+- [ ] Cut items are visually dimmed and clear on successful paste
 
 ### NOT in this phase
 - Drag-and-drop

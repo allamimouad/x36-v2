@@ -14,7 +14,20 @@ import { FILE_MANAGER_CONFIG } from '../../tokens/file-manager-config.token';
 import { validateName } from '../../utils/naming.utils';
 import { FileSystemStore } from '../../stores/file-system.store';
 import { ConcurrencyQueue } from './concurrency-queue';
-import { buildDirectoryManifest, type LocalFileEntry } from './directory-manifest';
+import {
+    buildDirectoryManifest,
+    type DirectoryManifest,
+    type LocalDirectoryEntry,
+    type LocalFileEntry
+} from './directory-manifest';
+
+interface DirectoryUploadContext {
+    batchId: string;
+    controller: AbortController;
+    rootHandle: FileSystemDirectoryHandle;
+    target: FolderNode;
+    preparationStarted: boolean;
+}
 
 @Injectable()
 export class UploadService {
@@ -60,97 +73,15 @@ export class UploadService {
         rootHandle: FileSystemDirectoryHandle,
         target: FolderNode
     ): Promise<void> {
-        const batchId = crypto.randomUUID();
-        const controller = new AbortController();
-        this.batchControllers.set(batchId, controller);
-        this._batches.update((batches) => [
-            ...batches,
-            {
-                id: batchId,
-                rootName: rootHandle.name,
-                targetParentId: target.id,
-                status: 'queued',
-                directoryCount: 0,
-                createdDirectoryCount: 0,
-                fileCount: 0
-            }
-        ]);
-
-        let preparationStarted = false;
+        const context = this.startDirectoryBatch(rootHandle, target);
         try {
-            await this.directoryPreparationQueue.enqueue(async () => {
-                this.throwIfCancelled(controller.signal);
-                preparationStarted = true;
-                this.updateBatch(batchId, { status: 'preparing' });
-                const manifest = await buildDirectoryManifest(rootHandle, controller.signal);
-                this.assertValidDirectories(manifest.directories);
-                this.updateBatch(batchId, {
-                    directoryCount: manifest.directories.length,
-                    fileCount: manifest.files.length
-                });
-
-                const remoteFolders = new Map<string, FolderNode>();
-                for (const localDirectory of manifest.directories) {
-                    this.throwIfCancelled(controller.signal);
-                    const parentId = localDirectory.parentRelativePath === null
-                        ? target.id
-                        : remoteFolders.get(localDirectory.parentRelativePath)?.id;
-                    if (!parentId) {
-                        throw new FileSystemError(
-                            'not-found',
-                            `Parent folder was not created for ${localDirectory.relativePath}`
-                        );
-                    }
-                    const created = await this.fileSystem.createFolder(
-                        parentId,
-                        localDirectory.name
-                    );
-                    remoteFolders.set(localDirectory.relativePath, created);
-                    this.updateBatch(batchId, {
-                        rootName:
-                            localDirectory.parentRelativePath === null
-                                ? created.name
-                                : this.batch(batchId)?.rootName ?? rootHandle.name,
-                        createdDirectoryCount:
-                            (this.batch(batchId)?.createdDirectoryCount ?? 0) + 1
-                    });
-                }
-
-                this.throwIfCancelled(controller.signal);
-                for (const localFile of manifest.files) {
-                    const remoteParent = remoteFolders.get(localFile.parentRelativePath);
-                    if (!remoteParent) {
-                        throw new FileSystemError(
-                            'not-found',
-                            `Destination folder was not created for ${localFile.relativePath}`
-                        );
-                    }
-                    this.addManifestFileTask(
-                        localFile,
-                        remoteParent,
-                        batchId,
-                        manifest.root.name,
-                        remoteFolders.get(manifest.root.relativePath)?.name
-                            ?? manifest.root.name
-                    );
-                }
-                this.updateBatch(batchId, {
-                    status: manifest.files.length === 0 ? 'done' : 'uploading'
-                });
-                this.refreshBatch(batchId);
-            });
+            await this.directoryPreparationQueue.enqueue(() =>
+                this.prepareDirectoryBatch(context)
+            );
         } catch (error) {
-            const cancelled = controller.signal.aborted || isCancellation(error);
-            this.updateBatch(batchId, {
-                status: cancelled ? 'cancelled' : 'error',
-                error: cancelled
-                    ? preparationStarted
-                        ? 'Folder upload was cancelled. Already-created folders were kept.'
-                        : 'Folder preparation was cancelled.'
-                    : uploadErrorMessage(error)
-            });
+            this.failDirectoryBatch(context, error);
         } finally {
-            this.batchControllers.delete(batchId);
+            this.batchControllers.delete(context.batchId);
         }
     }
 
@@ -226,6 +157,141 @@ export class UploadService {
         this._batches.set([]);
     }
 
+    private startDirectoryBatch(
+        rootHandle: FileSystemDirectoryHandle,
+        target: FolderNode
+    ): DirectoryUploadContext {
+        const context: DirectoryUploadContext = {
+            batchId: crypto.randomUUID(),
+            controller: new AbortController(),
+            rootHandle,
+            target,
+            preparationStarted: false
+        };
+        this.batchControllers.set(context.batchId, context.controller);
+        this._batches.update((batches) => [
+            ...batches,
+            {
+                id: context.batchId,
+                rootName: rootHandle.name,
+                targetParentId: target.id,
+                status: 'queued',
+                directoryCount: 0,
+                createdDirectoryCount: 0,
+                fileCount: 0
+            }
+        ]);
+
+        return context;
+    }
+
+    private async prepareDirectoryBatch(context: DirectoryUploadContext): Promise<void> {
+        const { batchId, controller, rootHandle } = context;
+        this.throwIfCancelled(controller.signal);
+        context.preparationStarted = true;
+        this.updateBatch(batchId, { status: 'preparing' });
+        const manifest = await buildDirectoryManifest(rootHandle, controller.signal);
+        this.assertValidDirectories(manifest.directories);
+        this.updateBatch(batchId, {
+            directoryCount: manifest.directories.length,
+            fileCount: manifest.files.length
+        });
+        const remoteFolders = await this.createManifestFolders(context, manifest);
+        this.throwIfCancelled(controller.signal);
+        this.enqueueManifestFiles(context, manifest, remoteFolders);
+        this.updateBatch(batchId, {
+            status: manifest.files.length === 0 ? 'done' : 'uploading'
+        });
+        this.refreshBatch(batchId);
+    }
+
+    private async createManifestFolders(
+        context: DirectoryUploadContext,
+        manifest: DirectoryManifest
+    ): Promise<Map<string, FolderNode>> {
+        const remoteFolders = new Map<string, FolderNode>();
+        for (const localDirectory of manifest.directories) {
+            this.throwIfCancelled(context.controller.signal);
+            const parentId = this.manifestParentId(
+                localDirectory,
+                context.target.id,
+                remoteFolders
+            );
+            const created = await this.fileSystem.createFolder(
+                parentId,
+                localDirectory.name
+            );
+            remoteFolders.set(localDirectory.relativePath, created);
+            this.recordCreatedDirectory(context, localDirectory, created);
+        }
+
+        return remoteFolders;
+    }
+
+    private manifestParentId(
+        directory: LocalDirectoryEntry,
+        targetId: string,
+        remoteFolders: ReadonlyMap<string, FolderNode>
+    ): string {
+        if (directory.parentRelativePath === null) { return targetId; }
+        const parentId = remoteFolders.get(directory.parentRelativePath)?.id;
+        if (parentId) { return parentId; }
+        throw new FileSystemError(
+            'not-found',
+            `Parent folder was not created for ${directory.relativePath}`
+        );
+    }
+
+    private recordCreatedDirectory(
+        context: DirectoryUploadContext,
+        directory: LocalDirectoryEntry,
+        created: FolderNode
+    ): void {
+        const current = this.batch(context.batchId);
+        const rootName = directory.parentRelativePath === null
+            ? created.name
+            : current?.rootName ?? context.rootHandle.name;
+        this.updateBatch(context.batchId, {
+            rootName,
+            createdDirectoryCount: (current?.createdDirectoryCount ?? 0) + 1
+        });
+    }
+
+    private enqueueManifestFiles(
+        context: DirectoryUploadContext,
+        manifest: DirectoryManifest,
+        remoteFolders: ReadonlyMap<string, FolderNode>
+    ): void {
+        const remoteRootName = remoteFolders.get(manifest.root.relativePath)?.name
+            ?? manifest.root.name;
+        for (const localFile of manifest.files) {
+            const remoteParent = remoteFolders.get(localFile.parentRelativePath);
+            if (!remoteParent) {
+                throw new FileSystemError(
+                    'not-found',
+                    `Destination folder was not created for ${localFile.relativePath}`
+                );
+            }
+            this.addManifestFileTask(
+                localFile,
+                remoteParent,
+                context.batchId,
+                manifest.root.name,
+                remoteRootName
+            );
+        }
+    }
+
+    private failDirectoryBatch(context: DirectoryUploadContext, error: unknown): void {
+        const cancelled = context.controller.signal.aborted || isCancellation(error);
+        this.updateBatch(context.batchId, {
+            status: cancelled ? 'cancelled' : 'error',
+            error: cancelled
+                ? directoryCancellationMessage(context.preparationStarted)
+                : uploadErrorMessage(error)
+        });
+    }
+
     private addManifestFileTask(
         entry: LocalFileEntry,
         parent: FolderNode,
@@ -270,55 +336,74 @@ export class UploadService {
     }
 
     private scheduleTask(id: string): void {
-        void this.fileUploadQueue.enqueue(async () => {
-            const queued = this.task(id);
-            if (this.destroyed || queued?.status !== 'queued') { return; }
-            const controller = new AbortController();
-            this.taskControllers.set(id, controller);
-            this.updateTask(id, { status: 'uploading', progress: 0 });
-            try {
-                await this.fileSystem.upload(
-                    queued.parentId,
-                    queued.file,
-                    (progress) => {
-                        const current = this.task(id);
-                        if (!current || current.status === 'cancelled') { return; }
-                        this.updateTask(id, {
-                            status: progress >= 100 ? 'finalizing' : 'uploading',
-                            progress
-                        });
-                    },
-                    controller.signal
-                );
-                if (this.task(id)?.status !== 'cancelled') {
-                    this.updateTask(id, { status: 'done', progress: 100 });
-                }
-            } catch (error) {
-                if (controller.signal.aborted || isCancellation(error)) {
-                    this.updateTask(id, {
-                        status: 'cancelled',
-                        error: undefined,
-                        errorCode: 'cancelled'
-                    });
-                } else {
-                    this.updateTask(id, {
-                        status: 'error',
-                        error: uploadErrorMessage(error),
-                        errorCode: uploadErrorCode(error)
-                    });
-                }
-            } finally {
-                this.taskControllers.delete(id);
-                const batchId = this.task(id)?.batchId;
-                if (batchId) { this.refreshBatch(batchId); }
+        void this.fileUploadQueue.enqueue(() => this.runTask(id))
+            .catch((error: unknown) => this.failTask(id, error));
+    }
+
+    private async runTask(id: string): Promise<void> {
+        const queued = this.task(id);
+        if (this.destroyed || queued?.status !== 'queued') { return; }
+        const controller = new AbortController();
+        this.taskControllers.set(id, controller);
+        this.updateTask(id, { status: 'uploading', progress: 0 });
+        try {
+            await this.uploadTask(id, queued, controller.signal);
+            if (this.task(id)?.status !== 'cancelled') {
+                this.updateTask(id, { status: 'done', progress: 100 });
             }
-        }).catch((error: unknown) => {
-            this.updateTask(id, {
-                status: 'error',
-                error: uploadErrorMessage(error),
-                errorCode: uploadErrorCode(error)
-            });
+        } catch (error) {
+            if (controller.signal.aborted || isCancellation(error)) {
+                this.cancelRunningTask(id);
+            } else {
+                this.failTask(id, error);
+            }
+        } finally {
+            this.finishTask(id);
+        }
+    }
+
+    private async uploadTask(
+        id: string,
+        task: UploadTask,
+        abortSignal: AbortSignal
+    ): Promise<void> {
+        await this.fileSystem.upload(
+            task.parentId,
+            task.file,
+            (progress) => this.reportTaskProgress(id, progress),
+            abortSignal
+        );
+    }
+
+    private reportTaskProgress(id: string, progress: number): void {
+        const current = this.task(id);
+        if (!current || current.status === 'cancelled') { return; }
+        this.updateTask(id, {
+            status: progress >= 100 ? 'finalizing' : 'uploading',
+            progress
         });
+    }
+
+    private cancelRunningTask(id: string): void {
+        this.updateTask(id, {
+            status: 'cancelled',
+            error: undefined,
+            errorCode: 'cancelled'
+        });
+    }
+
+    private failTask(id: string, error: unknown): void {
+        this.updateTask(id, {
+            status: 'error',
+            error: uploadErrorMessage(error),
+            errorCode: uploadErrorCode(error)
+        });
+    }
+
+    private finishTask(id: string): void {
+        this.taskControllers.delete(id);
+        const batchId = this.task(id)?.batchId;
+        if (batchId) { this.refreshBatch(batchId); }
     }
 
     private refreshBatch(id: string): void {
@@ -416,33 +501,33 @@ function uploadErrorCode(error: unknown): FileSystemErrorCode {
     return error instanceof FileSystemError ? error.code : 'unknown';
 }
 
+const DEFAULT_UPLOAD_ERROR = 'Upload failed. Please try again.';
+const UPLOAD_ERROR_MESSAGES: Partial<Record<FileSystemErrorCode, string>> = {
+    'name-collision': 'A file with this name already exists.',
+    locked: 'The upload destination is currently locked.',
+    'not-found': 'The destination folder is no longer available.',
+    'permission-denied': 'You do not have permission to upload here.',
+    network: 'Connection problem — retry the complete file.',
+    cancelled: 'Upload was cancelled.',
+    'descendant-move': DEFAULT_UPLOAD_ERROR,
+    unknown: DEFAULT_UPLOAD_ERROR
+};
+
 function uploadErrorMessage(error: unknown): string {
     if (!(error instanceof FileSystemError)) {
-        return 'Upload failed. Please try again.';
+        return DEFAULT_UPLOAD_ERROR;
     }
-    switch (error.code) {
-        case 'name-collision':
-            return 'A file with this name already exists.';
-        case 'invalid-name':
-            return error.message;
-        case 'locked':
-            return 'The upload destination is currently locked.';
-        case 'too-large':
-            return error.message;
-        case 'not-found':
-            return 'The destination folder is no longer available.';
-        case 'permission-denied':
-            return 'You do not have permission to upload here.';
-        case 'network':
-            return 'Connection problem — retry the complete file.';
-        case 'cancelled':
-            return 'Upload was cancelled.';
-        case 'descendant-move':
-        case 'unknown':
-            return 'Upload failed. Please try again.';
-        default:
-            return 'Upload failed. Please try again.';
+    if (error.code === 'invalid-name' || error.code === 'too-large') {
+        return error.message;
     }
+
+    return UPLOAD_ERROR_MESSAGES[error.code] ?? DEFAULT_UPLOAD_ERROR;
+}
+
+function directoryCancellationMessage(preparationStarted: boolean): string {
+    return preparationStarted
+        ? 'Folder upload was cancelled. Already-created folders were kept.'
+        : 'Folder preparation was cancelled.';
 }
 
 function formatBytes(bytes: number): string {

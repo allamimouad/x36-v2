@@ -96,8 +96,8 @@ The `src/app/project-documents/` folder will be copied verbatim to another machi
 ### 3.2 Core operations
 
 - Create folder server-first with the default name `New folder`, then immediately enter inline rename
-- Rename folders inline from the table/tree; rename files inline on F2 or from the
-  context menu. A file rename input shows only the editable basename; its existing
+- Rename folders inline from the table/tree; rename files inline from the context
+  menu. A file rename input shows only the editable basename; its existing
   extension is hidden during editing and restored in the complete name sent to the API.
 - Execution and marketing roots load independently. When at least one root is available,
   a missing or failed companion root stays hidden and does not raise a user notification.
@@ -168,7 +168,6 @@ All scenarios must work:
 
 ### 3.6 Cut / copy / paste clipboard
 
-- Shortcuts: `Ctrl+X`, `Ctrl+C`, `Ctrl+V` (plus context menu)
 - Clipboard: `{ ids: ReadonlySet<string>, mode: 'cut' | 'copy' | null }` in `ClipboardService`
 - Cut items render at 50% opacity until pasted or cleared
 - Paste cut into same folder: no-op (silent)
@@ -181,29 +180,8 @@ All scenarios must work:
 ### 3.7 Multi-select (right pane only)
 
 - **Click**: select one (becomes anchor)
-- **Ctrl+Click**: toggle one
-- **Shift+Click**: range from anchor
-- **Ctrl+A**: select all in current folder
-- **Escape**: clear selection
 - Drives bulk delete, bulk move/copy, bulk cut/copy
 - PrimeNG `p-table` `selectionMode="multiple"` with `dataKey="id"`
-
-### 3.8 Keyboard shortcuts
-
-| Key | Action |
-|---|---|
-| F2 | Rename focused item |
-| Delete | Delete selection (confirm if bulk) |
-| Enter on folder | Open it |
-| Backspace | Go up (only if right pane has focus and nothing is being edited) |
-| Alt+Left | Back |
-| Alt+Right | Forward |
-| Alt+Up | Parent |
-| Ctrl+A | Select all (right pane) |
-| Ctrl+C / X / V | Copy / Cut / Paste |
-| Ctrl+N | New folder (in current folder) |
-| F5 | Refresh current folder |
-| Escape | Clear selection / cancel drag / close context menu |
 
 ### 3.9 Upload with progress
 
@@ -511,8 +489,6 @@ project-documents/
     path-bar/path-bar.ts
     nav-toolbar/nav-toolbar.ts
     upload-panel/upload-panel.ts
-    dialogs/
-      conflict-resolution-dialog.ts
   shared/
     file-system-icon/                  # file-type icon: <img> over assets/icons/sharepoint-file-type-icons/<name>.svg
   stores/
@@ -616,7 +592,6 @@ applied, so the store is already consistent and the failure surfaces as a toast.
 Name collision on rename/move/copy/upload:
 - **Initial folder creation**: the backend returns a unique persisted default name before inline editing starts
 - **Rename same parent**: inline error "A file/folder with that name already exists."
-- **Move**: `ConflictResolutionDialog` with options: Replace / Keep both (auto-suffix) / Skip / Cancel; bulk ops show "Apply to all" checkbox
 - **Copy**: always KeepBoth through the backend; apply the canonical returned name
 - **Upload**: fail the file with a collision message; never overwrite or retry automatically
 - `naming.utils.ts` provides `resolveNameCollision(baseName, existingNames)` → `"file (2).txt"`, `"file (3).txt"`, etc.
@@ -637,7 +612,7 @@ Name collision on rename/move/copy/upload:
 
 ## 13. Accessibility
 
-- Tree and table keyboard-navigable (PrimeNG baseline)
+- Tree and table preserve PrimeNG accessibility behavior
 - Drag operations achievable without mouse (Cut → navigate → Paste)
 - All interactive elements have `aria-label`
 - Focus rings visible

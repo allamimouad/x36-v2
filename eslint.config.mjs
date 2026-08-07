@@ -27,6 +27,7 @@ export default tseslint.config(
     processor: angular.processInlineTemplates,
     rules: {
       'no-undef': 'off',
+      complexity: ['error', 10],
       curly: ['error', 'all'],
       'consistent-return': 'error',
       'default-case': 'error',

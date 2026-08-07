@@ -1,8 +1,25 @@
 import { inject, Injectable } from '@angular/core';
 import { MessageService, type ToastMessageOptions } from 'primeng/api';
-import { FileSystemError } from '../../models/file-system-error.model';
+import {
+    FileSystemError,
+    type FileSystemErrorCode
+} from '../../models/file-system-error.model';
 
 export const PROJECT_DOCUMENTS_TOAST_KEY = 'project-documents';
+
+const ERROR_MESSAGES: Record<FileSystemErrorCode, string> = {
+    'not-found': 'Folder is no longer available.',
+    'name-collision': 'An item with that name already exists.',
+    'invalid-name': 'That name is not valid.',
+    locked: 'This file is currently open and locked for editing. ' +
+        'Close it and try again in a moment.',
+    'descendant-move': 'A folder cannot be placed inside itself or one of its subfolders.',
+    'permission-denied': 'You do not have permission to perform this action.',
+    network: 'Connection problem — try again.',
+    cancelled: 'The operation was cancelled.',
+    'too-large': 'This file is larger than the upload limit.',
+    unknown: 'Something went wrong. Please try again.'
+};
 
 interface NotificationData {
     retry?: () => void;
@@ -42,34 +59,10 @@ export class NotificationService {
 
     public userMessageFor(error: unknown): string {
         if (!(error instanceof FileSystemError)) {
-            return 'Something went wrong. Please try again.';
+            return ERROR_MESSAGES.unknown;
         }
 
-        switch (error.code) {
-            case 'not-found':
-                return 'Folder is no longer available.';
-            case 'name-collision':
-                return 'An item with that name already exists.';
-            case 'invalid-name':
-                return 'That name is not valid.';
-            case 'locked':
-                return 'This file is currently open and locked for editing. ' +
-                    'Close it and try again in a moment.';
-            case 'descendant-move':
-                return 'A folder cannot be placed inside itself or one of its subfolders.';
-            case 'permission-denied':
-                return 'You do not have permission to perform this action.';
-            case 'network':
-                return 'Connection problem — try again.';
-            case 'cancelled':
-                return 'The operation was cancelled.';
-            case 'too-large':
-                return 'This file is larger than the upload limit.';
-            case 'unknown':
-                return 'Something went wrong. Please try again.';
-            default:
-                return 'Something went wrong. Please try again.';
-        }
+        return ERROR_MESSAGES[error.code];
     }
 
     public hasRetry(message: ToastMessageOptions): boolean {

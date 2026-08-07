@@ -184,6 +184,7 @@ function fakeDirectory(
         kind: 'directory',
         name,
         async *values(): AsyncIterableIterator<FileSystemHandleUnion> {
+            await Promise.resolve();
             for (const child of children) {
                 yield child;
             }
@@ -195,7 +196,7 @@ function fakeFile(name: string, contents: string): FileSystemFileHandle {
     return {
         kind: 'file',
         name,
-        getFile: async () => new File([contents], name)
+        getFile: () => Promise.resolve(new File([contents], name))
     } as FileSystemFileHandle;
 }
 
