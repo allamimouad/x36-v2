@@ -16,6 +16,15 @@ describe('mapSharePointError', () => {
         expect(mapSharePointError('upload', response(404))).toEqual(
             jasmine.objectContaining<Partial<FileSystemError>>({ code: 'not-found' })
         );
+        expect(mapSharePointError('resolve-path', response(404))).toEqual(
+            jasmine.objectContaining<Partial<FileSystemError>>({ code: 'not-found' })
+        );
+    });
+
+    it('does not treat an invalid path request as a missing folder', () => {
+        expect(mapSharePointError('resolve-path', response(400))).toEqual(
+            jasmine.objectContaining<Partial<FileSystemError>>({ code: 'invalid-name' })
+        );
     });
 
     it('maps a locked rename response', () => {

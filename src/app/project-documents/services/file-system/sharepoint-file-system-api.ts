@@ -182,7 +182,11 @@ export class SharePointFileSystemApi extends FileSystemApi {
         _path: string
     ): Observable<ResolvedDocumentPath> {
     // TODO: implement with the SharePoint integration US.
-        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+        return throwError(() => new Error(IMPLEMENTATION_PENDING)).pipe(
+            catchError((error: unknown) =>
+                throwError(() => mapSharePointError('resolve-path', error))
+            )
+        );
     }
 
     /**

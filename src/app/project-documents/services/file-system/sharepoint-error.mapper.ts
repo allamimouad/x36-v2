@@ -1,11 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { FileSystemError } from '../../models/file-system-error.model';
 
-export type SharePointOperation = 'copy' | 'rename' | 'upload';
+export type SharePointOperation = 'copy' | 'rename' | 'resolve-path' | 'upload';
 
 const OPERATION_LABELS: Record<SharePointOperation, string> = {
     copy: 'Copy',
     rename: 'Rename',
+    'resolve-path': 'Folder lookup',
     upload: 'Upload'
 };
 
@@ -78,6 +79,8 @@ function notFoundMessage(operation: SharePointOperation): string {
             return 'Upload destination was not found';
         case 'rename':
             return 'Document was not found';
+        case 'resolve-path':
+            return 'Folder path was not found';
         default:
             return 'Document was not found';
     }
