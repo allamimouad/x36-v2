@@ -20,14 +20,14 @@
 - [x] `utils/naming.utils.ts` (validateName only)
 - [x] `services/mock/mock-config.token.ts` (moved out of `tokens/` on 2026-07-02)
 - [x] `tokens/file-manager-config.token.ts`
-- [x] `services/file-system-api.ts` (abstract class)
+- [x] `services/file-system/file-system-api.ts` (abstract class)
 - [x] `services/mock/mock-file-system-api.ts` (read listing real, mutations implemented; `listDocumentRoot(projectId, listKey)` + node-based `listDocuments(projectId, parent)`)
 - [x] `services/mock/mock-seed.ts` (two list roots — Execution & Marketing — each with two levels of subfolders and mixed file types)
-- [x] `services/sharepoint-file-system-api.ts` (compile-safe upload implementation;
+- [x] `services/file-system/sharepoint-file-system-api.ts` (compile-safe upload implementation;
   remaining methods retain implementation notes + per-method JSDoc + SP error-code map)
 - [x] `stores/file-system.store.ts` (`initialize(projectId)` + loadChildren + invalidate; mutations initially rejected as Phase 2)
 - [x] `stores/navigation.store.ts` (full minus selection; selection methods are no-op stubs)
-- [x] `services/clipboard.service.ts` (plain signal service)
+- [x] `services/interaction/clipboard.service.ts` (plain signal service)
 - [x] `components/folder-tree/folder-tree.ts` (read-only, p-tree, lazy via container-built nodes, per-node loading input)
 - [x] `components/file-table/file-table.ts` (read-only, p-table, dblclick → output)
 - [x] `components/path-bar/path-bar.ts`
@@ -46,7 +46,7 @@
 - [x] `services/mock/mock-file-system-api.ts` — implemented `createFolder`, `rename`, `move`, `copy`, `delete`
 - [x] `stores/file-system.store.ts` — implemented single-item create/rename/delete/move/copy
 - [x] `stores/navigation.store.ts` — implemented `startRename`, `endRename` (path-id remapping no longer needed after UUID switch — see refactor note 2026-05-21)
-- [x] `services/notification.service.ts` (typed error mapping, scoped `p-toast`, Retry action, partial-root + read-error routing)
+- [x] `services/interaction/notification.service.ts` (typed error mapping, scoped `p-toast`, Retry action, partial-root + read-error routing)
 - [x] Dialog component: conflict-resolution shell
 - [x] Context menu and inline rename wiring
 - [x] Inline single-item delete confirmation on the initiating table/tree surface

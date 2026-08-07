@@ -45,8 +45,8 @@
       type="button"
       severity="secondary"
       size="small"
+      class="pd-sharepoint-web-button"
       [outlined]="true"
-      [disabled]="!canOpenCurrentFolderInSharePoint()"
       [title]="
         canOpenCurrentFolderInSharePoint()
           ? 'Open the current folder in SharePoint'
@@ -62,7 +62,7 @@
         alt=""
         aria-hidden="true"
       />
-      <span>View in SharePoint (web)</span>
+      <span class="pd-sharepoint-web-button-label">View in SharePoint (web)</span>
     </button>
   </header>
 

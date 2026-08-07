@@ -17,7 +17,7 @@ export const appConfig: ApplicationConfig = {
     providers: [
         provideBrowserGlobalErrorListeners(),
         provideZoneChangeDetection({ eventCoalescing: true }),
-        ...(isDevMode() ? [provideDevtoolsConfig({ name: 'X36 File Manager' })] : []),
+        ...isDevMode() ? [provideDevtoolsConfig({ name: 'X36 File Manager' })] : [],
         provideHttpClient(),
         provideRouter(routes),
         provideAnimationsAsync(),

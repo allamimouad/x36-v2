@@ -81,6 +81,7 @@
  *   HTTP 404     →  'not-found'
  *   HTTP 409     →  'name-collision'
  *   HTTP 413     →  'too-large'
+ *   HTTP 423     →  'locked'
  *   HTTP 429     →  'network'           (throttled — backoff in caller)
  *   any network  →  'network'
  *   AbortError   →  'cancelled'
@@ -96,19 +97,26 @@
 
 import {
     HttpClient,
-    HttpErrorResponse,
     type HttpEvent,
     HttpEventType,
     HttpParams
 } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { catchError, Observable, throwError } from 'rxjs';
-import type { DocumentListing, ResolvedDocumentPath } from '../models/document-listing.model';
-import type { DocumentListKey } from '../models/document-list.model';
-import { FileSystemError } from '../models/file-system-error.model';
-import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
-import { parentOf } from '../utils/path.utils';
+import {
+    catchError,
+    map,
+    Observable,
+    type Subscriber,
+    Subscription,
+    throwError
+} from 'rxjs';
+import type { DocumentListing, ResolvedDocumentPath } from '../../models/document-listing.model';
+import type { DocumentListKey } from '../../models/document-list.model';
+import { FileSystemError } from '../../models/file-system-error.model';
+import type { FileNode, FileSystemNode, FolderNode } from '../../models/file-system-node.model';
+import { parentOf } from '../../utils/path.utils';
 import { FileSystemApi } from './file-system-api';
+import { mapSharePointError } from './sharepoint-error.mapper';
 
 const IMPLEMENTATION_PENDING = 'SharePointFileSystemApi is not implemented yet';
 
@@ -119,6 +127,18 @@ interface CopyDocumentRequest {
     targetListKey: DocumentListKey;
     targetParentId: string;
     targetParentPath: string;
+}
+
+interface RenameDocumentRequest {
+    name: string;
+}
+
+interface UploadOperation {
+    projectId: string;
+    parent: FolderNode;
+    file: File;
+    onProgress: (percent: number) => void;
+    signal?: AbortSignal;
 }
 
 @Injectable()
@@ -185,12 +205,18 @@ export class SharePointFileSystemApi extends FileSystemApi {
    * SharePoint-owned path, modification time, and editor.
    */
     public override rename(
-        _projectId: string,
-        _node: FileSystemNode,
-        _newName: string
+        projectId: string,
+        node: FileSystemNode,
+        newName: string
     ): Observable<FileSystemNode> {
-    // TODO: implement with the SharePoint integration US.
-        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+        return this.requestRename(projectId, node, newName).pipe(
+            map((renamed) => node.kind === 'file'
+                ? { ...renamed, parentId: node.parentId }
+                : renamed),
+            catchError((error: unknown) =>
+                throwError(() => mapSharePointError('rename', error))
+            )
+        );
     }
 
     /**
@@ -214,7 +240,9 @@ export class SharePointFileSystemApi extends FileSystemApi {
         newParent: FolderNode
     ): Observable<FileSystemNode> {
         return this.requestCopy(projectId, node, newParent).pipe(
-            catchError((error: unknown) => throwError(() => this.mapCopyError(error)))
+            catchError((error: unknown) =>
+                throwError(() => mapSharePointError('copy', error))
+            )
         );
     }
 
@@ -235,67 +263,51 @@ export class SharePointFileSystemApi extends FileSystemApi {
         onProgress: (percent: number) => void,
         signal?: AbortSignal
     ): Observable<FileNode> {
-        return new Observable<FileNode>((subscriber) => {
-            let lastProgress = -1;
+        const operation: UploadOperation = {
+            projectId,
+            parent,
+            file,
+            onProgress,
+            signal
+        };
 
-            const reportProgress = (percent: number): void => {
-                const normalized = Math.max(0, Math.min(100, Math.round(percent)));
-                if (normalized === lastProgress) { return; }
-                lastProgress = normalized;
-                onProgress(normalized);
-            };
-            const cancel = (): void => {
-                requestSubscription.unsubscribe();
-                if (subscriber.closed) { return; }
-                subscriber.error(
-                    new FileSystemError('cancelled', 'Upload was cancelled')
-                );
-            };
+        return new Observable<FileNode>((subscriber) =>
+            this.observeUpload(operation, subscriber)
+        );
+    }
 
-            if (signal?.aborted) {
-                subscriber.error(
-                    new FileSystemError('cancelled', 'Upload was cancelled')
-                );
+    private observeUpload(
+        operation: UploadOperation,
+        subscriber: Subscriber<FileNode>
+    ): (() => void) | undefined {
+        const { projectId, parent, file, onProgress, signal } = operation;
+        const reportProgress = progressReporter(onProgress);
+        const requestSubscription = new Subscription();
+        const cancel = (): void => {
+            requestSubscription.unsubscribe();
+            if (subscriber.closed) { return; }
+            subscriber.error(new FileSystemError('cancelled', 'Upload was cancelled'));
+        };
 
-                return;
-            }
-            signal?.addEventListener('abort', cancel, { once: true });
+        if (signal?.aborted) {
+            subscriber.error(new FileSystemError('cancelled', 'Upload was cancelled'));
 
-            const requestSubscription = this.requestUpload(projectId, parent, file).subscribe({
-                next: (event) => {
-                    if (event.type === HttpEventType.UploadProgress) {
-                        const total = event.total ?? file.size;
-                        reportProgress(total > 0 ? event.loaded / total * 100 : 100);
-                    }
-                    if (event.type !== HttpEventType.Response) { return; }
-                    if (!event.body) {
-                        subscriber.error(
-                            new FileSystemError(
-                                'unknown',
-                                'The upload response did not contain a file'
-                            )
-                        );
+            return undefined;
+        }
+        signal?.addEventListener('abort', cancel, { once: true });
+        requestSubscription.add(this.requestUpload(projectId, parent, file).subscribe({
+            next: (event) => handleUploadEvent(event, file, reportProgress, subscriber),
+            error: (error: unknown) => subscriber.error(
+                signal?.aborted
+                    ? new FileSystemError('cancelled', 'Upload was cancelled')
+                    : mapSharePointError('upload', error)
+            )
+        }));
 
-                        return;
-                    }
-                    reportProgress(100);
-                    subscriber.next(event.body);
-                    subscriber.complete();
-                },
-                error: (error: unknown) => {
-                    subscriber.error(
-                        signal?.aborted
-                            ? new FileSystemError('cancelled', 'Upload was cancelled')
-                            : this.mapUploadError(error)
-                    );
-                }
-            });
-
-            return () => {
-                signal?.removeEventListener('abort', cancel);
-                requestSubscription?.unsubscribe();
-            };
-        });
+        return () => {
+            signal?.removeEventListener('abort', cancel);
+            requestSubscription.unsubscribe();
+        };
     }
 
     /**
@@ -342,83 +354,54 @@ export class SharePointFileSystemApi extends FileSystemApi {
         return this.http.post<FileSystemNode>(url, request);
     }
 
-    private mapCopyError(error: unknown): FileSystemError {
-        if (error instanceof FileSystemError) { return error; }
-        if (!(error instanceof HttpErrorResponse)) {
-            return new FileSystemError('unknown', 'Copy failed', error);
-        }
+    private requestRename(
+        projectId: string,
+        node: FileSystemNode,
+        newName: string
+    ): Observable<FileSystemNode> {
+        const url =
+            `/projects/${encodeURIComponent(projectId)}` +
+            `/document-lists/${encodeURIComponent(node.listKey)}` +
+            `/documents/${encodeURIComponent(node.id)}`;
+        const request: RenameDocumentRequest = { name: newName };
 
-        const status = error.status;
-        if (status === 0 || status === 408 || status === 429 || status >= 500) {
-            return new FileSystemError('network', 'Copy request failed', error);
-        }
-        switch (status) {
-            case 400:
-                return new FileSystemError('invalid-name', 'Invalid copy request', error);
-            case 401:
-            case 403:
-                return new FileSystemError(
-                    'permission-denied',
-                    'Copy is not permitted',
-                    error
-                );
-            case 404:
-                return new FileSystemError(
-                    'not-found',
-                    'Copy source or destination was not found',
-                    error
-                );
-            case 409:
-                return new FileSystemError(
-                    'name-collision',
-                    'An item with that name already exists',
-                    error
-                );
-            default:
-                return new FileSystemError('unknown', 'Copy failed', error);
-        }
+        return this.http.patch<FileSystemNode>(url, request, {
+            params: new HttpParams().set('kind', node.kind)
+        });
     }
 
-    private mapUploadError(error: unknown): FileSystemError {
-        if (error instanceof FileSystemError) { return error; }
-        if (!(error instanceof HttpErrorResponse)) {
-            return new FileSystemError('unknown', 'Upload failed', error);
-        }
+}
 
-        const status = error.status;
-        if (status === 0 || status === 408 || status === 429 || status >= 500) {
-            return new FileSystemError('network', 'Upload request failed', error);
-        }
-        switch (status) {
-            case 400:
-                return new FileSystemError('invalid-name', 'Invalid upload request', error);
-            case 401:
-            case 403:
-                return new FileSystemError(
-                    'permission-denied',
-                    'Upload is not permitted',
-                    error
-                );
-            case 404:
-                return new FileSystemError(
-                    'not-found',
-                    'Upload destination was not found',
-                    error
-                );
-            case 409:
-                return new FileSystemError(
-                    'name-collision',
-                    'A file with that name already exists',
-                    error
-                );
-            case 413:
-                return new FileSystemError(
-                    'too-large',
-                    'File exceeds the upload limit',
-                    error
-                );
-            default:
-                return new FileSystemError('unknown', 'Upload failed', error);
-        }
+function progressReporter(onProgress: (percent: number) => void): (percent: number) => void {
+    let lastProgress = -1;
+
+    return (percent: number): void => {
+        const normalized = Math.max(0, Math.min(100, Math.round(percent)));
+        if (normalized === lastProgress) { return; }
+        lastProgress = normalized;
+        onProgress(normalized);
+    };
+}
+
+function handleUploadEvent(
+    event: HttpEvent<FileNode>,
+    file: File,
+    reportProgress: (percent: number) => void,
+    subscriber: Subscriber<FileNode>
+): void {
+    if (event.type === HttpEventType.UploadProgress) {
+        const total = event.total ?? file.size;
+        reportProgress(total > 0 ? event.loaded / total * 100 : 100);
     }
+    if (event.type !== HttpEventType.Response) { return; }
+    if (!event.body) {
+        subscriber.error(
+            new FileSystemError('unknown', 'The upload response did not contain a file')
+        );
+
+        return;
+    }
+    reportProgress(100);
+    subscriber.next(event.body);
+    subscriber.complete();
 }

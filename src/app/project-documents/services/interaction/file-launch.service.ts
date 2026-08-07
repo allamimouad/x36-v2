@@ -1,6 +1,6 @@
 import { DOCUMENT } from '@angular/common';
 import { inject, Injectable } from '@angular/core';
-import type { FileNode, FolderNode } from '../models/file-system-node.model';
+import type { FileNode, FolderNode } from '../../models/file-system-node.model';
 
 const DESKTOP_PROTOCOLS = [
     'ms-word',

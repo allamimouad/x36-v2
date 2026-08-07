@@ -18,10 +18,35 @@ export default tseslint.config(
     plugins: {
       '@stylistic': stylistic,
     },
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
     processor: angular.processInlineTemplates,
     rules: {
       'no-undef': 'off',
       curly: ['error', 'all'],
+      'consistent-return': 'error',
+      'default-case': 'error',
+      'max-lines': [
+        'error',
+        {
+          max: 500,
+          skipBlankLines: true,
+          skipComments: true
+        }
+      ],
+      'max-lines-per-function': [
+        'error',
+        {
+          max: 40,
+          skipBlankLines: true,
+          skipComments: true,
+          IIFEs: true
+        }
+      ],
       '@stylistic/block-spacing': ['error', 'always'],
       '@stylistic/indent': ['error', 4],
       '@stylistic/max-len': [
@@ -31,6 +56,7 @@ export default tseslint.config(
         }
       ],
       '@stylistic/object-curly-spacing': ['error', 'always'],
+      '@stylistic/no-extra-parens': ['error', 'all'],
       '@stylistic/spaced-comment': ['error', 'always'],
       '@stylistic/comma-dangle': ['error', 'never'],
       '@stylistic/padding-line-between-statements': [
@@ -42,6 +68,11 @@ export default tseslint.config(
         }
       ],
       '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
+      '@typescript-eslint/explicit-function-return-type': 'error',
+      '@typescript-eslint/prefer-optional-chain': 'error',
+      '@typescript-eslint/require-await': 'error',
       'no-shadow': 'off',
       '@typescript-eslint/no-shadow': 'error',
       '@typescript-eslint/explicit-member-accessibility': [
@@ -104,6 +135,12 @@ export default tseslint.config(
           style: 'kebab-case',
         },
       ],
+    },
+  },
+  {
+    files: ['**/*.spec.ts'],
+    rules: {
+      'max-lines-per-function': 'off',
     },
   },
   {

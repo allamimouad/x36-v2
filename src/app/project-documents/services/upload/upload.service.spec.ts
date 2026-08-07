@@ -1,10 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { isFile, isFolder, type FolderNode } from '../models/file-system-node.model';
-import { FileSystemApi } from './file-system-api';
-import { MockFileSystemApi } from './mock/mock-file-system-api';
-import { MOCK_CONFIG } from './mock/mock-config.token';
-import { FileSystemStore } from '../stores/file-system.store';
-import { FILE_MANAGER_CONFIG } from '../tokens/file-manager-config.token';
+import { isFile, isFolder, type FolderNode } from '../../models/file-system-node.model';
+import { FileSystemApi } from '../file-system/file-system-api';
+import { MockFileSystemApi } from '../mock/mock-file-system-api';
+import { MOCK_CONFIG } from '../mock/mock-config.token';
+import { FileSystemStore } from '../../stores/file-system.store';
+import { FILE_MANAGER_CONFIG } from '../../tokens/file-manager-config.token';
 import { UploadService } from './upload.service';
 
 describe('UploadService', () => {

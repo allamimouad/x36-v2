@@ -8,12 +8,12 @@ import {
     provideHttpClientTesting
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { FileSystemError } from '../models/file-system-error.model';
+import { FileSystemError } from '../../models/file-system-error.model';
 import type {
     FileNode,
     FileSystemNode,
     FolderNode
-} from '../models/file-system-node.model';
+} from '../../models/file-system-node.model';
 import { SharePointFileSystemApi } from './sharepoint-file-system-api';
 
 describe('SharePointFileSystemApi', () => {
@@ -153,6 +153,55 @@ describe('SharePointFileSystemApi', () => {
         expect(receivedError).toEqual(
             jasmine.objectContaining<Partial<FileSystemError>>({
                 code: 'not-found'
+            })
+        );
+    });
+
+    it('renames a file through the list-scoped endpoint and preserves its parent', () => {
+        const renamedResponse: FileNode = {
+            ...uploaded,
+            name: 'renamed.pdf',
+            path: `${parent.path}/renamed.pdf`,
+            parentId: 'backend-parent-id'
+        };
+        let result: FileSystemNode | undefined;
+
+        api.rename('project 1', uploaded, 'renamed.pdf').subscribe((renamed) => {
+            result = renamed;
+        });
+
+        const request = http.expectOne((candidate) =>
+            candidate.url ===
+                '/projects/project%201/document-lists/EXECUTION/documents/file-id'
+        );
+        expect(request.request.method).toBe('PATCH');
+        expect(request.request.params.get('kind')).toBe('file');
+        expect(request.request.body).toEqual({ name: 'renamed.pdf' });
+        request.flush(renamedResponse);
+
+        expect(result).toEqual({ ...renamedResponse, parentId: uploaded.parentId });
+    });
+
+    it('maps a locked rename response to locked', () => {
+        let receivedError: unknown;
+
+        api.rename('project', uploaded, 'renamed.pdf').subscribe({
+            error: (error: unknown) => {
+                receivedError = error;
+            }
+        });
+
+        const request = http.expectOne((candidate) =>
+            candidate.url === '/projects/project/document-lists/EXECUTION/documents/file-id'
+        );
+        request.flush(
+            { message: 'The file is locked for shared use' },
+            { status: 423, statusText: 'Locked' }
+        );
+
+        expect(receivedError).toEqual(
+            jasmine.objectContaining<Partial<FileSystemError>>({
+                code: 'locked'
             })
         );
     });

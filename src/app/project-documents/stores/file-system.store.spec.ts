@@ -6,7 +6,7 @@ import type {
 } from '../models/document-list.model';
 import { isFolder, type FolderNode } from '../models/file-system-node.model';
 import { FileSystemError } from '../models/file-system-error.model';
-import { FileSystemApi } from '../services/file-system-api';
+import { FileSystemApi } from '../services/file-system/file-system-api';
 import { MockFileSystemApi } from '../services/mock/mock-file-system-api';
 import { MOCK_CONFIG } from '../services/mock/mock-config.token';
 import { FileSystemStore } from './file-system.store';

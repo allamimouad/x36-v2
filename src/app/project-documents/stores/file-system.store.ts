@@ -40,7 +40,7 @@ import {
     type FileSystemNode,
     type FolderNode
 } from '../models/file-system-node.model';
-import { FileSystemApi } from '../services/file-system-api';
+import { FileSystemApi } from '../services/file-system/file-system-api';
 
 interface FileSystemState {
     projectId: string | null;

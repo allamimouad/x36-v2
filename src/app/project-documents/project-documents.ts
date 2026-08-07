@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Existing orchestration container; split by responsibility later. */
 import {
     ChangeDetectionStrategy,
     Component,
@@ -39,16 +40,16 @@ import {
     type FolderNode
 } from './models/file-system-node.model';
 import { FileSystemError } from './models/file-system-error.model';
-import { FileSystemApi } from './services/file-system-api';
+import { FileSystemApi } from './services/file-system/file-system-api';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
-import { ClipboardService } from './services/clipboard.service';
-import { ExternalDropService } from './services/external-drop.service';
-import { FileLaunchService } from './services/file-launch.service';
+import { ClipboardService } from './services/interaction/clipboard.service';
+import { ExternalDropService } from './services/upload/external-drop.service';
+import { FileLaunchService } from './services/interaction/file-launch.service';
 import {
     NotificationService,
     PROJECT_DOCUMENTS_TOAST_KEY
-} from './services/notification.service';
-import { UploadService } from './services/upload.service';
+} from './services/interaction/notification.service';
+import { UploadService } from './services/upload/upload.service';
 import { FileSystemReader } from './stores/file-system-reader';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore, type PathSegment } from './stores/navigation.store';
@@ -293,47 +294,9 @@ export class ProjectDocuments {
         // Reactive project connection: the store re-initializes (cancelling any in-flight
         // load via switchMap) whenever the host rebinds `projectId`.
         this.fileSystem.connectProject(this.projectId);
-        let uploadProjectId: string | undefined;
-        effect(() => {
-            const currentProjectId = this.projectId();
-            untracked(() => {
-                if (uploadProjectId !== undefined && uploadProjectId !== currentProjectId) {
-                    this.pendingFileTarget = null;
-                    this.uploads.reset();
-                }
-                uploadProjectId = currentProjectId;
-            });
-        });
-        // React to each completed initialization; `untracked` keeps the effect keyed to
-        // `initializedRoots` alone so store writes inside cannot re-trigger it.
-        effect(() => {
-            const roots = this.fileSystem.initializedRoots();
-            if (!roots) { return; }
-            untracked(() => this.onProjectInitialized(roots));
-        });
-        const notifiedReadErrors = new Map<string, FileSystemError>();
-        effect(() => {
-            const errors = this.fileSystem.errorByParentId();
-            const currentFolderId = this.navigation.currentFolderId();
-            const currentFolderError = this.currentFolderError();
-            untracked(() => {
-                for (const id of notifiedReadErrors.keys()) {
-                    if (!errors[id]) { notifiedReadErrors.delete(id); }
-                }
-                for (const [parentId, readError] of Object.entries(errors)) {
-                    if (!readError || notifiedReadErrors.get(parentId) === readError) { continue; }
-                    notifiedReadErrors.set(parentId, readError);
-                    const isInlineCurrentError =
-                        parentId === currentFolderId && currentFolderError !== null;
-                    if (isInlineCurrentError) { continue; }
-                    const retry = this.retryForReadError(
-                        readError,
-                        () => void this.fileSystem.loadChildren(parentId)
-                    );
-                    this.notifications.error(readError, retry);
-                }
-            });
-        });
+        this.observeProjectChanges();
+        this.observeInitializedRoots();
+        this.observeReadErrors();
     }
 
     @HostListener('document:keydown.F5', ['$event'])
@@ -347,7 +310,9 @@ export class ProjectDocuments {
         if (this.pathEditing()) { return; }
         const id = this.navigation.focusedId();
         const node = id ? this.fileSystem.entityMap()[id] : undefined;
-        if (!node || node.parentId === null || this.isWriting(node.id)) { return; }
+        if (node?.parentId === undefined || node.parentId === null || this.isWriting(node.id)) {
+            return;
+        }
         event.preventDefault();
         if (isFolder(node)) {
             const surface = this.focusedSurface() === 'table' &&
@@ -583,7 +548,7 @@ export class ProjectDocuments {
 
     protected confirmDelete(node: FileSystemNode): void {
         const pending = this.pendingDelete();
-        if (!pending || pending.node.id !== node.id) { return; }
+        if (pending?.node.id !== node.id) { return; }
         this.pendingDelete.set(null);
         void this.deleteNode(pending.node);
     }
@@ -838,6 +803,56 @@ export class ProjectDocuments {
         this.clipboard.pruneReferences(removed);
     }
 
+    private observeProjectChanges(): void {
+        let uploadProjectId: string | undefined;
+        effect(() => {
+            const currentProjectId = this.projectId();
+            untracked(() => {
+                if (uploadProjectId !== undefined && uploadProjectId !== currentProjectId) {
+                    this.pendingFileTarget = null;
+                    this.uploads.reset();
+                }
+                uploadProjectId = currentProjectId;
+            });
+        });
+    }
+
+    private observeInitializedRoots(): void {
+        // React to each completed initialization; `untracked` keeps the effect keyed to
+        // `initializedRoots` alone so store writes inside cannot re-trigger it.
+        effect(() => {
+            const roots = this.fileSystem.initializedRoots();
+            if (!roots) { return; }
+            untracked(() => this.onProjectInitialized(roots));
+        });
+    }
+
+    private observeReadErrors(): void {
+        const notifiedReadErrors = new Map<string, FileSystemError>();
+        effect(() => {
+            const errors = this.fileSystem.errorByParentId();
+            const currentFolderId = this.navigation.currentFolderId();
+            const currentFolderError = this.currentFolderError();
+            untracked(() => {
+                for (const id of notifiedReadErrors.keys()) {
+                    if (!errors[id]) { notifiedReadErrors.delete(id); }
+                }
+                for (const [parentId, readError] of Object.entries(errors)) {
+                    if (!readError || notifiedReadErrors.get(parentId) === readError) { continue; }
+                    notifiedReadErrors.set(parentId, readError);
+                    const isInlineCurrentError =
+                        parentId === currentFolderId && currentFolderError !== null;
+                    if (isInlineCurrentError) { continue; }
+                    const retry = this.retryForReadError(
+                        readError,
+                        () => void this.fileSystem.loadChildren(parentId)
+                    );
+                    this.notifications.error(readError, retry);
+                }
+            });
+        });
+    }
+
     private folderContextMenu(
         folder: FolderNode,
         source: NodeSurface
@@ -876,22 +891,7 @@ export class ProjectDocuments {
 
     private fileContextMenu(file: FileNode): MenuItem[] {
         const locked = this.isWriting(file.id);
-        const openItems = [
-            this.menuItem(
-                'Local application',
-                'grid_view',
-                'pd-menu-open-local',
-                () => { this.openInDesktopApplication(file); },
-                locked || !this.fileLauncher.canOpenDesktop(file)
-            ),
-            this.menuItem(
-                'Online Application',
-                'language',
-                'pd-menu-open-online',
-                () => { this.openInOnlineApplication(file); },
-                locked || !this.fileLauncher.canOpenOnline(file)
-            )
-        ];
+        const openItems = this.fileOpenMenuItems(file, locked);
 
         return [
             this.menuItem(
@@ -916,6 +916,25 @@ export class ProjectDocuments {
             this.menuItem('Download File', 'download', 'pd-menu-download-file', () => {
                 this.downloadFile(file);
             }, locked || !this.fileLauncher.canDownload(file))
+        ];
+    }
+
+    private fileOpenMenuItems(file: FileNode, locked: boolean): MenuItem[] {
+        return [
+            this.menuItem(
+                'Local application',
+                'grid_view',
+                'pd-menu-open-local',
+                () => { this.openInDesktopApplication(file); },
+                locked || !this.fileLauncher.canOpenDesktop(file)
+            ),
+            this.menuItem(
+                'Online Application',
+                'language',
+                'pd-menu-open-online',
+                () => { this.openInOnlineApplication(file); },
+                locked || !this.fileLauncher.canOpenOnline(file)
+            )
         ];
     }
 
@@ -984,7 +1003,7 @@ export class ProjectDocuments {
             disabled,
             items,
             data: { symbol, testId } satisfies ProjectDocumentsMenuData,
-            command: action ? () => action() : undefined
+            command: action ? (): void => action() : undefined
         };
     }
 
@@ -1073,7 +1092,7 @@ export class ProjectDocuments {
         const result = [id];
         for (const node of this.fileSystem.entities()) {
             if (node.parentId !== id) { continue; }
-            result.push(...(isFolder(node) ? this.cachedSubtreeIds(node.id) : [node.id]));
+            result.push(...isFolder(node) ? this.cachedSubtreeIds(node.id) : [node.id]);
         }
 
         return result;

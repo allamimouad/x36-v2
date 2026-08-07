@@ -44,7 +44,16 @@ describe('FolderTree inline delete confirmation', () => {
     });
 
     function button(testId: string): HTMLButtonElement | null {
-        return fixture.nativeElement.querySelector(`[data-testid="${testId}"]`);
+        return hostElement().querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`);
+    }
+
+    function hostElement(): HTMLElement {
+        const element: unknown = fixture.nativeElement;
+        if (!(element instanceof HTMLElement)) {
+            throw new Error('Expected FolderTree host element');
+        }
+
+        return element;
     }
 });
 

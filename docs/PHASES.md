@@ -21,8 +21,8 @@
 - `utils/naming.utils.ts` — `validateName` (only validation needed in Phase 1; collision resolution in Phase 2)
 
 **API layer**
-- `services/file-system-api.ts` — abstract class per SPEC §5
-- `services/file-system-api.ts` — all methods signed, bodies empty (concrete classes implement); every operation receives `projectId`
+- `services/file-system/file-system-api.ts` — abstract class per SPEC §5
+- `services/file-system/file-system-api.ts` — all methods signed, bodies empty (concrete classes implement); every operation receives `projectId`
 - `services/mock/mock-file-system-api.ts` — full implementation per SPEC §6, including:
   - In-memory `Map<string, FileSystemNode>`
   - Seed data loading
@@ -32,14 +32,14 @@
   - Deep clone on return
   - **For Phase 1, only the read operations need to be correct**: `listDocumentRoot(projectId, listKey)` (a document list's root) and `listDocuments(projectId, parent)` (a folder's direct children; adapter extracts list key + id), each returning the current folder plus its direct files/folders.
 - `services/mock/mock-seed.ts` — realistic seed with Execution + Marketing roots, nested folders, mixed files, and one mock-only unavailable folder for stale-navigation testing
-- `services/sharepoint-file-system-api.ts` — stub per SPEC §7 (all methods throw)
+- `services/file-system/sharepoint-file-system-api.ts` — stub per SPEC §7 (all methods throw)
 - `services/mock/mock-config.token.ts` — `MOCK_CONFIG` InjectionToken
 - `tokens/file-manager-config.token.ts` — `FILE_MANAGER_CONFIG` InjectionToken
 
 **Stores**
 - `stores/file-system.store.ts` — Signal Store with `withEntities<FileSystemNode>` keyed by `id`. Phase 1 methods: `initialize(projectId)`, `loadChildren(parentId)`, `invalidate(parentId)`. Other methods exist as placeholders rejecting with a neutral "not implemented yet" `FileSystemError` (source stays plan-free — SPEC §2.6).
 - `stores/navigation.store.ts` — full implementation: state, computed, `navigateTo`, `back`, `forward`, `up`, `expand`, `collapse`. Selection methods can be stubs (Phase 3).
-- `services/clipboard.service.ts` — plain signal service with clipboard ids/mode and `cut`, `copy`, `clear`. Paste orchestration deferred to Phase 3.
+- `services/interaction/clipboard.service.ts` — plain signal service with clipboard ids/mode and `cut`, `copy`, `clear`. Paste orchestration deferred to Phase 3.
 
 **Components (dumb)**
 - `components/folder-tree/folder-tree.ts`:
@@ -123,7 +123,7 @@
 - `stores/navigation.store.ts` — add `startRename`, `endRename`
 
 **Services**
-- `services/notification.service.ts` — component-scoped wrapper around `MessageService`; methods: `success(message)`, `error(error, retry?)`, `warning(message)`, `info(message)`, `userMessageFor(error)`, `clear()`. `ProjectDocuments` decides inline state vs toast from typed store errors; retry actions use the custom `p-toast` template.
+- `services/interaction/notification.service.ts` — component-scoped wrapper around `MessageService`; methods: `success(message)`, `error(error, retry?)`, `warning(message)`, `info(message)`, `userMessageFor(error)`, `clear()`. `ProjectDocuments` decides inline state vs toast from typed store errors; retry actions use the custom `p-toast` template.
 
 **Components**
 - `components/dialogs/conflict-resolution-dialog.ts` — shell only (used in Phase 4 for bulk move/copy; for Phase 2 single ops, errors show as toast)
@@ -177,8 +177,8 @@
 - `stores/file-system.store.ts` — accept arrays in `delete`, `move`, `copy` (pessimistic + progress for bulk); uses `ConcurrencyQueue`
 
 **Services**
-- `services/concurrency-queue.ts` — generic queue, max N concurrent; returns per-task results with errors isolated
-- `services/clipboard.service.ts` — keep as pure clipboard state (`cut`, `copy`, `clear`, `isEmpty`, `has`). Paste orchestration lives in `project-documents.ts` or a dedicated use-case service and dispatches to `fileSystemStore.move` / `.copy`.
+- `services/upload/concurrency-queue.ts` — generic queue, max N concurrent; returns per-task results with errors isolated
+- `services/interaction/clipboard.service.ts` — keep as pure clipboard state (`cut`, `copy`, `clear`, `isEmpty`, `has`). Paste orchestration lives in `project-documents.ts` or a dedicated use-case service and dispatches to `fileSystemStore.move` / `.copy`.
 
 **Components**
 - `components/file-table/file-table.ts`:
@@ -278,7 +278,7 @@ pickers or external OS drag-and-drop, with progress.
   collision detection, `AbortSignal`, and the final persisted `FileNode`
 
 **Services**
-- `services/upload.service.ts`:
+- `services/upload/upload.service.ts`:
   - exposes task/batch signals and file/folder enqueue operations
   - uses `showDirectoryPicker()` handles to preserve every directory, including empty
   - creates the uniquely named selected root and descendants parent-first before files
@@ -286,9 +286,9 @@ pickers or external OS drag-and-drop, with progress.
     time
   - uses `ConcurrencyQueue` with max 4 for file requests
   - supports cancel, eligible retry from byte zero, and clear completed
-- `services/directory-manifest.ts` — recursively enumerates directory/file handles
+- `services/upload/directory-manifest.ts` — recursively enumerates directory/file handles
   without loading complete file bytes into application memory
-- `services/concurrency-queue.ts` — generic bounded promise queue
+- `services/upload/concurrency-queue.ts` — generic bounded promise queue
 
 **Components**
 - `components/upload-panel/upload-panel.ts`:

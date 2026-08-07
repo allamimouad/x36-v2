@@ -3,7 +3,7 @@ import { MessageService, type ToastMessageOptions } from 'primeng/api';
 import {
     FileSystemError,
     type FileSystemErrorCode
-} from '../models/file-system-error.model';
+} from '../../models/file-system-error.model';
 import {
     NotificationService,
     PROJECT_DOCUMENTS_TOAST_KEY
@@ -31,6 +31,11 @@ describe('NotificationService', () => {
                 'A folder cannot be placed inside itself or one of its subfolders.'
             ],
             ['permission-denied', 'You do not have permission to perform this action.'],
+            [
+                'locked',
+                'This file is currently open and locked for editing. ' +
+                    'Close it and try again in a moment.'
+            ],
             ['network', 'Connection problem — try again.'],
             ['cancelled', 'The operation was cancelled.'],
             ['too-large', 'This file is larger than the upload limit.'],

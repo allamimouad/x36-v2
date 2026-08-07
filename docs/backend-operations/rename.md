@@ -249,8 +249,7 @@ This is a partial-response failure, not a failed rename.
 - SharePoint 429 -> propagate retry timing where available and map to the frontend's
   retryable `network` failure.
 - Locked/checked-out file failures are not name collisions. Preserve their technical
-  reason in backend logs and map them through the application's closest supported
-  domain error until a dedicated lock error is introduced.
+  reason in backend logs and return HTTP 423 so the frontend maps them to `locked`.
 - Transport/unavailable failures before a confirmed `204` -> retryable `network`
   failure.
 - Any unrecognized SharePoint failure -> `unknown`; retain technical details and

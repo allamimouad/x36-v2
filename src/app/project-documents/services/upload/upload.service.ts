@@ -6,13 +6,13 @@ import {
     signal,
     type Signal
 } from '@angular/core';
-import type { FileSystemErrorCode } from '../models/file-system-error.model';
-import { FileSystemError } from '../models/file-system-error.model';
-import type { FolderNode } from '../models/file-system-node.model';
-import type { UploadBatch, UploadTask } from '../models/upload-task.model';
-import { FILE_MANAGER_CONFIG } from '../tokens/file-manager-config.token';
-import { validateName } from '../utils/naming.utils';
-import { FileSystemStore } from '../stores/file-system.store';
+import type { FileSystemErrorCode } from '../../models/file-system-error.model';
+import { FileSystemError } from '../../models/file-system-error.model';
+import type { FolderNode } from '../../models/file-system-node.model';
+import type { UploadBatch, UploadTask } from '../../models/upload-task.model';
+import { FILE_MANAGER_CONFIG } from '../../tokens/file-manager-config.token';
+import { validateName } from '../../utils/naming.utils';
+import { FileSystemStore } from '../../stores/file-system.store';
 import { ConcurrencyQueue } from './concurrency-queue';
 import { buildDirectoryManifest, type LocalFileEntry } from './directory-manifest';
 
@@ -168,7 +168,7 @@ export class UploadService {
 
     public cancelBatch(id: string): void {
         const batch = this.batch(id);
-        if (!batch || (batch.status !== 'queued' && batch.status !== 'preparing')) {
+        if (!batch || batch.status !== 'queued' && batch.status !== 'preparing') {
             return;
         }
         this.batchControllers.get(id)?.abort();
@@ -272,7 +272,7 @@ export class UploadService {
     private scheduleTask(id: string): void {
         void this.fileUploadQueue.enqueue(async () => {
             const queued = this.task(id);
-            if (this.destroyed || !queued || queued.status !== 'queued') { return; }
+            if (this.destroyed || queued?.status !== 'queued') { return; }
             const controller = new AbortController();
             this.taskControllers.set(id, controller);
             this.updateTask(id, { status: 'uploading', progress: 0 });
@@ -405,7 +405,7 @@ function isActiveTask(task: UploadTask): boolean {
 
 function isRetryableTask(task: UploadTask): boolean {
     return task.status === 'cancelled' ||
-        (task.status === 'error' && task.errorCode === 'network');
+        task.status === 'error' && task.errorCode === 'network';
 }
 
 function isCancellation(error: unknown): boolean {
@@ -425,6 +425,8 @@ function uploadErrorMessage(error: unknown): string {
             return 'A file with this name already exists.';
         case 'invalid-name':
             return error.message;
+        case 'locked':
+            return 'The upload destination is currently locked.';
         case 'too-large':
             return error.message;
         case 'not-found':
@@ -437,6 +439,8 @@ function uploadErrorMessage(error: unknown): string {
             return 'Upload was cancelled.';
         case 'descendant-move':
         case 'unknown':
+            return 'Upload failed. Please try again.';
+        default:
             return 'Upload failed. Please try again.';
     }
 }

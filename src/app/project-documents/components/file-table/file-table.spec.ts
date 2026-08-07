@@ -82,16 +82,25 @@ describe('FileTable', () => {
     });
 
     function button(testId: string): HTMLButtonElement | null {
-        return fixture.nativeElement.querySelector(`[data-testid="${testId}"]`);
+        return hostElement().querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`);
     }
 
     function renameInput(): HTMLInputElement {
-        const input = fixture.nativeElement.querySelector('.pd-inline-rename-input');
+        const input = hostElement().querySelector('.pd-inline-rename-input');
         if (!(input instanceof HTMLInputElement)) {
             throw new Error('Expected inline rename input');
         }
 
         return input;
+    }
+
+    function hostElement(): HTMLElement {
+        const element: unknown = fixture.nativeElement;
+        if (!(element instanceof HTMLElement)) {
+            throw new Error('Expected FileTable host element');
+        }
+
+        return element;
     }
 });
 

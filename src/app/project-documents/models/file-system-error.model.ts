@@ -2,6 +2,7 @@ export type FileSystemErrorCode =
   | 'not-found'
   | 'name-collision'
   | 'invalid-name'
+  | 'locked'
   | 'descendant-move'
   | 'permission-denied'
   | 'network'

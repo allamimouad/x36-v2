@@ -121,4 +121,5 @@ design is agreed. The overview remains a compact route/index document.
   from `targetParentId`; SharePoint supplies the canonical copied fields. File responses
   include the real `sizeBytes`, and folder responses include the real `itemCount`.
 - The adapter maps HTTP status → `FileSystemError` codes (409 → `name-collision`,
+  423 → `locked`,
   404 → `not-found`, 403 → `permission-denied`, etc.).

@@ -1,6 +1,6 @@
 import { inject, Injectable } from '@angular/core';
 import { MessageService, type ToastMessageOptions } from 'primeng/api';
-import { FileSystemError } from '../models/file-system-error.model';
+import { FileSystemError } from '../../models/file-system-error.model';
 
 export const PROJECT_DOCUMENTS_TOAST_KEY = 'project-documents';
 
@@ -52,6 +52,9 @@ export class NotificationService {
                 return 'An item with that name already exists.';
             case 'invalid-name':
                 return 'That name is not valid.';
+            case 'locked':
+                return 'This file is currently open and locked for editing. ' +
+                    'Close it and try again in a moment.';
             case 'descendant-move':
                 return 'A folder cannot be placed inside itself or one of its subfolders.';
             case 'permission-denied':
@@ -63,6 +66,8 @@ export class NotificationService {
             case 'too-large':
                 return 'This file is larger than the upload limit.';
             case 'unknown':
+                return 'Something went wrong. Please try again.';
+            default:
                 return 'Something went wrong. Please try again.';
         }
     }

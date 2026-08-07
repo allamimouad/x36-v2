@@ -1,7 +1,7 @@
 import type { Observable } from 'rxjs';
-import type { DocumentListing, ResolvedDocumentPath } from '../models/document-listing.model';
-import type { DocumentListKey } from '../models/document-list.model';
-import type { FileNode, FileSystemNode, FolderNode } from '../models/file-system-node.model';
+import type { DocumentListing, ResolvedDocumentPath } from '../../models/document-listing.model';
+import type { DocumentListKey } from '../../models/document-list.model';
+import type { FileNode, FileSystemNode, FolderNode } from '../../models/file-system-node.model';
 
 /**
  * Backend-agnostic file system contract. Implementations are an in-memory mock
@@ -54,7 +54,7 @@ export abstract class FileSystemApi {
         name: string
     ): Observable<FolderNode>;
 
-    /** Rename a folder or file. Throws on name collision or invalid name. */
+    /** Rename a folder or file. Throws on name collision, invalid name, or a lock. */
     public abstract rename(
         projectId: string,
         node: FileSystemNode,

@@ -291,7 +291,7 @@ export function isFolder(n: FileSystemNode): n is FolderNode {
 ## 5. The `FileSystemApi` contract
 
 ```ts
-// services/file-system-api.ts
+// services/file-system/file-system-api.ts
 import type { Observable } from 'rxjs';
 
 export type DocumentListKey = 'EXECUTION' | 'MARKETING';
@@ -387,7 +387,7 @@ because a recursive copy may contain children.
 
 **Rules for implementations**:
 - All errors are delivered on the Observable's **error channel** as a typed `FileSystemError` carrying a `code`:
-  `'not-found' | 'name-collision' | 'invalid-name' | 'descendant-move' | 'permission-denied' | 'network' | 'cancelled' | 'too-large' | 'unknown'`.
+  `'not-found' | 'name-collision' | 'invalid-name' | 'locked' | 'descendant-move' | 'permission-denied' | 'network' | 'cancelled' | 'too-large' | 'unknown'`.
   Emit them via `throwError(() => new FileSystemError(...))`, or by throwing inside a `map`/operator so RxJS converts the throw into an error notification — do **not** `throw` synchronously from the method body (that fails at call time, before any subscriber attaches). The per-method "Throws on …" notes above are shorthand for this error notification. The real `HttpClient` adapter maps transport/SharePoint failures with `catchError` into a `FileSystemError`.
 - All returned objects are deep-copied (caller cannot mutate internal state)
 - `upload` must respect `AbortSignal` for cancellation

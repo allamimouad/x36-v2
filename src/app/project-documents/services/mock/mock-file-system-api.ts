@@ -10,14 +10,25 @@ import {
     type FolderNode
 } from '../../models/file-system-node.model';
 import { joinPath } from '../../utils/path.utils';
-import { resolveNameCollision, validateName } from '../../utils/naming.utils';
+import { resolveNameCollision } from '../../utils/naming.utils';
 import {
     FILE_MANAGER_CONFIG,
     type FileManagerConfig
 } from '../../tokens/file-manager-config.token';
-import { FileSystemApi } from '../file-system-api';
+import { FileSystemApi } from '../file-system/file-system-api';
 import { MOCK_CONFIG, type MockConfig } from './mock-config.token';
 import { buildSeed } from './mock-seed';
+import {
+    assertNameAvailable,
+    assertValidName,
+    clone,
+    collectDescendantIds,
+    fileExplorerCopyName,
+    normalizeMockPath,
+    nowIso,
+    touchParentCounts
+} from './mock-node-utils';
+import { simulateMockUpload } from './mock-upload';
 
 @Injectable()
 export class MockFileSystemApi extends FileSystemApi {
@@ -91,7 +102,7 @@ export class MockFileSystemApi extends FileSystemApi {
     ): Observable<FolderNode> {
         return this.write(() => {
             const parentNode = this.requireFolder(parent.id);
-            this.assertValidName(name);
+            assertValidName(name);
             const requestedName = name.trim();
             const canonicalName = resolveNameCollision(
                 requestedName,
@@ -115,7 +126,7 @@ export class MockFileSystemApi extends FileSystemApi {
                 modifiedBy: this.currentUser
             };
             this.nodes.set(folder.id, folder);
-            this.touchParentCounts(parentNode.id);
+            touchParentCounts(this.nodes, parentNode.id);
 
             return clone(folder);
         });
@@ -131,8 +142,8 @@ export class MockFileSystemApi extends FileSystemApi {
             if (current.parentId === null) {
                 throw new FileSystemError('invalid-name', 'Root folder cannot be renamed');
             }
-            this.assertValidName(newName);
-            this.assertNameAvailable(current.parentId, newName, current.id);
+            assertValidName(newName);
+            assertNameAvailable(this.nodes, current.parentId, newName, current.id);
             const parent = this.requireFolder(current.parentId);
 
             return this.repathNode(
@@ -163,7 +174,7 @@ export class MockFileSystemApi extends FileSystemApi {
                     'Cannot move a folder into itself or a descendant'
                 );
             }
-            this.assertNameAvailable(target.id, current.name, current.id);
+            assertNameAvailable(this.nodes, target.id, current.name, current.id);
             const oldParentId = current.parentId;
             const moved = this.repathNode(
                 current.id,
@@ -172,8 +183,8 @@ export class MockFileSystemApi extends FileSystemApi {
                 current.name,
                 target.listKey
             );
-            this.touchParentCounts(oldParentId);
-            this.touchParentCounts(target.id);
+            touchParentCounts(this.nodes, oldParentId);
+            touchParentCounts(this.nodes, target.id);
 
             return moved;
         });
@@ -207,7 +218,7 @@ export class MockFileSystemApi extends FileSystemApi {
                 target.path,
                 canonicalName
             );
-            this.touchParentCounts(target.id);
+            touchParentCounts(this.nodes, target.id);
 
             return clone(copied);
         });
@@ -220,11 +231,13 @@ export class MockFileSystemApi extends FileSystemApi {
                 throw new FileSystemError('permission-denied', 'Root folder cannot be deleted');
             }
             const parentId = current.parentId;
-            const ids = isFolder(current) ? this.collectDescendantIds(current.id) : [current.id];
+            const ids = isFolder(current)
+                ? collectDescendantIds(this.nodes, current.id)
+                : [current.id];
             for (const nodeId of ids) {
                 this.nodes.delete(nodeId);
             }
-            this.touchParentCounts(parentId);
+            touchParentCounts(this.nodes, parentId);
         });
     }
 
@@ -235,88 +248,44 @@ export class MockFileSystemApi extends FileSystemApi {
         onProgress: (percent: number) => void,
         signal?: AbortSignal
     ): Observable<FileNode> {
-        return new Observable<FileNode>((subscriber) => {
-            let intervalId: ReturnType<typeof setInterval> | undefined;
-            let settled = false;
-            let progress = 0;
-
-            const cleanup = (): void => {
-                if (intervalId !== undefined) {
-                    clearInterval(intervalId);
-                    intervalId = undefined;
-                }
-                signal?.removeEventListener('abort', abort);
-            };
-            const fail = (error: unknown): void => {
-                if (settled) { return; }
-                settled = true;
-                cleanup();
-                subscriber.error(error);
-            };
-            const abort = (): void => {
-                fail(new FileSystemError('cancelled', 'Upload was cancelled'));
-            };
-
-            if (signal?.aborted) {
-                abort();
-
-                return cleanup;
-            }
-            signal?.addEventListener('abort', abort, { once: true });
-
-            const sizeRatio = Math.min(
-                1,
-                file.size / Math.max(1, this.fileManagerConfig.maxUploadSizeBytes)
-            );
-            const totalLatencyMs = 300 + sizeRatio * 1_200;
-            intervalId = setInterval(() => {
-                if (settled) { return; }
-                progress = Math.min(100, progress + 10);
-                if (progress < 100) {
-                    onProgress(progress);
-
-                    return;
-                }
-
-                try {
-                    this.maybeFail();
-                    const parentNode = this.requireFolder(parent.id);
-                    this.assertValidName(file.name);
-                    if (file.size > this.fileManagerConfig.maxUploadSizeBytes) {
-                        throw new FileSystemError(
-                            'too-large',
-                            'File exceeds the configured upload limit'
-                        );
-                    }
-                    this.assertNameAvailable(parentNode.id, file.name);
-                    const now = nowIso();
-                    const created: FileNode = {
-                        kind: 'file',
-                        listKey: parentNode.listKey,
-                        id: crypto.randomUUID(),
-                        path: joinPath(parentNode.path, file.name),
-                        name: file.name,
-                        parentId: parentNode.id,
-                        sizeBytes: file.size,
-                        createdAt: now,
-                        modifiedAt: now,
-                        modifiedBy: this.currentUser,
-                        contentType: file.type || undefined
-                    };
-                    this.nodes.set(created.id, created);
-                    this.touchParentCounts(parentNode.id);
-                    onProgress(100);
-                    settled = true;
-                    cleanup();
-                    subscriber.next(clone(created));
-                    subscriber.complete();
-                } catch (error) {
-                    fail(error);
-                }
-            }, Math.max(30, totalLatencyMs / 10));
-
-            return cleanup;
+        return simulateMockUpload({
+            fileSize: file.size,
+            maxUploadSizeBytes: this.fileManagerConfig.maxUploadSizeBytes,
+            onProgress,
+            signal,
+            complete: () => this.completeUpload(parent, file)
         });
+    }
+
+    private completeUpload(parent: FolderNode, file: File): FileNode {
+        this.maybeFail();
+        const parentNode = this.requireFolder(parent.id);
+        assertValidName(file.name);
+        if (file.size > this.fileManagerConfig.maxUploadSizeBytes) {
+            throw new FileSystemError(
+                'too-large',
+                'File exceeds the configured upload limit'
+            );
+        }
+        assertNameAvailable(this.nodes, parentNode.id, file.name);
+        const now = nowIso();
+        const created: FileNode = {
+            kind: 'file',
+            listKey: parentNode.listKey,
+            id: crypto.randomUUID(),
+            path: joinPath(parentNode.path, file.name),
+            name: file.name,
+            parentId: parentNode.id,
+            sizeBytes: file.size,
+            createdAt: now,
+            modifiedAt: now,
+            modifiedBy: this.currentUser,
+            contentType: file.type || undefined
+        };
+        this.nodes.set(created.id, created);
+        touchParentCounts(this.nodes, parentNode.id);
+
+        return clone(created);
     }
 
     /** Build a DocumentListing for `parentId`'s direct children in `listKey`. */
@@ -400,26 +369,6 @@ export class MockFileSystemApi extends FileSystemApi {
         return node;
     }
 
-    private assertValidName(name: string): void {
-        const result = validateName(name);
-        if (!result.valid) {
-            throw new FileSystemError('invalid-name', `Invalid name: ${result.reason}`);
-        }
-    }
-
-    private assertNameAvailable(parentId: string, name: string, exceptId?: string): void {
-        const normalized = name.trim().toLocaleLowerCase();
-        for (const node of this.nodes.values()) {
-            if (node.parentId !== parentId || node.id === exceptId) { continue; }
-            if (node.name.toLocaleLowerCase() === normalized) {
-                throw new FileSystemError(
-                    'name-collision',
-                    `An item named "${name.trim()}" already exists`
-                );
-            }
-        }
-    }
-
     private isAncestorOrSelf(ancestorId: string, candidateId: string): boolean {
         let current: string | null = candidateId;
         while (current !== null) {
@@ -468,7 +417,7 @@ export class MockFileSystemApi extends FileSystemApi {
         newPath: string,
         newListKey: DocumentListKey
     ): void {
-        const descendantIds = this.collectDescendantIds(folderId)
+        const descendantIds = collectDescendantIds(this.nodes, folderId)
             .filter((nodeId) => nodeId !== folderId);
         for (const nodeId of descendantIds) {
             const current = this.requireNode(nodeId);
@@ -485,7 +434,7 @@ export class MockFileSystemApi extends FileSystemApi {
         targetParentPath: string,
         name: string
     ): FileSystemNode {
-        this.assertNameAvailable(targetParentId, name);
+        assertNameAvailable(this.nodes, targetParentId, name);
         const targetPath = joinPath(targetParentPath, name);
 
         return isFolder(source)
@@ -542,62 +491,9 @@ export class MockFileSystemApi extends FileSystemApi {
         for (const child of children) {
             this.copyRecursive(child, targetListKey, folder.id, folder.path, child.name);
         }
-        this.touchParentCounts(folder.id);
+        touchParentCounts(this.nodes, folder.id);
 
         return folder;
     }
 
-    private collectDescendantIds(folderId: string): string[] {
-        const out = [folderId];
-        for (const node of Array.from(this.nodes.values())) {
-            if (node.parentId !== folderId) { continue; }
-            if (isFolder(node)) {
-                out.push(...this.collectDescendantIds(node.id));
-            } else {
-                out.push(node.id);
-            }
-        }
-
-        return out;
-    }
-
-    private touchParentCounts(parentId: string): void {
-        const parent = this.nodes.get(parentId);
-        if (!parent || !isFolder(parent)) { return; }
-        const itemCount = Array.from(this.nodes.values()).filter(
-            (node) => node.parentId === parentId
-        ).length;
-        this.nodes.set(parent.id, {
-            ...parent,
-            itemCount,
-            modifiedAt: nowIso()
-        });
-    }
-}
-
-function clone<T>(value: T): T {
-    return structuredClone(value);
-}
-
-function nowIso(): string {
-    return new Date().toISOString();
-}
-
-function normalizeMockPath(path: string): string {
-    return path
-        .trim()
-        .replace(/^\/+|\/+$/g, '')
-        .split('/')
-        .filter((segment) => segment.length > 0)
-        .join('/')
-        .toLowerCase();
-}
-
-function fileExplorerCopyName(name: string): string {
-    const extensionIndex = name.lastIndexOf('.');
-    if (extensionIndex <= 0 || extensionIndex === name.length - 1) {
-        return `${name} - Copy`;
-    }
-
-    return `${name.slice(0, extensionIndex)} - Copy${name.slice(extensionIndex)}`;
 }

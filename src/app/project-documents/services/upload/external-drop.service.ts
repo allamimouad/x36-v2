@@ -116,7 +116,7 @@ function fileHandle(file: File): FileSystemFileHandle {
     return {
         kind: 'file',
         name: file.name,
-        getFile: async () => file
+        getFile: () => Promise.resolve(file)
     } as FileSystemFileHandle;
 }
 

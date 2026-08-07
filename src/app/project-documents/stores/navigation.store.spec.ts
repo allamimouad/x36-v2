@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import type { FileSystemNode, FolderNode } from '../models/file-system-node.model';
-import { FileSystemApi } from '../services/file-system-api';
+import { FileSystemApi } from '../services/file-system/file-system-api';
 import { MockFileSystemApi } from '../services/mock/mock-file-system-api';
 import { MOCK_CONFIG } from '../services/mock/mock-config.token';
 import { FileSystemReader } from './file-system-reader';

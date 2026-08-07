@@ -35,7 +35,7 @@ export class UploadPanel {
                 batch.status === 'queued' ||
                 batch.status === 'preparing' ||
                 batch.error !== undefined ||
-                (batch.status === 'done' && batch.fileCount === 0)
+                batch.status === 'done' && batch.fileCount === 0
         )
     );
 
@@ -106,6 +106,8 @@ export class UploadPanel {
                 return 'Folder preparation failed';
             case 'uploading':
                 return 'Folder structure created';
+            default:
+                return 'Unknown folder status';
         }
     }
 
@@ -123,6 +125,8 @@ export class UploadPanel {
                 return 'Failed';
             case 'cancelled':
                 return 'Cancelled';
+            default:
+                return 'Unknown upload status';
         }
     }
 
@@ -134,7 +138,7 @@ export class UploadPanel {
 
     protected canRetry(task: UploadTask): boolean {
         return task.status === 'cancelled' ||
-            (task.status === 'error' && task.errorCode === 'network');
+            task.status === 'error' && task.errorCode === 'network';
     }
 
     protected statusClass(status: UploadTask['status'] | UploadBatch['status']): string {

@@ -81,7 +81,7 @@ function modernItem(handle: FileSystemHandleUnion): DataTransferItem {
     return {
         kind: 'file',
         type: '',
-        getAsFileSystemHandle: async () => handle,
+        getAsFileSystemHandle: () => Promise.resolve(handle),
         getAsFile: () => null,
         webkitGetAsEntry: () => null
     } as unknown as DataTransferItem;
@@ -123,7 +123,7 @@ function modernFile(file: File): FileSystemFileHandle {
     return {
         kind: 'file',
         name: file.name,
-        getFile: async () => file
+        getFile: () => Promise.resolve(file)
     } as FileSystemFileHandle;
 }
 
@@ -134,6 +134,7 @@ function modernDirectory(name: string): FileSystemDirectoryHandle {
         kind: 'directory',
         name,
         async *values(): AsyncIterableIterator<FileSystemHandleUnion> {
+            await Promise.resolve();
             for (const child of children) {
                 yield child;
             }
@@ -165,7 +166,7 @@ function legacyDirectory(
 
             return {
                 readEntries: (success: FileSystemEntriesCallback) => {
-                    success([...(batches[index++] ?? [])]);
+                    success([...batches[index++] ?? []]);
                 }
             } as FileSystemDirectoryReader;
         }

@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import type { FileNode, FolderNode } from '../models/file-system-node.model';
+import type { FileNode, FolderNode } from '../../models/file-system-node.model';
 import { FileLaunchService } from './file-launch.service';
 
 describe('FileLaunchService', () => {

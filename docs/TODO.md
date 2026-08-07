@@ -37,7 +37,7 @@
     upload flow: it awaits `ExternalDropService.read(...)` before enqueuing the
     decoded files/directories, without checking that the project session is
     still the one in which the drop started;
-  - `src/app/project-documents/services/upload.service.ts`: `reset()` aborts
+  - `src/app/project-documents/services/upload/upload.service.ts`: `reset()` aborts
     directory-preparation controllers but retains the same single-worker
     `directoryPreparationQueue`.
 - **Problem**: a request belongs to the project session in which it started, but
@@ -124,7 +124,7 @@
 - **Where**:
   - `src/app/project-documents/project-documents.ts`, `pasteInto`: a typed
     `network` error receives a Retry action that calls `pasteInto(target)` again;
-  - `src/app/project-documents/services/sharepoint-file-system-api.ts`,
+  - `src/app/project-documents/services/file-system/sharepoint-file-system-api.ts`,
     `mapCopyError`: status `0`, `408`, `429`, and `5xx` responses are classified
     as `network`;
   - `NotificationService` treats a `network` error with a callback as a
