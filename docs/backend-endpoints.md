@@ -106,6 +106,9 @@ design is agreed. The overview remains a compact route/index document.
   bounded first implementation using the existing authenticated Feign client.
 - [UPLOAD file with HTTP streaming](backend-operations/upload-file-http-streaming.md) —
   single-request `InputStream` relay for a future transport change.
+- [VERIFY SharePoint search](backend-operations/verify-sharepoint-search.md) — ranked
+  Postman capability checks for Search REST, list-view search, recursive CAML, OData,
+  and canonical result hydration across both project document lists.
 
 ## Frontend mapping
 - `FileSystemApi.listDocumentRoot(projectId, listKey)` → the root GET;

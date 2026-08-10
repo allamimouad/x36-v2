@@ -96,13 +96,16 @@
 
 _What should the next session work on?_
 
-1. Browser-check Folder / File selection, the upload panel, cancellation, and a local
+1. Run `docs/backend-operations/verify-sharepoint-search.md` against the target farm,
+   retain the completed result sheet and representative responses, then choose the
+   project-wide name-search backend API from the measured evidence.
+2. Browser-check Folder / File selection, the upload panel, cancellation, and a local
    tree containing nested empty folders in Edge/Chrome.
-2. Browser-check the three context-menu variants, hover submenus, inline delete
+3. Browser-check the three context-menu variants, hover submenus, inline delete
    confirmation, and forced write errors.
-3. Run the Phase 2 acceptance checks for create, inline rename, delete confirmation,
+4. Run the Phase 2 acceptance checks for create, inline rename, delete confirmation,
    and tree/table synchronization.
-4. Run Karma locally with Chrome/Edge installed (the agent environment can build the
+5. Run Karma locally with Chrome/Edge installed (the agent environment can build the
    suite but has no browser binary).
 
 Backend upload implementation handoff: use
@@ -337,6 +340,16 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-08-10 — SharePoint search capability guide**: added the ranked, copy-paste
+  human Postman checklist at `docs/backend-operations/verify-sharepoint-search.md`. It
+  is ordered for direct manual execution and tests the
+  preferred Search REST GET/POST flow first, then `RenderListDataAsStream`, recursive
+  CAML, OData filtering, and traversal metadata as progressively weaker alternatives.
+  The guide covers both project lists, files and folders, name-only behavior, path
+  scoping, managed properties, paging, permission trimming, index freshness, special
+  names, latency, canonical by-id hydration, decision rules, and a result sheet. Linked
+  it from the backend endpoint index. Documentation only; no search API or runtime UI
+  was implemented.
 - **2026-08-04 — inline delete confirmation**: removed `p-confirmDialog` and its
   component-scoped service, added initiating-surface-only Cancel/Confirm icon controls
   to table rows and tree nodes, outside/Escape/navigation dismissal, Cancel autofocus,
