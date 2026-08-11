@@ -340,6 +340,14 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-08-11 — upload cancellation closes at finalization**: Cancel remains available
+  while a task is queued or browser-to-backend bytes are still transferring, then is
+  disabled when upload progress reaches 100% and the task enters `finalizing`. The
+  service now defensively ignores cancellation calls in that state, preventing the UI
+  from claiming `cancelled` after SharePoint may already have committed a small, fast
+  upload. `done` still requires the backend's canonical HTTP response. Added focused
+  service coverage; app/spec TypeScript compilation, focused lint, the development
+  build, and `git diff --check` pass.
 - **2026-08-10 — SharePoint search capability guide**: added the ranked, copy-paste
   human Postman checklist at `docs/backend-operations/verify-sharepoint-search.md`. It
   is ordered for direct manual execution and tests the

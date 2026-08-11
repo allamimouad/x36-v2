@@ -22,6 +22,10 @@ export function isActiveTask(task: UploadTask): boolean {
         task.status === 'finalizing';
 }
 
+export function isCancellableTask(task: UploadTask): boolean {
+    return task.status === 'queued' || task.status === 'uploading';
+}
+
 export function isRetryableTask(task: UploadTask): boolean {
     return task.status === 'cancelled' ||
         task.status === 'error' && task.errorCode === 'network';

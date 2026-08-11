@@ -24,6 +24,7 @@ import {
     directoryCancellationMessage,
     formatBytes,
     isActiveTask,
+    isCancellableTask,
     isCancellation,
     isRetryableTask,
     uploadErrorCode,
@@ -96,7 +97,7 @@ export class UploadService {
 
     public cancelTask(id: string): void {
         const task = this.task(id);
-        if (!task || !isActiveTask(task)) { return; }
+        if (!task || !isCancellableTask(task)) { return; }
         this.updateTask(id, {
             status: 'cancelled',
             error: undefined,

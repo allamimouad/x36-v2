@@ -1,5 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { isFile, isFolder, type FolderNode } from '../../models/file-system-node.model';
+import {
+    isFile,
+    isFolder,
+    type FileNode,
+    type FolderNode
+} from '../../models/file-system-node.model';
 import { FileSystemApi } from '../file-system/file-system-api';
 import { MockFileSystemApi } from '../mock/mock-file-system-api';
 import { MOCK_CONFIG } from '../mock/mock-config.token';
@@ -174,6 +179,37 @@ describe('UploadService', () => {
             fileSystem.entities().some((node) => node.path === '/execution/cancelled.txt')
         ).toBeFalse();
     });
+
+    it('does not cancel an upload after all browser bytes were sent', async () => {
+        const completion = deferredValue<FileNode>();
+        spyOn(fileSystem, 'upload').and.callFake((_parentId, _file, onProgress) => {
+            onProgress(100);
+
+            return completion.promise;
+        });
+        uploads.enqueueFiles([new File(['done'], 'finalizing.txt')], executionRoot);
+        await waitForTaskStatus(uploads, 0, 'finalizing');
+
+        const taskId = uploads.tasks()[0].id;
+        uploads.cancelTask(taskId);
+
+        expect(uploads.tasks()[0].status).toBe('finalizing');
+
+        completion.resolve({
+            kind: 'file',
+            listKey: executionRoot.listKey,
+            id: 'finalizing-file-id',
+            path: '/execution/finalizing.txt',
+            name: 'finalizing.txt',
+            parentId: executionRoot.id,
+            sizeBytes: 4,
+            createdAt: '2026-08-11T00:00:00Z',
+            modifiedAt: '2026-08-11T00:00:00Z'
+        });
+        await waitForUploads(uploads);
+
+        expect(uploads.tasks()[0].status).toBe('done');
+    });
 });
 
 function fakeDirectory(
@@ -230,6 +266,15 @@ function deferred(): { promise: Promise<undefined>; resolve: () => undefined } {
     return { promise, resolve };
 }
 
+function deferredValue<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+    let resolve = (_value: T): void => undefined;
+    const promise = new Promise<T>((done) => {
+        resolve = done;
+    });
+
+    return { promise, resolve };
+}
+
 function requireFolder(
     nodes: ReturnType<InstanceType<typeof FileSystemStore>['entities']>,
     path: string
@@ -268,6 +313,20 @@ async function waitForBatchStatus(
     while (uploads.batches()[index]?.status !== status) {
         if (Date.now() > timeoutAt) {
             throw new Error(`Batch ${index} did not reach ${status}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+}
+
+async function waitForTaskStatus(
+    uploads: UploadService,
+    index: number,
+    status: 'finalizing'
+): Promise<void> {
+    const timeoutAt = Date.now() + 5_000;
+    while (uploads.tasks()[index]?.status !== status) {
+        if (Date.now() > timeoutAt) {
+            throw new Error(`Upload ${index} did not reach ${status}`);
         }
         await new Promise((resolve) => setTimeout(resolve, 10));
     }

@@ -114,6 +114,7 @@
               type="button"
               severity="secondary"
               [text]="true"
+              [disabled]="!isTaskCancellable(task)"
               pTooltip="Cancel upload"
               tooltipPosition="left"
               aria-label="Cancel upload"

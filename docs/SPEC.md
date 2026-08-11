@@ -209,8 +209,11 @@ All scenarios must work:
   active / queued / completed per-file work. When several top-level folders are
   selected or dropped, every folder appears immediately; one folder tree at a time is
   traversed and created, while the remaining folder batches are visibly queued
-- Per-file progress bar, best-effort cancel, and manual retry for network failures or
-  cancelled files; retry always restarts from byte zero
+- Per-file progress bar, best-effort cancel while browser-to-backend transfer is below
+  100%, and manual retry for network failures or cancelled files; retry always restarts
+  from byte zero. At 100% the task enters finalization and Cancel is disabled because
+  SharePoint may already have committed the file; completion is shown only after the
+  backend returns the canonical created file.
 - **Concurrency limits**: one folder-tree preparation/creation chain and 4 simultaneous
   file uploads
 - File collisions fail safely with `overwrite=false`; they are not automatically retried

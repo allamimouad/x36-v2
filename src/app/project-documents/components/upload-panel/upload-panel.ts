@@ -9,6 +9,7 @@ import { ButtonModule } from 'primeng/button';
 import { ProgressBar } from 'primeng/progressbar';
 import { TooltipModule } from 'primeng/tooltip';
 import type { UploadBatch, UploadTask } from '../../models/upload-task.model';
+import { isCancellableTask } from '../../services/upload/upload.utils';
 
 @Component({
     selector: 'pr-upload-panel',
@@ -134,6 +135,10 @@ export class UploadPanel {
         return task.status === 'queued' ||
             task.status === 'uploading' ||
             task.status === 'finalizing';
+    }
+
+    protected isTaskCancellable(task: UploadTask): boolean {
+        return isCancellableTask(task);
     }
 
     protected canRetry(task: UploadTask): boolean {

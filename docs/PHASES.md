@@ -305,7 +305,8 @@ pickers or external OS drag-and-drop, with progress.
 - [ ] Multiple selected/dropped folders are all shown, with one preparing and the rest
   queued
 - [ ] Four-at-a-time file concurrency is enforced
-- [ ] Cancel is best effort; network retry resends the complete file
+- [ ] Cancel is best effort below 100%, becomes disabled during finalization, and
+  network retry resends the complete file
 - [ ] Collisions fail without overwrite and files above 250 MiB fail before a request
 - [ ] Created folders/files appear in tree/table without a page refresh
 - [ ] Folder selection is browser-checked in Edge/Chrome over HTTPS
