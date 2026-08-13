@@ -109,6 +109,10 @@ design is agreed. The overview remains a compact route/index document.
 - [VERIFY SharePoint search](backend-operations/verify-sharepoint-search.md) — ranked
   Postman capability checks for Search REST, list-view search, recursive CAML, OData,
   and canonical result hydration across both project document lists.
+- [VERIFY SharePoint list-item search](backend-operations/verify-sharepoint-list-item-search.md)
+  — preferred first-release candidate: mixed file/folder rows, canonical field mapping,
+  continuation paging, more-than-5,000-item testing, Java name filtering, and backend
+  acceptance criteria.
 
 ## Frontend mapping
 - `FileSystemApi.listDocumentRoot(projectId, listKey)` → the root GET;

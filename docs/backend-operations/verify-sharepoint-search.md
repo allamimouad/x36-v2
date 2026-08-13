@@ -1,5 +1,12 @@
 # Tomorrow's Postman Checklist — SharePoint File and Folder Search
 
+> **Follow-up:** initial Search REST testing did not produce the expected behavior or
+> convenient document projection. Before spending more time on crawl/search-schema
+> coordination, run the delivery-oriented
+> [SharePoint list-item search verification](verify-sharepoint-list-item-search.md).
+> Keep this broader checklist as the fallback comparison if list-item scanning fails
+> the real threshold or performance tests.
+
 This is a manual checklist for testing the real SharePoint farm.
 
 Run the APIs in this order:

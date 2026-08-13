@@ -96,9 +96,10 @@
 
 _What should the next session work on?_
 
-1. Run `docs/backend-operations/verify-sharepoint-search.md` against the target farm,
-   retain the completed result sheet and representative responses, then choose the
-   project-wide name-search backend API from the measured evidence.
+1. Run `docs/backend-operations/verify-sharepoint-list-item-search.md` against both
+   target libraries, including one with more than 5,000 items. Retain representative
+   file/folder, paging, permission, threshold, and performance responses before
+   adopting the paged-list-items + Java filename-filter backend candidate.
 2. Browser-check Folder / File selection, the upload panel, cancellation, and a local
    tree containing nested empty folders in Edge/Chrome.
 3. Browser-check the three context-menu variants, hover submenus, inline delete
@@ -120,6 +121,19 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 ## Decisions Log
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
+
+- **List-item search is the preferred first-release candidate pending farm evidence**
+  (2026-08-13): initial Search REST checks did not behave as expected and returned a
+  search projection rather than the file manager's canonical node shape. Added the
+  self-contained Postman/backend guide at
+  `docs/backend-operations/verify-sharepoint-list-item-search.md`. It tests the mixed
+  document-library `/items` collection, required file/folder fields, canonical
+  `UniqueId` hydration, continuation paging, permissions, freshness, and realistic
+  performance above 5,000 items. The proposed backend pages without a SharePoint name
+  predicate and filters `FileLeafRef` in Java; the guide explicitly records that
+  paging does not make arbitrary server filters threshold-safe and that a full scan is
+  rejected if measured latency/load is unacceptable. This is a candidate decision,
+  not a runtime implementation or a claim that the target farm has passed.
 
 - **Current folder opens in SharePoint web** (2026-08-06): added the mockup-defined
   `View in SharePoint (web)` outlined action beside the Documents heading. The control
@@ -339,6 +353,14 @@ _Things noticed during implementation but not fixed in the current phase. Review
 ## Session Notes
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
+
+- **2026-08-13 — list-item search verification/backend candidate documented**: added
+  an exact Postman sequence for mixed file/folder list items, field mapping, by-id
+  hydration, SharePoint continuation paging, mandatory >5,000-item and permissions
+  checks, Java filename matching, performance rejection rules, the proposed domain
+  DTO/endpoint, and a copy-paste result sheet. Linked it from the endpoint/search
+  guides and made it the next measured backend decision. Documentation only; target
+  farm verification and search implementation remain pending.
 
 - **2026-08-11 — upload cancellation closes at finalization**: Cancel remains available
   while a task is queued or browser-to-backend bytes are still transferring, then is
