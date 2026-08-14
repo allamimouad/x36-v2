@@ -115,7 +115,8 @@ design is agreed. The overview remains a compact route/index document.
   acceptance criteria.
 - [VERIFY folder-scoped list-item search](backend-operations/verify-sharepoint-folder-scoped-item-search.md)
   — copy-paste `GetItems`/CAML request for root or nested-folder recursive scope, using
-  the farm-verified `File/Length`, `Folder`, and `Editor/Title` projections.
+  the farm-verified projections and explicit `ID > lastItemId` paging required because
+  the target farm's POST response does not emit an OData next link.
 
 ## Frontend mapping
 - `FileSystemApi.listDocumentRoot(projectId, listKey)` → the root GET;

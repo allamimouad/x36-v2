@@ -1,11 +1,13 @@
 # SharePoint Folder-Scoped List-Item Search — Postman Check
 
-> **Status: exact request prepared; target-farm verification pending.**
+> **Status: root paging behavior partially verified; remaining target-farm checks pending.**
 > The target farm has already confirmed that the document-library `/items` collection
 > returns mixed file/folder rows, that `Editor/Title` works when selected and expanded,
-> and that file size is available through expanded `File/Length`. This check verifies
-> the final missing capability: restricting recursive results to one selected folder,
-> including using the document-library root as the selected folder.
+> and that file size is available through expanded `File/Length`. A root-scoped
+> `GetItems` request against a library with more than 5,000 items also succeeds with a
+> paged row limit and fails without one. Unlike the ordinary `/items` OData collection,
+> this farm's `POST GetItems` response exposes no `d.__next` or equivalent continuation,
+> even with `RowLimit=1`; this guide therefore verifies explicit `ID`-cursor paging.
 
 ## Decision being tested
 
@@ -19,7 +21,7 @@ The query combines:
 
 - `FolderServerRelativeUrl` — the canonical folder that owns the search scope;
 - `<View Scope='RecursiveAll'>` — include direct and nested descendants;
-- paged, stable `ID` ordering;
+- paged, stable `ID` ordering with an explicit `ID > lastItemId` cursor;
 - no SharePoint-side filename predicate;
 - expanded `File`, `Folder`, and `Editor` properties.
 
@@ -39,6 +41,7 @@ siteUrl
 libraryId
 libraryRootServerRelativeUrl
 nestedFolderServerRelativeUrl
+lastItemId
 token
 ```
 
@@ -218,29 +221,89 @@ returned. Restore `Scope='RecursiveAll'` for the candidate implementation.
 ## Test 4 — Paging within the selected subtree
 
 Use a folder subtree containing more rows than the configured row limit, or temporarily
-reduce the row limit to a small value such as `2`.
+reduce the row limit to `2`. The bodies below use `nestedFolderServerRelativeUrl`; use
+`libraryRootServerRelativeUrl` instead when repeating the same cursor test at the root.
+
+The target farm has already established that `POST GetItems` does not serialize an
+OData next link or CAML collection-position marker in the response. Do not look for
+`d.__next`, do not use `$skip`, and do not copy the `/items` endpoint's `$skiptoken`.
+Use the final returned `ID` as an explicit keyset cursor instead.
+
+### Page 1
+
+```json
+{
+  "query": {
+    "__metadata": {
+      "type": "SP.CamlQuery"
+    },
+    "FolderServerRelativeUrl": "{{nestedFolderServerRelativeUrl}}",
+    "ViewXml": "<View Scope='RecursiveAll'><Query><OrderBy><FieldRef Name='ID' Ascending='TRUE'/></OrderBy></Query><RowLimit Paged='TRUE'>2</RowLimit></View>"
+  }
+}
+```
+
+Record the final `ID` in the response. For example, if the page returns IDs `41` and
+`57`, set:
+
+```text
+lastItemId = 57
+```
+
+Use the actual final ID. Never calculate `firstId + rowLimit`, because deleted items
+and other normal list activity leave gaps in SharePoint IDs.
+
+### Page 2 and later
+
+Send the same endpoint, headers, params, folder scope, ordering, and row limit. Add an
+indexed `ID` greater-than predicate using the previous page's final ID:
+
+```json
+{
+  "query": {
+    "__metadata": {
+      "type": "SP.CamlQuery"
+    },
+    "FolderServerRelativeUrl": "{{nestedFolderServerRelativeUrl}}",
+    "ViewXml": "<View Scope='RecursiveAll'><Query><Where><Gt><FieldRef Name='ID'/><Value Type='Counter'>{{lastItemId}}</Value></Gt></Where><OrderBy><FieldRef Name='ID' Ascending='TRUE'/></OrderBy></Query><RowLimit Paged='TRUE'>2</RowLimit></View>"
+  }
+}
+```
+
+After every full page, replace `lastItemId` with that page's final returned `ID` and
+repeat. Stop when the response contains fewer rows than the configured row limit. If a
+page contains exactly the row limit, call once more; an empty response confirms the
+end when the total happens to be an exact multiple of the page size.
 
 Verify:
 
-- the first response exposes a continuation marker/link in the farm's response shape;
-- the continuation returns the next rows within the same folder scope;
-- no row outside `FolderServerRelativeUrl` appears on later pages;
+- page 2 starts with an `ID` greater than page 1's final `ID`;
+- later pages remain within the same `FolderServerRelativeUrl` scope;
 - no `ID` or `UniqueId` is duplicated across pages;
-- ordering stays stable by `ID`;
-- ordinary `$skip` is not used.
+- ordering remains strictly increasing by `ID`;
+- the complete distinct-row count is plausible for the selected subtree;
+- no OData `$skip`, guessed numeric offset, or client-supplied cursor is used.
 
-Retain the first and second page responses. The backend implementation must use the
-farm's actual continuation representation rather than inventing its format.
+Retain the first, second, and final page responses. The production cursor is backend
+state derived only from SharePoint's last returned row; Angular never supplies it.
 
 ## Test 5 — More-than-5,000-item behavior
 
 Run Test 1 or Test 2 against a scoped subtree whose containing library has more than
 5,000 items. If possible, also test a selected subtree with more than 5,000 descendants.
 
-Pass criteria:
+Already verified on the target farm for a root scope:
 
-- the first page succeeds for the application bearer-token user;
-- every continuation succeeds;
+- the containing library has more than 5,000 items;
+- omitting `RowLimit` raises the farm's list-view-threshold error;
+- `<RowLimit Paged='TRUE'>1000</RowLimit>` returns the first 1,000 rows;
+- `<RowLimit Paged='TRUE'>1</RowLimit>` returns one row;
+- neither paged `GetItems` response contains `d.__next`, an OData next link,
+  `ListItemCollectionPosition`, or `PagingInfo`.
+
+Remaining pass criteria:
+
+- every explicit `ID > lastItemId` page succeeds for the application bearer-token user;
 - the farm threshold is not raised or bypassed with an administrator override;
 - no item outside the selected folder appears;
 - complete-scan call count and duration are acceptable;
@@ -301,9 +364,12 @@ Deep file excluded?:
 
 Test 4 — Paging
 Row limit:
-Continuation representation:
+Automatic continuation absent?:
 Page 1 rows:
+Page 1 final ID:
 Page 2 rows:
+Page 2 first/final ID:
+Final page rows:
 Duplicates?:
 Outside-scope row?:
 
@@ -339,7 +405,8 @@ projectId + listKey + folderId
         -> authorize project/list/folder scope
         -> obtain the canonical folder ServerRelativeUrl
         -> POST list/GetItems with FolderServerRelativeUrl + RecursiveAll
-        -> follow the verified SharePoint continuation
+        -> order by ID and request a bounded first page
+        -> request later pages with ID > the previous page's final ID
         -> match FileLeafRef in Java
         -> map File.Length only for file rows
         -> return lightweight domain search results
@@ -354,5 +421,7 @@ id-versus-path request shape is decided only after the Postman capability succee
 
 - [CamlQuery.FolderServerRelativeUrl](https://learn.microsoft.com/en-us/previous-versions/office/sharepoint-csom/ee536450(v=office.15))
 - [SharePoint list-item operations and RecursiveAll](https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins/complete-basic-operations-using-sharepoint-client-library-code)
+- [CAML `Gt` query element](https://learn.microsoft.com/en-us/sharepoint/dev/schema/gt-element-query)
+- [CAML `RowLimit` element](https://learn.microsoft.com/en-us/sharepoint/dev/schema/rowlimit-element-list)
 - [SharePoint OData select, expand, and paging](https://learn.microsoft.com/en-us/sharepoint/dev/sp-add-ins/use-odata-query-operations-in-sharepoint-rest-requests)
 - [SP.File.Length](https://learn.microsoft.com/en-us/previous-versions/office/sharepoint-visio/jj247161(v=office.15))

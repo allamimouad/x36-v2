@@ -1,6 +1,6 @@
 # SharePoint List-Item Search — Postman Verification and Backend Candidate
 
-> **Status: preferred first-release candidate; real-farm verification pending.**
+> **Status: preferred first-release candidate; target-farm verification in progress.**
 > Search REST did not behave as expected in the initial manual checks and did not
 > expose a convenient canonical document shape. This guide verifies the simpler
 > document-library list-item approach before the backend contract is finalized.
@@ -11,8 +11,11 @@
 >
 > The mixed-row projection has now been partially verified: `Editor/Title` works when
 > selected and expanded, and file size works through expanded `File/Length`. The
-> remaining folder-scope check has a focused copy-paste guide in
+> folder-scoped `POST GetItems` variant has a focused copy-paste guide in
 > [verify-sharepoint-folder-scoped-item-search.md](verify-sharepoint-folder-scoped-item-search.md).
+> Target-farm testing established that this POST response does not expose the ordinary
+> `/items` collection's `d.__next`, even with a one-row CAML page; the focused guide now
+> uses explicit, indexed `ID > lastItemId` keyset paging instead.
 
 ## Recommendation to verify
 
@@ -307,6 +310,11 @@ identity guess.
 
 ## Test 4 — Paging
 
+This test describes the ordinary OData `GET .../items` endpoint used in this broader
+guide. It does not describe the folder-scoped `POST .../GetItems` operation. The latter
+has no next link on the target farm and must follow the explicit ID-cursor test in
+`verify-sharepoint-folder-scoped-item-search.md`.
+
 In an `application/json;odata=verbose` response, SharePoint normally returns the next
 page as `d.__next`. Other metadata modes may use an OData next-link property.
 
@@ -490,10 +498,12 @@ status. Do not silently label the first matches in ID order as the complete resu
 For each domain list:
 
 1. authorize `projectId` and resolve backend-owned `(projectId, listKey)` configuration;
-2. create the first SharePoint `/items` request using the verified projection,
-   `ID asc`, and bounded page size;
+2. create the first SharePoint request using the verified projection, `ID asc`, and a
+   bounded page size: `/items` for a whole-list scan or `GetItems` for CAML folder
+   scope;
 3. send it through the existing authenticated Feign client;
-4. validate and follow SharePoint's continuation token iteratively;
+4. page iteratively: follow SharePoint's continuation for `/items`, or use the final
+   returned ID as `ID > lastItemId` for the target-farm `GetItems` response;
 5. normalize each row and match only `FileLeafRef` in Java;
 6. collect at most the public result limit while continuing far enough to know whether
    the response is truncated;
@@ -503,8 +513,10 @@ Implementation constraints:
 
 - use an iterative loop, not recursive Java calls;
 - do not accept SharePoint site URLs, library ids, or continuation URLs from Angular;
-- if following an absolute SharePoint next link, validate it against the configured
+- if following an absolute `/items` next link, validate it against the configured
   site/library or extract the opaque continuation token and rebuild the known endpoint;
+- for `GetItems`, derive `lastItemId` only from the previous SharePoint page; never
+  accept a paging cursor from Angular or manufacture an offset;
 - escape and encode query parameters through the existing URI builder;
 - cancel superseded searches where the client/backend stack supports cancellation;
 - apply only a small, bounded retry policy to idempotent GET failures;

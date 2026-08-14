@@ -97,9 +97,9 @@
 _What should the next session work on?_
 
 1. Run `docs/backend-operations/verify-sharepoint-folder-scoped-item-search.md` on the
-   target farm for both a nested folder and list root, then complete paging, permission,
-   more-than-5,000-item, and performance evidence before adopting the scoped
-   paged-list-items + Java filename-filter backend candidate.
+   target farm for a nested folder, then complete the documented `ID > lastItemId`
+   second/final-page checks, permissions, and performance evidence before adopting the
+   scoped paged-list-items + Java filename-filter backend candidate.
 2. Browser-check Folder / File selection, the upload panel, cancellation, and a local
    tree containing nested empty folders in Edge/Chrome.
 3. Browser-check the three context-menu variants, hover submenus, inline delete
@@ -121,6 +121,17 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 ## Decisions Log
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
+
+- **Folder-scoped `GetItems` requires an explicit ID cursor on the target farm**
+  (2026-08-14): a root-scoped `POST .../GetItems` against a library with more than
+  5,000 items fails without a CAML row limit and succeeds with paged limits of 1,000
+  and 1. Even the one-row response exposes no `d.__next`, OData next link,
+  `ListItemCollectionPosition`, or `PagingInfo`; the ordinary `GET .../items` next-link
+  contract does not carry over to this POST method result. The folder-scoped test now
+  pages by stable `ID asc`, using the previous response's final ID in an indexed
+  `<Where><Gt>...ID...</Gt></Where>` predicate. A second page, complete scan, nested
+  folder scope, permissions, and measured performance remain pending; no runtime
+  search implementation exists yet.
 
 - **Mixed list-item projection verified; folder scope remains the final capability
   check** (2026-08-14): manual target-farm tests confirmed that the document-library
@@ -364,6 +375,14 @@ _Things noticed during implementation but not fixed in the current phase. Review
 ## Session Notes
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
+
+- **2026-08-14 — `GetItems` ID-cursor paging test corrected**: recorded target-farm
+  evidence that root-scoped paged CAML succeeds above 5,000 items while the unbounded
+  request is threshold-blocked, and that `POST GetItems` emits no continuation even
+  with `RowLimit=1`. Replaced the assumed next-link test with copy-paste page-one and
+  `ID > lastItemId` page-two bodies, termination and integrity checks, backend cursor
+  constraints, and clear separation from ordinary `/items` OData paging.
+  Documentation only; page-two/full-scan and remaining farm checks are pending.
 
 - **2026-08-14 — folder-scoped item-search Postman handoff**: recorded the target-farm
   success of `Editor/Title` and `File/Length`, corrected file-size guidance away from
