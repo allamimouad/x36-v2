@@ -96,10 +96,10 @@
 
 _What should the next session work on?_
 
-1. Run `docs/backend-operations/verify-sharepoint-list-item-search.md` against both
-   target libraries, including one with more than 5,000 items. Retain representative
-   file/folder, paging, permission, threshold, and performance responses before
-   adopting the paged-list-items + Java filename-filter backend candidate.
+1. Run `docs/backend-operations/verify-sharepoint-folder-scoped-item-search.md` on the
+   target farm for both a nested folder and list root, then complete paging, permission,
+   more-than-5,000-item, and performance evidence before adopting the scoped
+   paged-list-items + Java filename-filter backend candidate.
 2. Browser-check Folder / File selection, the upload panel, cancellation, and a local
    tree containing nested empty folders in Edge/Chrome.
 3. Browser-check the three context-menu variants, hover submenus, inline delete
@@ -121,6 +121,17 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 ## Decisions Log
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
+
+- **Mixed list-item projection verified; folder scope remains the final capability
+  check** (2026-08-14): manual target-farm tests confirmed that the document-library
+  `/items` response can project `Editor/Title` when it is both selected and expanded,
+  and that expanding `File` exposes canonical byte size through `File/Length`. The
+  schema field `File_x0020_Size` is therefore no longer the primary mapping. Expanded
+  `File` and `Folder` resources provide type-specific metadata on the same mixed list
+  rows. Added `verify-sharepoint-folder-scoped-item-search.md` with exact root/nested
+  `GetItems` bodies using `FolderServerRelativeUrl` and `Scope='RecursiveAll'`. That
+  scoping, its paging representation, threshold behavior, and performance are still
+  pending evidence; no backend or Angular search implementation exists yet.
 
 - **List-item search is the preferred first-release candidate pending farm evidence**
   (2026-08-13): initial Search REST checks did not behave as expected and returned a
@@ -353,6 +364,13 @@ _Things noticed during implementation but not fixed in the current phase. Review
 ## Session Notes
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
+
+- **2026-08-14 — folder-scoped item-search Postman handoff**: recorded the target-farm
+  success of `Editor/Title` and `File/Length`, corrected file-size guidance away from
+  `File_x0020_Size`, and added a self-contained root/nested-folder recursive `GetItems`
+  verification with exact params, headers, bodies, fixtures, exclusions, paging,
+  threshold, permission, backend-candidate, and result-sheet sections. Documentation
+  only; the folder-scoping request is currently being tested on the other laptop.
 
 - **2026-08-13 — list-item search verification/backend candidate documented**: added
   an exact Postman sequence for mixed file/folder list items, field mapping, by-id

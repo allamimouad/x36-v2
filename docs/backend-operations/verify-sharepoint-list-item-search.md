@@ -8,6 +8,11 @@
 > Do not implement the backend from assumptions alone. Retain the completed result
 > sheet and representative file, folder, paging, permission, threshold, and error
 > responses from the target farm.
+>
+> The mixed-row projection has now been partially verified: `Editor/Title` works when
+> selected and expanded, and file size works through expanded `File/Length`. The
+> remaining folder-scope check has a focused copy-paste guide in
+> [verify-sharepoint-folder-scoped-item-search.md](verify-sharepoint-folder-scoped-item-search.md).
 
 ## Recommendation to verify
 
@@ -64,14 +69,18 @@ Request these SharePoint fields and verify their exact target-farm representatio
 | `FileRef` | Full server-relative item path | `path` |
 | `FileDirRef` | Full server-relative parent path | `parentPath` |
 | `FSObjType` | File/folder discriminator (`0` file, `1` folder) | `kind` |
-| `File_x0020_Size` | File size in bytes | `sizeBytes` for files |
+| `File/Length` | Canonical file size in bytes; requires expanding `File` | `sizeBytes` for files |
 | `File_x0020_Type` | File extension | `extension` |
+| `Folder/ItemCount` | Direct child count for a folder; requires expanding `Folder` | Optional folder search metadata |
 | `Created` | Creation timestamp | `createdAt` |
 | `Modified` | Modification timestamp | `modifiedAt` |
 | `Editor/Title` | Last modifier's display name | `modifiedBy` |
 
-The field names above are SharePoint document-library internal names. `FileLeafRef`
+The list fields above are SharePoint document-library internal names. `FileLeafRef`
 contains only the item name, while `FileRef` contains the full server-relative path.
+`File` and `Folder` are related REST resources. The target farm does expose the schema
+field `File_x0020_Size`, but it does not project that field reliably through this OData
+collection. Use `File/Length`, which has been manually verified, as the canonical size.
 
 The search row does **not** need to be a complete `FolderNode` or `FileNode`. In
 particular, list-item search does not need to return canonical folder `itemCount`, a
@@ -201,8 +210,8 @@ Add these values in Postman's **Params** tab:
 
 | Key | Value |
 |---|---|
-| `$select` | `ID,UniqueId,FileLeafRef,FileRef,FileDirRef,FSObjType,File_x0020_Size,File_x0020_Type,Created,Modified,Editor/Title` |
-| `$expand` | `Editor` |
+| `$select` | `ID,UniqueId,FileLeafRef,FileRef,FileDirRef,FSObjType,File_x0020_Type,Created,Modified,File/Length,Folder/ItemCount,Editor/Title` |
+| `$expand` | `File,Folder,Editor` |
 | `$orderby` | `ID asc` |
 | `$top` | `1000` |
 
@@ -221,13 +230,19 @@ Verify:
 - file rows and folder rows are both present;
 - deeply nested rows appear without manually expanding folders;
 - every row has a usable name, path, UUID, and kind;
-- file size and extension are usable for file rows;
-- folder size/extension may be null, blank, or absent;
+- `File.Length` and extension are usable for file rows;
+- folder rows have no byte size; `Folder.ItemCount` is a child count when available;
 - timestamps are UTC-compatible;
 - `Editor.Title` is present when the user field can be expanded;
 - the response contains no document bytes.
 
 Keep one complete file row and one complete folder row from each list.
+
+The target farm has already confirmed the projection rules that OData requires:
+`Editor/Title` must be selected when `Editor` is expanded, and `File/Length` must be
+selected when `File` is expanded. Expanding a relationship without selecting a target
+field is invalid. `File.Length` may be serialized as a string; parse it as a
+non-negative Java `long`.
 
 ### If a selected field is rejected
 

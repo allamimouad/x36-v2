@@ -113,6 +113,9 @@ design is agreed. The overview remains a compact route/index document.
   — preferred first-release candidate: mixed file/folder rows, canonical field mapping,
   continuation paging, more-than-5,000-item testing, Java name filtering, and backend
   acceptance criteria.
+- [VERIFY folder-scoped list-item search](backend-operations/verify-sharepoint-folder-scoped-item-search.md)
+  — copy-paste `GetItems`/CAML request for root or nested-folder recursive scope, using
+  the farm-verified `File/Length`, `Folder`, and `Editor/Title` projections.
 
 ## Frontend mapping
 - `FileSystemApi.listDocumentRoot(projectId, listKey)` → the root GET;
