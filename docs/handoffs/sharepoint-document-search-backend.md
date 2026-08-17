@@ -79,7 +79,7 @@ Before editing, inspect the existing implementations for:
 - file `onlineUrl`, `desktopUrl`, and `downloadUrl` construction;
 - folder `webUrl` construction;
 - SharePoint paging, if another operation already implements it;
-- validation, authorization, exception mapping, and controller tests.
+- validation, authorization, and exception mapping.
 
 Use the real package names, DTOs, mapper configuration, client conventions, and method
 names from the repository. Examples in this prompt describe behavior, not names that
@@ -490,68 +490,6 @@ and follow its actual conventions.
 
 ---
 
-## Tests to add
-
-Follow the repository's existing unit/integration test style and naming. Cover at
-least:
-
-### Controller and validation
-
-- exact route and HTTP `GET` method;
-- `EXECUTION` and `MARKETING` route values;
-- missing, blank, two-character, and whitespace-padded queries;
-- response wrapper and JSON field names;
-- no client path, SharePoint URL, list GUID, cursor, or limit parameter.
-
-### Scope resolution
-
-- existing folder-by-ID operation is called once;
-- list root scope;
-- nested folder scope;
-- folder outside the configured library is rejected;
-- `/Contracts` does not include `/Contracts-old`;
-- case-insensitive path comparison without changing returned canonical casing.
-
-### Paging
-
-- one page without continuation;
-- multiple pages using the exact continuation returned by SharePoint;
-- more than 5000 total rows represented across mocked pages;
-- no recursion, manufactured offsets, or client cursor;
-- zero matches still consumes all pages;
-- a later-page SharePoint error uses existing error mapping.
-
-### Filtering
-
-- file and folder names both match;
-- case-insensitive substring matching with `Locale.ROOT`;
-- nested descendants match;
-- siblings/outside-scope rows do not match;
-- the scope folder itself is excluded;
-- paths/editor/content do not accidentally match the query.
-
-### Mapping
-
-- complete file node, including `parentId`, size, timestamps, modifier, content type,
-  and supported launch/download URLs;
-- complete folder node, including `parentId`, `itemCount`, timestamps, modifier, and
-  `webUrl`;
-- `listRelativePath` and `parentListRelativePath` for root and nested cases;
-- a matching child encountered before its parent folder row still receives the correct
-  parent GUID after the scan;
-- malformed/missing non-root parent mapping is not fabricated;
-- `totalMatches` and `truncated` semantics.
-
-### Architecture
-
-- controller delegates to service;
-- service/facade use the two established MapStruct boundaries;
-- facade uses the authenticated Feign client;
-- existing folder lookup, list configuration, URL builders, and error mappers are
-  reused rather than duplicated.
-
----
-
 ## Frontend behavior this contract supports
 
 The frontend is already implemented against:
@@ -621,9 +559,7 @@ The work is complete when:
    `path`.
 8. Existing layering, authentication, configuration, mappers, URL builders, and error
    handling are reused.
-9. Focused tests pass, along with the repository's relevant existing test/build/lint
-   commands.
-10. No rejected fallback strategy or unrelated refactor is introduced.
+9. No rejected fallback strategy or unrelated refactor is introduced.
 
 After implementation, report:
 
@@ -632,7 +568,6 @@ After implementation, report:
 - public request/response shape;
 - SharePoint call and paging flow;
 - mapping decisions;
-- tests and verification commands run;
 - any remaining blocker supported by concrete evidence.
 
 Do not commit or push unless explicitly requested.
