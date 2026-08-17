@@ -1,5 +1,16 @@
 # SharePoint Folder-Scoped List-Item Search — Postman Check
 
+> **Do not implement the paging strategy in this historical guide.** Target-farm
+> testing after this file was published proved that native later-page paging works via
+> `ListItemCollectionPosition.PagingInfo`, while the documented CAML
+> `ID > lastItemId` workaround can raise the threshold or skip rows. Testing also
+> proved that a real nested `FolderServerRelativeUrl + RecursiveAll` request is
+> threshold-blocked even with `AllowIncrementalResults`; removing `RecursiveAll`
+> succeeds but returns only direct children. Use
+> [verify-sharepoint-render-list-data-folder-search.md](verify-sharepoint-render-list-data-folder-search.md)
+> for the current next capability test. This file is retained only as investigation
+> history until it is rewritten.
+>
 > **Status: root paging behavior partially verified; remaining target-farm checks pending.**
 > The target farm has already confirmed that the document-library `/items` collection
 > returns mixed file/folder rows, that `Editor/Title` works when selected and expanded,

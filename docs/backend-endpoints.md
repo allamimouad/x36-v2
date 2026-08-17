@@ -114,9 +114,13 @@ design is agreed. The overview remains a compact route/index document.
   continuation paging, more-than-5,000-item testing, Java name filtering, and backend
   acceptance criteria.
 - [VERIFY folder-scoped list-item search](backend-operations/verify-sharepoint-folder-scoped-item-search.md)
-  — copy-paste `GetItems`/CAML request for root or nested-folder recursive scope, using
-  the farm-verified projections and explicit `ID > lastItemId` paging required because
-  the target farm's POST response does not emit an OData next link.
+  — historical `GetItems`/CAML investigation. Native `PagingInfo` paging works, but
+  nested `FolderServerRelativeUrl + RecursiveAll` remains threshold-blocked and the
+  guide's earlier `ID > lastItemId` workaround must not be implemented.
+- [VERIFY `RenderListDataAsStream` folder search](backend-operations/verify-sharepoint-render-list-data-folder-search.md)
+  — focused Postman test for lightweight nested recursive scope, opaque endpoint-native
+  paging, optional in-place filename search, threshold behavior, permissions, and
+  performance without one request per folder.
 
 ## Frontend mapping
 - `FileSystemApi.listDocumentRoot(projectId, listKey)` → the root GET;

@@ -96,10 +96,13 @@
 
 _What should the next session work on?_
 
-1. Run `docs/backend-operations/verify-sharepoint-folder-scoped-item-search.md` on the
-   target farm for a nested folder, then complete the documented `ID > lastItemId`
-   second/final-page checks, permissions, and performance evidence before adopting the
-   scoped paged-list-items + Java filename-filter backend candidate.
+1. Run
+   `docs/backend-operations/verify-sharepoint-render-list-data-folder-search.md` on
+   the target farm. First test lightweight nested `RecursiveAll`, then endpoint-native
+   continuation paging and optional in-place filename search. If recursive enumeration
+   remains threshold-blocked, compare the already-working root scan plus Java path/name
+   filtering with Search REST; do not adopt one-request-per-folder traversal by
+   default.
 2. Browser-check Folder / File selection, the upload panel, cancellation, and a local
    tree containing nested empty folders in Edge/Chrome.
 3. Browser-check the three context-menu variants, hover submenus, inline delete
@@ -122,16 +125,19 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
-- **Folder-scoped `GetItems` requires an explicit ID cursor on the target farm**
-  (2026-08-14): a root-scoped `POST .../GetItems` against a library with more than
-  5,000 items fails without a CAML row limit and succeeds with paged limits of 1,000
-  and 1. Even the one-row response exposes no `d.__next`, OData next link,
-  `ListItemCollectionPosition`, or `PagingInfo`; the ordinary `GET .../items` next-link
-  contract does not carry over to this POST method result. The folder-scoped test now
-  pages by stable `ID asc`, using the previous response's final ID in an indexed
-  `<Where><Gt>...ID...</Gt></Where>` predicate. A second page, complete scan, nested
-  folder scope, permissions, and measured performance remain pending; no runtime
-  search implementation exists yet.
+- **Native `GetItems` paging verified; nested `RecursiveAll` remains threshold-blocked**
+  (2026-08-17): the target farm accepts later POST pages through
+  `ListItemCollectionPosition.PagingInfo = Paged=TRUE&p_ID=<previous page's actual
+  final ID>`, despite serializing no continuation in the response. The earlier CAML
+  `ID > lastItemId` workaround is disproven and can skip rows; it must not be used.
+  A valid nested `FolderServerRelativeUrl` plus `RecursiveAll` raises the list-view-
+  threshold error, and `AllowIncrementalResults=true` does not fix it. Removing only
+  `RecursiveAll` succeeds, proving that folder scoping works and isolating the failure
+  to the recursive query plan. Direct-folder paging, folder-by-folder subtree
+  traversal, permissions, and performance remain pending. The historical
+  `verify-sharepoint-folder-scoped-item-search.md` guide now carries a prominent
+  warning, and the focused current probe is
+  `verify-sharepoint-render-list-data-folder-search.md`.
 
 - **Mixed list-item projection verified; folder scope remains the final capability
   check** (2026-08-14): manual target-farm tests confirmed that the document-library
@@ -376,7 +382,18 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
-- **2026-08-14 — `GetItems` ID-cursor paging test corrected**: recorded target-farm
+- **2026-08-17 — focused `RenderListDataAsStream` folder-search probe**: added a
+  copy-paste Postman guide that first tests lightweight nested recursive enumeration,
+  then opaque endpoint-native paging, optional `InplaceSearchQuery` behavior, richer
+  projections, realistic threshold/performance, and real-user permissions. The guide
+  rejects one-request-per-folder traversal as the default and defines decisions for
+  successful enumeration, successful server-side search, or another threshold
+  failure. The endpoint index now links the guide, and the historical `GetItems`
+  guide warns that its CAML `ID > lastItemId` paging workaround is invalid. No runtime
+  implementation.
+
+- **2026-08-14 — historical `GetItems` ID-cursor paging test (superseded on
+  2026-08-17)**: recorded target-farm
   evidence that root-scoped paged CAML succeeds above 5,000 items while the unbounded
   request is threshold-blocked, and that `POST GetItems` emits no continuation even
   with `RowLimit=1`. Replaced the assumed next-link test with copy-paste page-one and
