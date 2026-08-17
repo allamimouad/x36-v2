@@ -69,7 +69,7 @@ Request these SharePoint fields and verify their exact target-farm representatio
 | `UniqueId` | Stable SharePoint GUID | `id` |
 | `FileLeafRef` | File or folder name | `name` |
 | `FileRef` | Full server-relative item path | `path` |
-| `FileDirRef` | Full server-relative parent path | parent lookup + navigation path |
+| `FileDirRef` | Full server-relative parent path | parent lookup |
 | `FSObjType` | File/folder discriminator (`0` file, `1` folder) | `kind` |
 | `File/Length` | Canonical file size in bytes; requires expanding `File` | `sizeBytes` for files |
 | `File_x0020_Type` | File extension | `extension` |
@@ -87,8 +87,8 @@ collection. Use `File/Length`, which has been manually verified, as the canonica
 The public search row **is** a complete `FolderNode` or `FileNode`. Build a
 `serverRelativePath -> UniqueId` folder lookup while scanning the list so `FileDirRef`
 can map to the canonical `parentId` without a request per result. Reuse the normal
-mapping/link-building helpers for `itemCount`, `contentType`, `webUrl`, `onlineUrl`,
-`desktopUrl`, and `downloadUrl`; do not expose the raw SharePoint item DTO.
+mapping/link-building helpers for `itemCount`, `webUrl`, `onlineUrl`, `desktopUrl`, and
+`downloadUrl`; do not expose the raw SharePoint item DTO.
 
 ## Proposed domain search result
 
@@ -103,7 +103,6 @@ The backend should isolate Angular from SharePoint's list-row shape:
   "path": "/sites/project/Execution Documents/Contracts/Contract 2026.docx",
   "parentId": "51ff8ae2-01bc-4dac-8857-86be4562c3c1",
   "sizeBytes": 184320,
-  "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "createdAt": "2026-08-01T08:20:00Z",
   "modifiedAt": "2026-08-12T14:45:00Z",
   "modifiedBy": "Jane Doe",

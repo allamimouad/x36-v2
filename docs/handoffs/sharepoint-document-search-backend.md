@@ -39,7 +39,6 @@ by the normal document-listing endpoints:
     "createdAt": "2026-08-01T08:20:00Z",
     "modifiedAt": "2026-08-12T14:45:00Z",
     "modifiedBy": "Jane Doe",
-    "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "onlineUrl": "https://sharepoint.example/.../Contract%202026.docx",
     "desktopUrl": "ms-word:ofe|u|https://sharepoint.example/.../Contract%202026.docx",
     "downloadUrl": "https://sharepoint.example/.../Contract%202026.docx?download=1"
@@ -235,9 +234,9 @@ File
 Folder
 ```
 
-Reuse already-existing projections for content type and link generation if the normal
-listing mapper needs additional fields. Do not introduce a second definition of what
-constitutes a canonical file/folder node.
+Reuse already-existing projections and link generation required by the normal listing
+mapper. Do not introduce a second definition of what constitutes a canonical
+file/folder node.
 
 Use a bounded SharePoint page size consistent with the verified request (up to 1000)
 and a stable ID ordering if the endpoint/client already expresses it. The list may
@@ -315,8 +314,9 @@ page because the filename predicate is intentionally evaluated in Java.
 
 ## Canonical `parentId` without one request per result
 
-The public node contract requires `parentId`, while a list-item row gives the parent
-path as `FileDirRef`.
+The public node contract requires `parentId`, while a file list-item row gives the
+parent path as `FileDirRef`; the target REST `SP.File` representation does not expose
+`ParentFolder`.
 
 During the same list scan, build a lookup for **every folder row**, not only matching
 folders:
@@ -375,7 +375,6 @@ download directly from search results.
 For files, reuse the existing helpers/mappers for:
 
 ```text
-contentType
 onlineUrl
 desktopUrl
 downloadUrl
