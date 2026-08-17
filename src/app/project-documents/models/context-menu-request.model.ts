@@ -1,5 +1,4 @@
 import type { FileSystemNode } from './file-system-node.model';
-import type { DocumentSearchResult } from './document-search-result.model';
 
 export interface NodeContextMenuRequest {
     event: MouseEvent;
@@ -14,5 +13,5 @@ export interface ItemRenameRequest {
 
 export interface SearchResultContextMenuRequest {
     event: MouseEvent;
-    result: DocumentSearchResult;
+    result: FileSystemNode;
 }

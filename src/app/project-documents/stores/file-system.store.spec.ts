@@ -295,7 +295,7 @@ describe('FileSystemStore project-scoped API contract', () => {
     it('mutates a canonical search node without inserting the source into the cache', async () => {
         const roots = await store.initialize('project-123');
         const executionRoot = requireRoot(roots.EXECUTION, 'execution');
-        const { results } = await firstValueFrom(
+        const results = await firstValueFrom(
             api.searchDocuments('project-123', executionRoot, 'signed')
         );
         const source = results.find((node) => !isFolder(node));
@@ -317,7 +317,7 @@ describe('FileSystemStore project-scoped API contract', () => {
     it('copies an uncached canonical search node into a cached destination', async () => {
         const roots = await store.initialize('project-123');
         const executionRoot = requireRoot(roots.EXECUTION, 'execution');
-        const { results } = await firstValueFrom(
+        const results = await firstValueFrom(
             api.searchDocuments('project-123', executionRoot, 'signed')
         );
         const source = results.find((node) => !isFolder(node));

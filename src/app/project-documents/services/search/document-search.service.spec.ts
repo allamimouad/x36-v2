@@ -1,7 +1,6 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing';
 import { delay, of } from 'rxjs';
-import type { DocumentSearchResponse } from '../../models/document-search-result.model';
-import type { FolderNode } from '../../models/file-system-node.model';
+import type { FileSystemNode, FolderNode } from '../../models/file-system-node.model';
 import { FileSystemApi } from '../file-system/file-system-api';
 import { MOCK_CONFIG } from '../mock/mock-config.token';
 import { MockFileSystemApi } from '../mock/mock-file-system-api';
@@ -48,9 +47,8 @@ describe('DocumentSearchService', () => {
     }));
 });
 
-function response(query: string): DocumentSearchResponse {
-    return {
-        results: [{
+function response(query: string): FileSystemNode[] {
+    return [{
             kind: 'file',
             listKey: 'EXECUTION',
             id: query,
@@ -59,13 +57,8 @@ function response(query: string): DocumentSearchResponse {
             parentId: 'root',
             createdAt: '2026-08-17T09:00:00Z',
             modifiedAt: '2026-08-17T10:00:00Z',
-            sizeBytes: 10,
-            listRelativePath: `${query}.pdf`,
-            parentListRelativePath: ''
-        }],
-        totalMatches: 1,
-        truncated: false
-    };
+            sizeBytes: 10
+        }];
 }
 
 const scope: FolderNode = {

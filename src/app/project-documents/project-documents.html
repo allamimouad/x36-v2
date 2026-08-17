@@ -272,11 +272,10 @@
         } @else if (searchActive()) {
           <pr-search-results
             [results]="search.results()"
+            [rootPath]="searchRootPath()"
             [query]="search.activeQuery() ?? searchText().trim()"
             [loading]="search.isSearching()"
             [error]="searchError()"
-            [totalMatches]="search.totalMatches()"
-            [truncated]="search.truncated()"
             [renamingId]="inlineRenameSurface() === 'search' ? navigation.renamingId() : null"
             [renameError]="inlineRenameError()"
             [writingIds]="writingIds()"

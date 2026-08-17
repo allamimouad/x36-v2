@@ -12,12 +12,13 @@ import {
 import { InputText } from 'primeng/inputtext';
 import { ProgressSpinner } from 'primeng/progressspinner';
 import { TableModule } from 'primeng/table';
-import type { DocumentSearchResult } from '../../models/document-search-result.model';
 import type {
     ItemRenameRequest,
     SearchResultContextMenuRequest
 } from '../../models/context-menu-request.model';
+import type { FileSystemNode } from '../../models/file-system-node.model';
 import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
+import { parentOfRelativePath, relativePathFromRoot } from '../../utils/path.utils';
 
 @Component({
     selector: 'pr-search-results',
@@ -28,22 +29,21 @@ import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
     styleUrl: './search-results.scss'
 })
 export class SearchResults {
-    public readonly results = input.required<DocumentSearchResult[]>();
+    public readonly results = input.required<FileSystemNode[]>();
+    public readonly rootPath = input.required<string>();
     public readonly query = input.required<string>();
     public readonly loading = input(false);
     public readonly error = input<string | null>(null);
-    public readonly totalMatches = input(0);
-    public readonly truncated = input(false);
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);
     public readonly writingIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly deleteConfirmationId = input<string | null>(null);
-    public readonly resultActivated = output<DocumentSearchResult>();
+    public readonly resultActivated = output<FileSystemNode>();
     public readonly contextMenuRequested = output<SearchResultContextMenuRequest>();
     public readonly renameSubmitted = output<ItemRenameRequest>();
     public readonly renameCancelled = output();
     public readonly renameEdited = output();
-    public readonly deleteConfirmed = output<DocumentSearchResult>();
+    public readonly deleteConfirmed = output<FileSystemNode>();
     public readonly deleteCancelled = output();
 
     protected readonly inlineRenameValue = signal('');
@@ -72,7 +72,7 @@ export class SearchResults {
         });
     }
 
-    protected activate(event: Event, result: DocumentSearchResult): void {
+    protected activate(event: Event, result: FileSystemNode): void {
         if (event.target instanceof HTMLElement && event.target.closest('input, button')) {
             return;
         }
@@ -83,21 +83,23 @@ export class SearchResults {
         this.resultActivated.emit(result);
     }
 
-    protected openContextMenu(event: MouseEvent, result: DocumentSearchResult): void {
+    protected openContextMenu(event: MouseEvent, result: FileSystemNode): void {
         event.preventDefault();
         event.stopPropagation();
         this.contextMenuRequested.emit({ event, result });
     }
 
-    protected location(result: DocumentSearchResult): string {
-        const suffix = result.parentListRelativePath
-            ? `/${result.parentListRelativePath}`
+    protected location(result: FileSystemNode): string {
+        const relativePath = relativePathFromRoot(this.rootPath(), result.path);
+        const parentPath = parentOfRelativePath(relativePath);
+        const suffix = parentPath
+            ? `/${parentPath}`
             : '';
 
         return `${result.listKey.toLowerCase()}${suffix}`;
     }
 
-    protected size(result: DocumentSearchResult): string {
+    protected size(result: FileSystemNode): string {
         if (result.kind === 'folder') { return ''; }
         const bytes = result.sizeBytes;
         if (bytes < 1024) { return `${bytes} B`; }
@@ -114,7 +116,7 @@ export class SearchResults {
         this.renameEdited.emit();
     }
 
-    protected onInlineRenameKeydown(event: KeyboardEvent, result: DocumentSearchResult): void {
+    protected onInlineRenameKeydown(event: KeyboardEvent, result: FileSystemNode): void {
         if (event.key === 'Escape') {
             event.preventDefault();
             event.stopPropagation();
@@ -128,11 +130,11 @@ export class SearchResults {
         this.submitInlineRename(result);
     }
 
-    protected onInlineRenameBlur(result: DocumentSearchResult): void {
+    protected onInlineRenameBlur(result: FileSystemNode): void {
         this.submitInlineRename(result);
     }
 
-    protected confirmDelete(event: Event, result: DocumentSearchResult): void {
+    protected confirmDelete(event: Event, result: FileSystemNode): void {
         event.stopPropagation();
         this.deleteConfirmed.emit(result);
     }
@@ -146,7 +148,7 @@ export class SearchResults {
         if (event.key !== 'Escape') { event.stopPropagation(); }
     }
 
-    private submitInlineRename(result: DocumentSearchResult): void {
+    private submitInlineRename(result: FileSystemNode): void {
         const editedName = this.inlineRenameValue();
         if (result.kind === 'folder') {
             this.renameSubmitted.emit({ node: result, name: editedName });

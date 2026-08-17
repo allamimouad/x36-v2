@@ -28,27 +28,20 @@ describe('MockFileSystemApi search', () => {
     it('searches file and folder names recursively below a list root', async () => {
         const root = await executionRoot();
 
-        const response = await firstValueFrom(
+        const results = await firstValueFrom(
             api.searchDocuments('project-123', root, 'SIGNED')
         );
-        const { results } = response;
 
         expect(results.length).toBeGreaterThan(1);
-        expect(response).toEqual(jasmine.objectContaining({
-            totalMatches: results.length,
-            truncated: false
-        }));
         expect(results.some((result) => result.kind === 'folder' && result.name === 'Signed'))
             .toBeTrue();
         expect(results.some((result) => result.name === 'globex-msa-signed.pdf')).toBeTrue();
         expect(results.every((result) => result.listKey === 'EXECUTION')).toBeTrue();
         expect(results.find((result) => result.name === 'globex-msa-signed.pdf')).toEqual(
             jasmine.objectContaining({
-                listRelativePath:
-                    'Contracts/Vendors/2026/Q111111111111111111111111111111/Signed/' +
-                    'globex-msa-signed.pdf',
-                parentListRelativePath:
-                    'Contracts/Vendors/2026/Q111111111111111111111111111111/Signed'
+                path:
+                    '/execution/Contracts/Vendors/2026/Q111111111111111111111111111111/' +
+                    'Signed/globex-msa-signed.pdf'
             })
         );
     });
@@ -67,7 +60,7 @@ describe('MockFileSystemApi search', () => {
             api.searchDocuments('project-123', vendors, 'agreement')
         );
 
-        expect(response).toEqual({ results: [], totalMatches: 0, truncated: false });
+        expect(response).toEqual([]);
     });
 
     async function executionRoot(): Promise<FolderNode> {

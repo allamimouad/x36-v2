@@ -233,9 +233,9 @@ All scenarios must work:
 - Match file and folder **names only**, case-insensitively; never search file contents.
 - Submit on Enter with at least three trimmed characters. Do not issue a request for
   every keyboard event.
-- Every result contains a complete canonical `FolderNode` or `FileNode`, plus canonical
-  list-relative item/parent paths used only for address-bar navigation. The backend
-  maps its raw SharePoint item DTO into this application contract.
+- Every result is a complete canonical `FolderNode` or `FileNode`, identical to nodes
+  returned by normal listing. The frontend derives address-bar navigation paths from
+  the node's canonical `path` and the already-loaded list-root `path`.
 - Double-clicking/pressing Enter on a folder result opens that folder. The same action
   on a file opens its online application. Single-click does not navigate; locating a
   file is an explicit `Open File Location` action in its context menu.
@@ -296,17 +296,6 @@ export function isFolder(n: FileSystemNode): n is FolderNode {
   return n.kind === 'folder';
 }
 
-export type DocumentSearchResult = FileSystemNode & {
-  listRelativePath: string;       // canonical path used by address-bar resolution
-  parentListRelativePath: string; // canonical containing-folder resolver path
-};
-
-export interface DocumentSearchResponse {
-  results: DocumentSearchResult[];
-  totalMatches: number;
-  truncated: boolean;
-}
-
 export interface FolderLocation {
   folderId: string;
   breadcrumb?: ResolvedBreadcrumbContext;
@@ -357,7 +346,7 @@ export abstract class FileSystemApi {
     projectId: string,
     scope: FolderNode,
     query: string,
-  ): Observable<DocumentSearchResponse>;
+  ): Observable<FileSystemNode[]>;
 
   /** Create under `parent`; backend resolves collisions and returns the persisted name. */
   abstract createFolder(projectId: string, parent: FolderNode, name: string): Observable<FolderNode>;

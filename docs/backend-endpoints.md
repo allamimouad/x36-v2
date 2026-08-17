@@ -44,12 +44,12 @@
   casing (`""` for root) and `listing` is the target's `DocumentListing` (**no ancestors**).
   404 ⇒ `not-found`.
 - **search** recursively matches file and folder names below `folderId`, with a minimum
-  three-character query. Every result is the same complete canonical `FolderNode` or
-  `FileNode` returned by normal listing endpoints, plus `listRelativePath` and
-  `parentListRelativePath` for address-bar navigation. Map the raw SharePoint `/items`
-  response into these application nodes; never expose its transport DTO directly. The
-  response also carries `totalMatches` and `truncated`, so a backend-owned result cap is
-  never presented as complete. SharePoint paging is backend-private.
+  three-character query. Its response is a plain array containing the same complete
+  canonical `FolderNode` or `FileNode` returned by normal listing endpoints. Map the
+  raw SharePoint `/items` response into these application nodes; never expose its
+  transport DTO directly. The frontend derives navigation locations from each node's
+  canonical `path` and the loaded library-root `path`. SharePoint paging is
+  backend-private.
 
 ## Mutations (list-scoped route summary)
     POST   /projects/{projectId}/document-lists/{listKey}/documents/{parentFolderId}/folders

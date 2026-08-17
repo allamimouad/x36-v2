@@ -1,5 +1,5 @@
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
-import type { DocumentSearchResult } from '../../models/document-search-result.model';
+import type { FileSystemNode } from '../../models/file-system-node.model';
 import { SearchResults } from './search-results';
 
 describe('SearchResults', () => {
@@ -9,6 +9,7 @@ describe('SearchResults', () => {
         await TestBed.configureTestingModule({ imports: [SearchResults] }).compileComponents();
         fixture = TestBed.createComponent(SearchResults);
         fixture.componentRef.setInput('results', [result]);
+        fixture.componentRef.setInput('rootPath', '/execution');
         fixture.componentRef.setInput('query', 'report');
         fixture.detectChanges();
     });
@@ -88,7 +89,7 @@ describe('SearchResults', () => {
     }
 });
 
-const result: DocumentSearchResult = {
+const result: FileSystemNode = {
     kind: 'file',
     listKey: 'EXECUTION',
     id: 'file-1',
@@ -101,7 +102,5 @@ const result: DocumentSearchResult = {
     sizeBytes: 1024,
     contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     onlineUrl: 'https://sharepoint.example/report.docx',
-    downloadUrl: 'https://sharepoint.example/report.docx?download=1',
-    listRelativePath: 'Contracts/report.docx',
-    parentListRelativePath: 'Contracts'
+    downloadUrl: 'https://sharepoint.example/report.docx?download=1'
 };

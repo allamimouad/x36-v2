@@ -23,42 +23,35 @@ GET /projects/123/document-lists/EXECUTION/documents/8ac4.../search?q=contract
 It searches file and folder **names only**, case-insensitively, inside the selected
 folder and all of its descendants in exactly one configured document list.
 
-The response contains complete canonical file/folder nodes plus the list-relative
-paths used by the frontend for navigation:
+The response is a JSON array of the same complete canonical file/folder nodes returned
+by the normal document-listing endpoints:
 
 ```json
-{
-  "results": [
-    {
-      "kind": "file",
-      "listKey": "EXECUTION",
-      "id": "a3f91b7e-5fc8-41ff-a90c-e3624ba43a54",
-      "name": "Contract 2026.docx",
-      "path": "/sites/project/Execution Documents/Contracts/Contract 2026.docx",
-      "parentId": "51ff8ae2-01bc-4dac-8857-86be4562c3c1",
-      "sizeBytes": 184320,
-      "createdAt": "2026-08-01T08:20:00Z",
-      "modifiedAt": "2026-08-12T14:45:00Z",
-      "modifiedBy": "Jane Doe",
-      "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "onlineUrl": "https://sharepoint.example/.../Contract%202026.docx",
-      "desktopUrl": "ms-word:ofe|u|https://sharepoint.example/.../Contract%202026.docx",
-      "downloadUrl": "https://sharepoint.example/.../Contract%202026.docx?download=1",
-      "listRelativePath": "Contracts/Contract 2026.docx",
-      "parentListRelativePath": "Contracts"
-    }
-  ],
-  "totalMatches": 1,
-  "truncated": false
-}
+[
+  {
+    "kind": "file",
+    "listKey": "EXECUTION",
+    "id": "a3f91b7e-5fc8-41ff-a90c-e3624ba43a54",
+    "name": "Contract 2026.docx",
+    "path": "/sites/project/Execution Documents/Contracts/Contract 2026.docx",
+    "parentId": "51ff8ae2-01bc-4dac-8857-86be4562c3c1",
+    "sizeBytes": 184320,
+    "createdAt": "2026-08-01T08:20:00Z",
+    "modifiedAt": "2026-08-12T14:45:00Z",
+    "modifiedBy": "Jane Doe",
+    "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "onlineUrl": "https://sharepoint.example/.../Contract%202026.docx",
+    "desktopUrl": "ms-word:ofe|u|https://sharepoint.example/.../Contract%202026.docx",
+    "downloadUrl": "https://sharepoint.example/.../Contract%202026.docx?download=1"
+  }
+]
 ```
 
 A folder result uses the existing canonical folder-node fields instead:
 
 ```text
 kind, listKey, id, name, path, parentId, itemCount,
-createdAt, modifiedAt, modifiedBy, webUrl,
-listRelativePath, parentListRelativePath
+createdAt, modifiedAt, modifiedBy, webUrl
 ```
 
 Use the exact casing and JSON conventions already used by the existing document-listing
@@ -396,45 +389,24 @@ webUrl
 
 Do not manually rebuild these URLs in the search service or mapper.
 
-Add the two search-navigation properties:
-
-```text
-listRelativePath
-parentListRelativePath
-```
-
-Derive them by removing the exact configured canonical `libraryRootPath` boundary from
-`FileRef` and `FileDirRef` respectively. Return decoded canonical names/casing and use
-`""` for the library root. Do not confuse these values with `path`, which remains the
-complete SharePoint server-relative item path.
+Do not add search-specific path fields. `path` remains the canonical SharePoint
+server-relative item path, exactly as it does for normal listing results. The frontend
+already has the canonical document-library root node and derives a list-relative path
+by removing that root path boundary from `path`.
 
 MapStruct should perform structural conversion at the existing mapper boundaries.
-Paging, authorization, scope checks, query matching, lookup construction, and result
-counting are service/facade logic, not mapper logic.
+Paging, authorization, scope checks, query matching, and lookup construction are
+service/facade logic, not mapper logic.
 
 ---
 
-## Response counting and result size
+## Response shape and result size
 
 The Angular request sends no `limit`.
 
-For this first implementation:
-
-- count every match across the complete scan;
-- set `totalMatches` to that count;
-- unless the backend already has an established centralized document-search result
-  cap, return all matches and set `truncated=false`;
-- do not invent a new arbitrary client parameter or silently truncate;
-- if an existing centralized cap is reused, return only that many nodes, continue the
-  scan to compute `totalMatches`, and set `truncated = totalMatches > results.size()`.
-
-The wrapper remains mandatory even when `truncated` is initially always false:
-
-```text
-results
-totalMatches
-truncated
-```
+Return all matching canonical nodes as a plain JSON array. Do not add a response
+wrapper, `totalMatches`, `truncated`, a new result cap, or a client-controlled limit.
+The frontend uses the returned array length as the displayed count.
 
 ---
 
@@ -511,7 +483,8 @@ entity cache.
 
 - Folder double-click opens the folder.
 - File double-click opens `onlineUrl`.
-- `Open File Location` uses `parentListRelativePath`.
+- Folder navigation and `Open File Location` derive the list-relative target from the
+  canonical result `path` and the already-loaded canonical library-root `path`.
 - Rename/delete/copy/open/download use the complete canonical node returned by search.
 - Copy retains the complete source node until Paste.
 - Back/Forward reruns the saved scope/query.
@@ -555,8 +528,8 @@ The work is complete when:
 4. All SharePoint `/items` pages are followed iteratively.
 5. Java applies slash-bounded subtree filtering plus case-insensitive name matching.
 6. Mixed file/folder rows map to complete canonical nodes with correct parent GUIDs.
-7. Search-specific list-relative paths are returned separately from server-relative
-   `path`.
+7. The endpoint returns a plain array of the same canonical nodes used by normal
+   document listing, with no search-specific DTO properties or response wrapper.
 8. Existing layering, authentication, configuration, mappers, URL builders, and error
    handling are reused.
 9. No rejected fallback strategy or unrelated refactor is introduced.

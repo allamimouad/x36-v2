@@ -39,7 +39,6 @@ import {
     type FileSystemNode,
     type FolderNode
 } from './models/file-system-node.model';
-import type { DocumentSearchResult } from './models/document-search-result.model';
 import { FileSystemError } from './models/file-system-error.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
@@ -69,6 +68,7 @@ import type {
     SearchResultContextMenuRequest
 } from './models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
+import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
 
 const DEFAULT_FOLDER_NAME = 'New folder';
 
@@ -190,6 +190,13 @@ export class ProjectDocuments {
             this.navigation.currentHistoryEntry()?.kind === 'search' ||
             this.searchValidationError() !== null
     );
+    protected readonly searchRootPath = computed(() => {
+        const scope = this.navigation.currentFolder();
+        if (!scope) { return '/'; }
+        const root = this.fileSystem.initializedRoots()?.[scope.listKey];
+
+        return root?.status === 'loaded' ? root.root.path : '/';
+    });
     protected readonly searchError = computed<string | null>(() => {
         const validationError = this.searchValidationError();
         if (validationError) { return validationError; }
@@ -382,7 +389,7 @@ export class ProjectDocuments {
         this.resetSearchState();
     }
 
-    protected async onSearchResultActivated(result: DocumentSearchResult): Promise<void> {
+    protected async onSearchResultActivated(result: FileSystemNode): Promise<void> {
         if (!isFolder(result)) {
             this.openInOnlineApplication(result);
 
@@ -391,11 +398,18 @@ export class ProjectDocuments {
         await this.openSearchResultLocation(result);
     }
 
-    protected async openSearchResultLocation(result: DocumentSearchResult): Promise<void> {
-        const targetPath = isFolder(result)
-            ? result.listRelativePath
-            : result.parentListRelativePath;
+    protected async openSearchResultLocation(result: FileSystemNode): Promise<void> {
+        const root = this.fileSystem.initializedRoots()?.[result.listKey];
+        if (!root || root.status !== 'loaded') {
+            this.notifications.error(
+                new FileSystemError('not-found', `${result.listKey} document root is unavailable`)
+            );
+
+            return;
+        }
         try {
+            const resultPath = relativePathFromRoot(root.root.path, result.path);
+            const targetPath = isFolder(result) ? resultPath : parentOfRelativePath(resultPath);
             await this.resolveAndOpen(result.listKey, targetPath);
         } catch (error) {
             this.notifications.error(
@@ -923,11 +937,9 @@ export class ProjectDocuments {
         if (this.search.isSearching()) { return 'Searching…'; }
         const searchError = this.searchError();
         if (searchError) { return searchError; }
-        const count = this.search.totalMatches();
+        const count = this.search.results().length;
 
-        return this.search.truncated()
-            ? `${this.search.results().length} of ${count} search results shown`
-            : `${count} search result${count === 1 ? '' : 's'}`;
+        return `${count} search result${count === 1 ? '' : 's'}`;
     }
 
     private observeInitializedRoots(): void {

@@ -1,6 +1,5 @@
 import type { Observable } from 'rxjs';
 import type { DocumentListing, ResolvedDocumentPath } from '../../models/document-listing.model';
-import type { DocumentSearchResponse } from '../../models/document-search-result.model';
 import type { DocumentListKey } from '../../models/document-list.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../../models/file-system-node.model';
 
@@ -50,7 +49,7 @@ export abstract class FileSystemApi {
         projectId: string,
         scope: FolderNode,
         query: string,
-    ): Observable<DocumentSearchResponse>;
+    ): Observable<FileSystemNode[]>;
 
     /**
      * Create a new folder under `parent`. The backend owns collision resolution and

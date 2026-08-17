@@ -102,8 +102,6 @@ The backend should isolate Angular from SharePoint's list-row shape:
   "name": "Contract 2026.docx",
   "path": "/sites/project/Execution Documents/Contracts/Contract 2026.docx",
   "parentId": "51ff8ae2-01bc-4dac-8857-86be4562c3c1",
-  "listRelativePath": "Contracts/Contract 2026.docx",
-  "parentListRelativePath": "Contracts",
   "sizeBytes": 184320,
   "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "createdAt": "2026-08-01T08:20:00Z",
@@ -116,17 +114,15 @@ The backend should isolate Angular from SharePoint's list-row shape:
 ```
 
 - `listKey` is supplied by the domain route/configuration, not by SharePoint.
-- `listRelativePath` and `parentListRelativePath` are derived by the backend from the
-  configured library root and canonical `FileRef`/`FileDirRef` values.
 - Folder results use the normal `FolderNode` shape and omit file-only fields.
 - Never fabricate a missing UUID, path, or kind.
 
 ### Selection behavior
 
-- Double-clicking a **folder** navigates to `listKey + listRelativePath` through the existing
-  path-resolution flow.
+- Double-clicking a **folder** derives its list-relative resolver path from the normal
+  node `path` and the already-loaded canonical library-root `path`.
 - Double-clicking a **file** opens its `onlineUrl`. `Open File Location` in the context
-  menu navigates to `listKey + parentListRelativePath`.
+  menu derives the containing-folder path from the same node/root paths.
 - Item operations use the complete result node directly. Search results remain
   transient and are not inserted into the normal entity cache.
 
@@ -464,34 +460,24 @@ Only adopt this section after the Postman checks pass.
 ## Domain endpoint
 
 ```http
-GET /projects/{projectId}/documents/search?q={query}&kind={all|file|folder}&limit={limit}
+GET /projects/{projectId}/document-lists/{listKey}/documents/{folderId}/search?q={query}
 ```
 
 Suggested rules:
 
 - `q` is required, trimmed, and at least 3 characters;
-- `kind` defaults to `all`;
-- `limit` has a small backend-owned maximum, for example 100;
-- both `EXECUTION` and `MARKETING` are searched independently when available;
-- one unavailable list does not discard results from the other;
+- `listKey` selects exactly one configured document list;
+- `folderId` selects the root of the recursive search scope;
 - never silently return an incomplete scan as if it were complete.
 
 Example response:
 
 ```json
-{
-  "results": [],
-  "totalMatches": 0,
-  "truncated": false,
-  "lists": {
-    "EXECUTION": { "status": "searched" },
-    "MARKETING": { "status": "searched" }
-  }
-}
+[]
 ```
 
-If a safety timeout or scan ceiling is introduced, expose an explicit incomplete/error
-status. Do not silently label the first matches in ID order as the complete result set.
+Return a plain array of complete canonical `FileSystemNode` values. Do not introduce a
+search-specific response wrapper or additional path properties.
 
 ## Backend algorithm
 

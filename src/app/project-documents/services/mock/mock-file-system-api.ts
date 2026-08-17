@@ -1,7 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, map, timer } from 'rxjs';
 import type { DocumentListing, ResolvedDocumentPath } from '../../models/document-listing.model';
-import type { DocumentSearchResponse } from '../../models/document-search-result.model';
 import type { DocumentListKey } from '../../models/document-list.model';
 import { FileSystemError } from '../../models/file-system-error.model';
 import {
@@ -101,17 +100,14 @@ export class MockFileSystemApi extends FileSystemApi {
         _projectId: string,
         scope: FolderNode,
         query: string
-    ): Observable<DocumentSearchResponse> {
+    ): Observable<FileSystemNode[]> {
         return this.read(() => {
             const canonicalScope = this.requireFolder(scope.id);
             if (canonicalScope.listKey !== scope.listKey) {
                 throw new FileSystemError('not-found', `Folder not found in ${scope.listKey}`);
             }
             this.assertFolderAvailable(canonicalScope);
-            const root = this.requireFolder(this.rootIdByList[scope.listKey]);
-            const results = searchMockNodes(this.nodes, root.path, canonicalScope, query);
-
-            return { results, totalMatches: results.length, truncated: false };
+            return searchMockNodes(this.nodes, canonicalScope, query);
         });
     }
 

@@ -16,6 +16,28 @@ export function parentOf(path: string): string {
     return path.slice(0, idx);
 }
 
+/**
+ * Convert a canonical node path into the path expected by the list-relative resolver.
+ * Both values must come from the same backend path representation.
+ */
+export function relativePathFromRoot(rootPath: string, nodePath: string): string {
+    const normalizedRoot = rootPath.replace(/\/+$/, '') || ROOT_PATH;
+    if (nodePath.toLowerCase() === normalizedRoot.toLowerCase()) { return ''; }
+    const prefix = normalizedRoot === ROOT_PATH ? ROOT_PATH : `${normalizedRoot}/`;
+    if (!nodePath.toLowerCase().startsWith(prefix.toLowerCase())) {
+        throw new Error(`Node path is outside its document-list root: ${nodePath}`);
+    }
+
+    return nodePath.slice(prefix.length);
+}
+
+/** Return the containing folder of a list-relative item path; root is an empty string. */
+export function parentOfRelativePath(path: string): string {
+    const separator = path.lastIndexOf('/');
+
+    return separator < 0 ? '' : path.slice(0, separator);
+}
+
 export function basename(path: string): string {
     if (path === ROOT_PATH) { return ''; }
     const idx = path.lastIndexOf('/');

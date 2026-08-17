@@ -127,15 +127,15 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
 
 - **Search contract implemented locally before backend generation** (2026-08-17):
   `FileSystemApi.searchDocuments(projectId, scope, query)` scopes one request to the
-  current folder and its single `listKey`. It returns (`results`, `totalMatches`,
-  `truncated`); each result is a complete canonical `FileSystemNode` plus
-  `listRelativePath` and `parentListRelativePath`. Folder double-click opens the folder,
+  current folder and its single `listKey`. It returns a plain array of complete
+  canonical `FileSystemNode` values, exactly like normal listings. The frontend derives
+  list-relative navigation from each node `path` and the loaded list-root `path`.
+  Folder double-click opens the folder,
   file double-click opens its online application, and file-location navigation remains
   an explicit context-menu action. Search is name-only,
   case-insensitive, recursive, submitted on Enter, and requires three characters. The
-  response wrapper deliberately allows a later backend-owned cap without presenting
-  an incomplete array as complete. SharePoint `/items` transport DTOs remain internal
-  and must be mapped into this contract rather than exposed to Angular.
+  SharePoint `/items` transport DTOs remain internal and must be mapped into this
+  contract rather than exposed to Angular.
 - **Search is a navigation view, not an entity-cache mutation** (2026-08-17): history
   is a discriminated union of folder and search entries. A search entry stores only
   its folder location and query; opening a result adds a folder entry, and Back/Forward
@@ -407,12 +407,11 @@ _One line per session, newest at top. Include date, phase, what was completed, a
 
 - **2026-08-17 — local recursive name search implemented**: added the stable
   `FileSystemApi.searchDocuments(projectId, scope, query)` contract with canonical
-  node results wrapped with `totalMatches` and `truncated` so a
-  later backend result cap cannot silently look complete. The mock searches the
-  complete current-folder
+  node results returned as a plain `FileSystemNode[]`. The mock searches the complete current-folder
   subtree within one list, case-insensitively, while the toolbar submits only on Enter
   with a three-character minimum. A dumb search-results table shows type, canonical
-  list-relative location, modified time, and size; double-click opens a folder or a
+  location derived from canonical node/root paths, modified time, and size;
+  double-click opens a folder or a
   file's online application, while file-location navigation stays in the context menu.
   Search state is component-scoped and cancels superseded requests. Folder/search
   navigation retains only scope/query and reruns restored searches; results are not

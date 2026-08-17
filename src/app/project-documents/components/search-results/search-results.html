@@ -10,19 +10,13 @@
       <span>{{ message }}</span>
     </div>
   } @else {
-    @if (truncated()) {
-      <p class="pd-search-truncated" role="status">
-        Showing {{ results().length }} of {{ totalMatches() }} results. Refine your search to see
-        fewer matches.
-      </p>
-    }
     <p-table [value]="results()" dataKey="id" styleClass="pd-search-table">
       <ng-template pTemplate="header">
         <tr>
           <th pSortableColumn="name" style="width: 32%">Name <p-sortIcon field="name" /></th>
           <th pSortableColumn="kind" style="width: 12%">Type <p-sortIcon field="kind" /></th>
-          <th pSortableColumn="parentListRelativePath" style="width: 26%">
-            Location <p-sortIcon field="parentListRelativePath" />
+          <th pSortableColumn="path" style="width: 26%">
+            Location <p-sortIcon field="path" />
           </th>
           <th pSortableColumn="modifiedAt" style="width: 18%">
             Last Modified <p-sortIcon field="modifiedAt" />

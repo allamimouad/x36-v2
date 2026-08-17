@@ -111,7 +111,6 @@ import {
     throwError
 } from 'rxjs';
 import type { DocumentListing, ResolvedDocumentPath } from '../../models/document-listing.model';
-import type { DocumentSearchResponse } from '../../models/document-search-result.model';
 import type { DocumentListKey } from '../../models/document-list.model';
 import { FileSystemError } from '../../models/file-system-error.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../../models/file-system-node.model';
@@ -198,7 +197,7 @@ export class SharePointFileSystemApi extends FileSystemApi {
         _projectId: string,
         _scope: FolderNode,
         _query: string
-    ): Observable<DocumentSearchResponse> {
+    ): Observable<FileSystemNode[]> {
         // TODO: implement with the search US.
         return throwError(() => new Error(IMPLEMENTATION_PENDING));
     }
