@@ -39,6 +39,7 @@ import {
     type FileSystemNode,
     type FolderNode
 } from './models/file-system-node.model';
+import type { DocumentSearchResult } from './models/document-search-result.model';
 import { FileSystemError } from './models/file-system-error.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
@@ -50,6 +51,7 @@ import {
     PROJECT_DOCUMENTS_TOAST_KEY
 } from './services/interaction/notification.service';
 import { UploadService } from './services/upload/upload.service';
+import { DocumentSearchService } from './services/search/document-search.service';
 import { FileSystemReader } from './stores/file-system-reader';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore, type PathSegment } from './stores/navigation.store';
@@ -60,9 +62,11 @@ import { PathBar } from './components/path-bar/path-bar';
 import { NavToolbar } from './components/nav-toolbar/nav-toolbar';
 import { ContextMenuItem } from './components/context-menu-item/context-menu-item';
 import { UploadPanel } from './components/upload-panel/upload-panel';
+import { SearchResults } from './components/search-results/search-results';
 import type {
     ItemRenameRequest,
-    NodeContextMenuRequest
+    NodeContextMenuRequest,
+    SearchResultContextMenuRequest
 } from './models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
 
@@ -73,7 +77,7 @@ interface ProjectDocumentsMenuData {
     testId: string;
 }
 
-type NodeSurface = 'tree' | 'table';
+type NodeSurface = 'tree' | 'table' | 'search';
 
 interface PendingDelete {
     node: FileSystemNode;
@@ -92,6 +96,7 @@ interface PendingDelete {
         NavToolbar,
         ContextMenuItem,
         UploadPanel,
+        SearchResults,
         ButtonModule,
         ContextMenu,
         InputTextModule,
@@ -110,6 +115,7 @@ interface PendingDelete {
         MessageService,
         NotificationService,
         UploadService,
+        DocumentSearchService,
         { provide: FileSystemApi, useClass: MockFileSystemApi }
     ],
     templateUrl: './project-documents.html',
@@ -126,6 +132,7 @@ export class ProjectDocuments {
     protected readonly fileLauncher = inject(FileLaunchService);
     protected readonly notifications = inject(NotificationService);
     protected readonly uploads = inject(UploadService);
+    protected readonly search = inject(DocumentSearchService);
     protected readonly config = inject(FILE_MANAGER_CONFIG);
     protected readonly notificationKey = PROJECT_DOCUMENTS_TOAST_KEY;
     protected readonly contextMenu = viewChild<ContextMenu>('contextMenu');
@@ -152,6 +159,11 @@ export class ProjectDocuments {
 
         return pending?.surface === 'table' ? pending.node.id : null;
     });
+    protected readonly searchDeleteConfirmationId = computed(() => {
+        const pending = this.pendingDelete();
+
+        return pending?.surface === 'search' ? pending.node.id : null;
+    });
     protected readonly creatingFolder = signal(false);
     protected readonly pasting = signal(false);
     protected readonly toolbarUploadItems = signal<MenuItem[]>([]);
@@ -171,6 +183,20 @@ export class ProjectDocuments {
     /** Address-bar edit state (owned here; PathBar is a controlled child). */
     protected readonly pathEditing = signal(false);
     protected readonly pathError = signal<string | null>(null);
+    protected readonly searchText = signal('');
+    protected readonly searchValidationError = signal<string | null>(null);
+    protected readonly searchActive = computed(
+        () =>
+            this.navigation.currentHistoryEntry()?.kind === 'search' ||
+            this.searchValidationError() !== null
+    );
+    protected readonly searchError = computed<string | null>(() => {
+        const validationError = this.searchValidationError();
+        if (validationError) { return validationError; }
+        const error = this.search.error();
+
+        return error === null ? null : this.notifications.userMessageFor(error);
+    });
 
     /**
    * Derived (never imperatively stuck): non-null only when the latest completed
@@ -277,6 +303,7 @@ export class ProjectDocuments {
     protected readonly statusText = computed(() => {
         const currentError = this.currentFolderError();
         if (currentError) { return currentError; }
+        if (this.searchActive()) { return this.searchStatusText(); }
         const folder = this.navigation.currentFolder();
         if (!folder || this.isCurrentLoading()) { return 'Loading…'; }
         const { folders, files } = this.navigation.currentFolderChildren();
@@ -297,6 +324,7 @@ export class ProjectDocuments {
         this.observeProjectChanges();
         this.observeInitializedRoots();
         this.observeReadErrors();
+        this.observeSearchHistory();
     }
 
     @HostListener('document:pointerdown', ['$event'])
@@ -313,6 +341,102 @@ export class ProjectDocuments {
         this.inlineRenameError.set(null);
         this.focusedSurface.set('table');
         this.navigation.focus(id);
+    }
+
+    protected onSearchInput(event: Event): void {
+        const value = (event.target as HTMLInputElement).value;
+        this.searchText.set(value);
+        this.searchValidationError.set(null);
+        if (value.trim().length === 0) { this.clearSearch(); }
+    }
+
+    protected onSearchKeydown(event: KeyboardEvent): void {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            this.clearSearch();
+
+            return;
+        }
+        if (event.key !== 'Enter') { return; }
+        event.preventDefault();
+        this.submitSearch();
+    }
+
+    protected submitSearch(): void {
+        const query = this.searchText().trim();
+        if (!this.navigation.currentFolder() || this.fileSystem.isInitializing()) { return; }
+        if (query.length < 3) {
+            this.search.clear();
+            this.searchValidationError.set('Enter at least 3 characters to search.');
+
+            return;
+        }
+        this.searchValidationError.set(null);
+        this.navigation.openSearch(query);
+    }
+
+    protected clearSearch(): void {
+        if (this.navigation.currentHistoryEntry()?.kind === 'search') {
+            this.navigation.exitSearch();
+        }
+        this.resetSearchState();
+    }
+
+    protected async onSearchResultActivated(result: DocumentSearchResult): Promise<void> {
+        if (!isFolder(result)) {
+            this.openInOnlineApplication(result);
+
+            return;
+        }
+        await this.openSearchResultLocation(result);
+    }
+
+    protected async openSearchResultLocation(result: DocumentSearchResult): Promise<void> {
+        const targetPath = isFolder(result)
+            ? result.listRelativePath
+            : result.parentListRelativePath;
+        try {
+            await this.resolveAndOpen(result.listKey, targetPath);
+        } catch (error) {
+            this.notifications.error(
+                error,
+                this.retryForReadError(error, () => void this.openSearchResultLocation(result))
+            );
+        }
+    }
+
+    protected onSearchResultContextMenu(request: SearchResultContextMenuRequest): void {
+        const result = request.result;
+        if (!isFolder(result)) {
+            this.showContextMenu(request.event, [
+                this.menuItem(
+                    'Open File Location',
+                    'drive_file_move',
+                    'pd-menu-open-search-result',
+                    () => { void this.openSearchResultLocation(result); }
+                ),
+                { separator: true },
+                ...this.fileContextMenu(result, 'search')
+            ]);
+
+            return;
+        }
+        const locked = this.isWriting(result.id);
+        this.showContextMenu(request.event, [
+            this.menuItem('Open Folder', 'folder_open', 'pd-menu-open-folder', () => {
+                void this.onSearchResultActivated(result);
+            }),
+            { separator: true },
+            this.menuItem('Rename Folder', 'edit', 'pd-menu-rename-folder', () => {
+                this.startInlineRename(result, 'search');
+            }, locked),
+            this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
+                this.copyToClipboard(result);
+            }, locked),
+            this.menuItem('Delete Folder', 'delete', 'pd-menu-delete-folder', () => {
+                this.requestDelete(result, 'search');
+            }, locked)
+        ]);
     }
 
     protected onNodeContextMenu(request: NodeContextMenuRequest): void {
@@ -473,9 +597,10 @@ export class ProjectDocuments {
         this.inlineRenameError.set(null);
         this.setWriting(request.node.id, true);
         try {
-            const renamed = await this.fileSystem.rename(request.node.id, name);
+            const renamed = await this.fileSystem.rename(request.node, name);
             this.navigation.endRename();
             this.inlineRenameSurface.set(null);
+            this.refreshActiveSearch();
             this.notifications.success(`“${request.node.name}” was renamed to “${renamed.name}”.`);
         } catch (error) {
             const fieldError = this.mutationFieldError(error);
@@ -528,10 +653,11 @@ export class ProjectDocuments {
         const parentId = node.parentId;
         this.setWriting(node.id, true);
         try {
-            await this.fileSystem.delete(node.id);
+            await this.fileSystem.delete(node);
             this.navigation.pruneReferences(removedIds);
             this.clipboard.pruneReferences(removedIds);
             if (removesCurrent && parentId) { this.navigation.navigateTo(parentId); }
+            this.refreshActiveSearch();
             this.notifications.success(`“${node.name}” was deleted.`);
         } catch (error) {
             this.notifications.error(
@@ -545,21 +671,23 @@ export class ProjectDocuments {
 
     protected copyToClipboard(node: FileSystemNode): void {
         if (node.parentId === null || this.isWriting(node.id)) { return; }
-        this.clipboard.copy([node.id]);
+        this.clipboard.copy([node]);
         this.notifications.info(`“${node.name}” is ready to paste.`);
     }
 
     protected async pasteInto(target: FolderNode): Promise<void> {
         if (!this.canPaste(target) || this.isWriting(target.id)) { return; }
-        const sourceId = this.clipboard.ids().values().next().value;
-        const source = sourceId ? this.fileSystem.entityMap()[sourceId] : undefined;
+        const clipboardSource = this.clipboard.nodes()[0];
+        const source = clipboardSource
+            ? this.fileSystem.entityMap()[clipboardSource.id] ?? clipboardSource
+            : undefined;
         if (!source) {
             this.clipboard.clear();
             this.notifications.warning('The copied item is no longer available.');
 
             return;
         }
-        if (isFolder(source) && this.isAncestorOrSelf(source.id, target.id)) {
+        if (isFolder(source) && this.isNodeAncestorOrSelf(source, target)) {
             this.notifications.warning(
                 'A folder cannot be copied inside itself or one of its subfolders.'
             );
@@ -570,7 +698,7 @@ export class ProjectDocuments {
         this.pasting.set(true);
         this.setWriting(target.id, true);
         try {
-            await this.fileSystem.copy(source.id, target.id);
+            await this.fileSystem.copy(source, target);
             this.notifications.success(`“${source.name}” was copied.`);
         } catch (error) {
             this.notifications.error(
@@ -599,7 +727,11 @@ export class ProjectDocuments {
     }
 
     protected onItemDoubleClicked(node: FileSystemNode): void {
-        if (!isFolder(node)) { return; }
+        if (!isFolder(node)) {
+            this.openInOnlineApplication(node);
+
+            return;
+        }
         this.cancelDeleteConfirmation();
         const ctx = this.navigation.currentBreadcrumb();
         const currentId = this.navigation.currentFolderId();
@@ -741,6 +873,13 @@ export class ProjectDocuments {
 
             return;
         }
+        const currentEntry = this.navigation.currentHistoryEntry();
+        if (currentEntry?.kind === 'search') {
+            const scope = this.navigation.currentFolder();
+            if (scope) { this.search.search(this.projectId(), scope, currentEntry.query); }
+
+            return;
+        }
         this.navigation.refresh();
     }
 
@@ -780,6 +919,17 @@ export class ProjectDocuments {
         });
     }
 
+    private searchStatusText(): string {
+        if (this.search.isSearching()) { return 'Searching…'; }
+        const searchError = this.searchError();
+        if (searchError) { return searchError; }
+        const count = this.search.totalMatches();
+
+        return this.search.truncated()
+            ? `${this.search.results().length} of ${count} search results shown`
+            : `${count} search result${count === 1 ? '' : 's'}`;
+    }
+
     private observeInitializedRoots(): void {
         // React to each completed initialization; `untracked` keeps the effect keyed to
         // `initializedRoots` alone so store writes inside cannot re-trigger it.
@@ -814,6 +964,35 @@ export class ProjectDocuments {
                 }
             });
         });
+    }
+
+    private observeSearchHistory(): void {
+        effect(() => {
+            const projectId = this.projectId();
+            const entry = this.navigation.currentHistoryEntry();
+            const currentFolder = this.navigation.currentFolder();
+            untracked(() => {
+                if (entry?.kind !== 'search' || !currentFolder) {
+                    this.resetSearchState();
+
+                    return;
+                }
+                this.searchText.set(entry.query);
+                this.searchValidationError.set(null);
+                const alreadyLoaded =
+                    this.search.activeScopeId() === currentFolder.id &&
+                    this.search.activeQuery() === entry.query;
+                if (!alreadyLoaded) {
+                    this.search.search(projectId, currentFolder, entry.query);
+                }
+            });
+        });
+    }
+
+    private resetSearchState(): void {
+        this.search.clear();
+        this.searchText.set('');
+        this.searchValidationError.set(null);
     }
 
     private folderContextMenu(
@@ -852,7 +1031,7 @@ export class ProjectDocuments {
         ];
     }
 
-    private fileContextMenu(file: FileNode): MenuItem[] {
+    private fileContextMenu(file: FileNode, source: NodeSurface = 'table'): MenuItem[] {
         const locked = this.isWriting(file.id);
         const openItems = this.fileOpenMenuItems(file, locked);
 
@@ -867,13 +1046,13 @@ export class ProjectDocuments {
             ),
             { separator: true },
             this.menuItem('Rename File', 'edit', 'pd-menu-rename-file', () => {
-                this.startInlineRename(file, 'table');
+                this.startInlineRename(file, source);
             }, locked),
             this.menuItem('Copy File', 'content_copy', 'pd-menu-copy-file', () => {
                 this.copyToClipboard(file);
             }, locked),
             this.menuItem('Delete File', 'delete', 'pd-menu-delete-file', () => {
-                this.requestDelete(file, 'table');
+                this.requestDelete(file, source);
             }, locked),
             { separator: true },
             this.menuItem('Download File', 'download', 'pd-menu-download-file', () => {
@@ -987,7 +1166,15 @@ export class ProjectDocuments {
     private canPaste(_target: FolderNode): boolean {
         return !this.pasting() &&
             this.clipboard.mode() === 'copy' &&
-            this.clipboard.ids().size === 1;
+            this.clipboard.nodes().length === 1;
+    }
+
+    private refreshActiveSearch(): void {
+        const entry = this.navigation.currentHistoryEntry();
+        const scope = this.navigation.currentFolder();
+        if (entry?.kind === 'search' && scope) {
+            this.search.search(this.projectId(), scope, entry.query);
+        }
     }
 
     private async uploadExternalDrop(
@@ -1161,6 +1348,13 @@ export class ProjectDocuments {
         }
 
         return false;
+    }
+
+    private isNodeAncestorOrSelf(source: FolderNode, target: FolderNode): boolean {
+        if (this.isAncestorOrSelf(source.id, target.id)) { return true; }
+
+        return source.listKey === target.listKey &&
+            (target.path === source.path || target.path.startsWith(`${source.path}/`));
     }
 }
 

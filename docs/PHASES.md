@@ -39,7 +39,9 @@
 **Stores**
 - `stores/file-system.store.ts` — Signal Store with `withEntities<FileSystemNode>` keyed by `id`. Phase 1 methods: `initialize(projectId)`, `loadChildren(parentId)`, `invalidate(parentId)`. Other methods exist as placeholders rejecting with a neutral "not implemented yet" `FileSystemError` (source stays plan-free — SPEC §2.6).
 - `stores/navigation.store.ts` — full implementation: state, computed, `navigateTo`, `back`, `forward`, `up`, `expand`, `collapse`. Selection methods can be stubs (Phase 3).
-- `services/interaction/clipboard.service.ts` — plain signal service with clipboard ids/mode and `cut`, `copy`, `clear`. Paste orchestration deferred to Phase 3.
+- `services/interaction/clipboard.service.ts` — plain signal service retaining canonical
+  nodes plus derived ids/mode and `cut`, `copy`, `clear`. Keeping the node lets Paste
+  use a source selected from transient search results.
 
 **Components (dumb)**
 - `components/folder-tree/folder-tree.ts`:
@@ -141,6 +143,23 @@
   table/tree surface and handles results
 - Shows `p-toast` and `p-confirmDialog` at top level
 
+**Local recursive name search**
+- Add `searchDocuments(projectId, scope, query)` to `FileSystemApi` and implement it in
+  the mock over the complete selected-folder subtree.
+- Submit from the toolbar on Enter with a three-character minimum; do not search on
+  every keystroke.
+- Render canonical file/folder nodes with search-specific list-relative location.
+  Double-click opens folders or a file's online application; file-location navigation
+  remains an explicit context-menu action.
+- Record search as its own navigation-history view. Back/Forward restore only its scope
+  and query and rerun the request; results are never retained in navigation or the
+  entity store.
+- Reuse existing node actions from the search context menu: folder open/rename/copy/
+  delete and file location/open/rename/copy/delete/download. Search rename/delete confirmations
+  remain inline on the search row.
+- Keep the SharePoint adapter compile-complete but leave its backend call pending until
+  the backend implements the same public contract.
+
 ### Acceptance checks
 - [ ] Create via button or context menu persists a unique default name, then opens inline rename
 - [ ] Folder and file rename stay inline in the table/tree
@@ -149,6 +168,8 @@
 - [ ] Pessimistic writes show an in-flight affordance and update the cache only after the API confirms success
 - [ ] Error messages are user-friendly (no raw error codes)
 - [ ] Tree and table stay in sync — rename a folder in the tree, the table reflects it (if visible)
+- [x] Local recursive name search works from a list root or nested folder
+- [x] Back/Forward restores folder/search views without caching search results
 - [ ] All changes refresh the tree node's children cache correctly
 
 ### NOT in this phase

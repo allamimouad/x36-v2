@@ -96,13 +96,26 @@
       <input
         pInputText
         type="text"
-        placeholder="Search File"
-        [disabled]="true"
-        pTooltip="Search coming soon"
-        tooltipPosition="bottom"
-        aria-label="Search files"
+        placeholder="Search this folder"
+        [value]="searchText()"
+        [disabled]="!navigation.currentFolder() || fileSystem.isInitializing()"
+        [attr.aria-invalid]="searchValidationError() ? 'true' : null"
+        aria-label="Search files and folders"
         data-testid="pd-search"
+        (input)="onSearchInput($event)"
+        (keydown)="onSearchKeydown($event)"
       />
+      @if (searchText()) {
+        <button
+          type="button"
+          class="pd-search-clear"
+          aria-label="Clear search"
+          data-testid="pd-search-clear"
+          (click)="clearSearch()"
+        >
+          <span class="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      }
     </span>
 
     <div class="pd-actions">
@@ -256,6 +269,26 @@
             <span class="material-symbols-outlined pd-unavailable-icon" aria-hidden="true">warning</span>
             <p>{{ currentError }}</p>
           </div>
+        } @else if (searchActive()) {
+          <pr-search-results
+            [results]="search.results()"
+            [query]="search.activeQuery() ?? searchText().trim()"
+            [loading]="search.isSearching()"
+            [error]="searchError()"
+            [totalMatches]="search.totalMatches()"
+            [truncated]="search.truncated()"
+            [renamingId]="inlineRenameSurface() === 'search' ? navigation.renamingId() : null"
+            [renameError]="inlineRenameError()"
+            [writingIds]="writingIds()"
+            [deleteConfirmationId]="searchDeleteConfirmationId()"
+            (resultActivated)="onSearchResultActivated($event)"
+            (contextMenuRequested)="onSearchResultContextMenu($event)"
+            (renameSubmitted)="onInlineRenameRequested($event)"
+            (renameCancelled)="cancelInlineRename()"
+            (renameEdited)="inlineRenameError.set(null)"
+            (deleteConfirmed)="confirmDelete($event)"
+            (deleteCancelled)="cancelDeleteConfirmation()"
+          />
         } @else {
           <pr-file-table
             [folders]="navigation.currentFolderChildren().folders"

@@ -35,10 +35,14 @@ export interface ResolvedBreadcrumbContext {
     path: string; // canonical, '' = list root
 }
 
-export interface NavigationHistoryEntry {
+export interface FolderLocation {
     folderId: string;
     breadcrumb?: ResolvedBreadcrumbContext;
 }
+
+export type NavigationHistoryEntry =
+    | { kind: 'folder'; folder: FolderLocation }
+    | { kind: 'search'; scope: FolderLocation; query: string };
 
 export interface FolderChildren {
     folders: FolderNode[];
@@ -88,12 +92,17 @@ export const NavigationStore = signalStore(
 
         const parentId = computed<string | null>(() => currentFolder()?.parentId ?? null);
 
+        const currentHistoryEntry = computed<NavigationHistoryEntry | null>(() => {
+            const idx = store.currentHistoryIndex();
+
+            return idx >= 0 ? store.history()[idx] ?? null : null;
+        });
+
         /** The resolved-path context of the active history entry, if any. */
         const currentBreadcrumb = computed<ResolvedBreadcrumbContext | null>(() => {
-            const idx = store.currentHistoryIndex();
-            const entry = idx >= 0 ? store.history()[idx] : undefined;
+            const entry = currentHistoryEntry();
 
-            return entry?.breadcrumb ?? null;
+            return entry ? locationOf(entry).breadcrumb ?? null : null;
         });
 
         const pathSegments = computed<PathSegment[]>(() => {
@@ -134,6 +143,7 @@ export const NavigationStore = signalStore(
         return {
             currentFolder,
             parentId,
+            currentHistoryEntry,
             currentBreadcrumb,
             pathSegments,
             currentFolderChildren,
@@ -158,7 +168,8 @@ export const NavigationStore = signalStore(
         };
 
         const navigateTo = (id: string): void => {
-            if (store.currentFolderId() === id) {
+            const currentEntry = entryAt(store.history(), store.currentHistoryIndex());
+            if (store.currentFolderId() === id && currentEntry?.kind !== 'search') {
                 // Re-navigating to the current id: if it's a tombstone (no longer cached),
                 // keep it unavailable — don't clear the message or attempt a load.
                 if (!fsReader.entityMap()[id]) {
@@ -173,7 +184,10 @@ export const NavigationStore = signalStore(
             }
             const idx = store.currentHistoryIndex();
             const truncated = store.history().slice(0, idx + 1);
-            const newHistory: NavigationHistoryEntry[] = [...truncated, { folderId: id }];
+            const newHistory: NavigationHistoryEntry[] = [
+                ...truncated,
+                folderEntry({ folderId: id })
+            ];
             patchState(store, {
                 currentFolderId: id,
                 history: newHistory,
@@ -194,7 +208,10 @@ export const NavigationStore = signalStore(
         ): void => {
             const idx = store.currentHistoryIndex();
             const truncated = store.history().slice(0, idx + 1);
-            const newHistory: NavigationHistoryEntry[] = [...truncated, { folderId, breadcrumb }];
+            const newHistory: NavigationHistoryEntry[] = [
+                ...truncated,
+                folderEntry({ folderId, breadcrumb })
+            ];
             patchState(store, {
                 currentFolderId: folderId,
                 history: newHistory,
@@ -205,26 +222,68 @@ export const NavigationStore = signalStore(
 
         /**
      * Move the history cursor to `entry`. If its folder is no longer cached, set the
-     * unavailable tombstone. Otherwise clear it; revalidate only for normal entries —
-     * resolved entries already loaded their listing when first opened.
+     * unavailable tombstone. Otherwise clear it. Restored folder entries always
+     * revalidate; restored search entries are rerun by the container.
      */
         const _goToHistory = (newIdx: number, entry: NavigationHistoryEntry): void => {
-            patchState(store, { currentHistoryIndex: newIdx, currentFolderId: entry.folderId });
-            if (!fsReader.entityMap()[entry.folderId]) {
+            const location = locationOf(entry);
+            patchState(store, {
+                currentHistoryIndex: newIdx,
+                currentFolderId: location.folderId
+            });
+            if (!fsReader.entityMap()[location.folderId]) {
                 patchState(store, { navigationError: NAVIGATION_UNAVAILABLE });
 
                 return;
             }
             patchState(store, { navigationError: null });
-            if (!entry.breadcrumb) {
-                _loadChildrenUnlessAlreadyLoading(entry.folderId);
+            if (entry.kind === 'folder') {
+                _loadChildrenUnlessAlreadyLoading(location.folderId);
             }
+        };
+
+        const openSearch = (query: string): void => {
+            const normalizedQuery = query.trim();
+            const idx = store.currentHistoryIndex();
+            const currentEntry = entryAt(store.history(), idx);
+            if (!currentEntry || normalizedQuery.length === 0) { return; }
+            const scope = locationOf(currentEntry);
+            const searchEntry: NavigationHistoryEntry = {
+                kind: 'search',
+                scope,
+                query: normalizedQuery
+            };
+            const history = currentEntry.kind === 'search'
+                ? [...store.history().slice(0, idx), searchEntry]
+                : [...store.history().slice(0, idx + 1), searchEntry];
+            patchState(store, {
+                history,
+                currentHistoryIndex: currentEntry.kind === 'search' ? idx : history.length - 1,
+                navigationError: null
+            });
+        };
+
+        const exitSearch = (): void => {
+            const idx = store.currentHistoryIndex();
+            const currentEntry = entryAt(store.history(), idx);
+            if (currentEntry?.kind !== 'search') { return; }
+            const previous = entryAt(store.history(), idx - 1);
+            if (previous) {
+                _goToHistory(idx - 1, previous);
+
+                return;
+            }
+            const replacement = folderEntry(currentEntry.scope);
+            const history = store.history().map((entry, index) =>
+                index === idx ? replacement : entry
+            );
+            patchState(store, { history });
         };
 
         const initialize = (args: { currentFolderId: string; expandedRootIds: string[] }): void => {
             patchState(store, {
                 currentFolderId: args.currentFolderId,
-                history: [{ folderId: args.currentFolderId }],
+                history: [folderEntry({ folderId: args.currentFolderId })],
                 currentHistoryIndex: 0,
                 expandedTreeIds: new Set(args.expandedRootIds),
                 navigationError: null
@@ -323,6 +382,8 @@ export const NavigationStore = signalStore(
         return {
             navigateTo,
             openResolvedFolder,
+            openSearch,
+            exitSearch,
             initialize,
             back,
             forward,
@@ -348,6 +409,21 @@ export const NavigationStore = signalStore(
         };
     })
 );
+
+function entryAt(
+    history: NavigationHistoryEntry[],
+    index: number
+): NavigationHistoryEntry | null {
+    return index >= 0 ? history[index] ?? null : null;
+}
+
+function folderEntry(folder: FolderLocation): NavigationHistoryEntry {
+    return { kind: 'folder', folder };
+}
+
+function locationOf(entry: NavigationHistoryEntry): FolderLocation {
+    return entry.kind === 'folder' ? entry.folder : entry.scope;
+}
 
 /** Path-based segments from listKey + canonical path (ancestors may be uncached). */
 function buildResolvedSegments(ctx: ResolvedBreadcrumbContext, currentId: string): PathSegment[] {

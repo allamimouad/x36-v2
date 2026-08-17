@@ -32,6 +32,7 @@
     GET /projects/{projectId}/document-lists/{listKey}/documents                   # root of the list
     GET /projects/{projectId}/document-lists/{listKey}/documents/{folderId}/children
     GET /projects/{projectId}/document-lists/{listKey}/documents/resolve-path?path=Contracts/2026
+    GET /projects/{projectId}/document-lists/{listKey}/documents/{folderId}/search?q=vendor
 
 - `listKey` = `EXECUTION` | `MARKETING`. It selects the SharePoint site/library; the
   folder id selects the entity within that location.
@@ -42,6 +43,13 @@
   root. Response = `{ canonicalPath, listing }` where `canonicalPath` is the actual folder
   casing (`""` for root) and `listing` is the target's `DocumentListing` (**no ancestors**).
   404 ⇒ `not-found`.
+- **search** recursively matches file and folder names below `folderId`, with a minimum
+  three-character query. Every result is the same complete canonical `FolderNode` or
+  `FileNode` returned by normal listing endpoints, plus `listRelativePath` and
+  `parentListRelativePath` for address-bar navigation. Map the raw SharePoint `/items`
+  response into these application nodes; never expose its transport DTO directly. The
+  response also carries `totalMatches` and `truncated`, so a backend-owned result cap is
+  never presented as complete. SharePoint paging is backend-private.
 
 ## Mutations (list-scoped route summary)
     POST   /projects/{projectId}/document-lists/{listKey}/documents/{parentFolderId}/folders
@@ -126,6 +134,8 @@ design is agreed. The overview remains a compact route/index document.
 - `FileSystemApi.listDocumentRoot(projectId, listKey)` → the root GET;
   `FileSystemApi.listDocuments(projectId, parent)` → the children GET, with the adapter
   extracting `parent.listKey` and `parent.id` for the list-scoped route.
+- `FileSystemApi.searchDocuments(projectId, scope, query)` → the folder-scoped search
+  GET, with `scope.listKey` and `scope.id` selecting its list and recursive subtree.
 - Nodes carry the domain `listKey`; files may also carry ready-to-use open/download
   URLs, but never SharePoint routing configuration, list GUIDs, or credentials.
 - Mutations stay node-based. Most adapters extract list keys and ids from the passed

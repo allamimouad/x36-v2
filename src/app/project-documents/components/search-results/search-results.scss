@@ -1,0 +1,194 @@
+:host {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
+.pd-search-results {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pd-search-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  height: 100%;
+  color: var(--pd-text-muted);
+}
+
+.pd-search-truncated {
+  margin: 0;
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--pd-border);
+  background: var(--pd-hover-bg);
+  color: var(--pd-text-muted);
+  font-size: 0.8125rem;
+}
+
+.pd-search-error {
+  color: var(--pd-danger);
+
+  .material-symbols-outlined {
+    font-size: 1.2rem;
+    line-height: 1;
+    user-select: none;
+  }
+}
+
+:host ::ng-deep .pd-search-spinner {
+  width: 28px;
+  height: 28px;
+}
+
+:host ::ng-deep .pd-search-table {
+  .p-datatable-table {
+    table-layout: fixed;
+    width: 100%;
+    font-size: 0.875rem;
+  }
+
+  .p-datatable-thead > tr > th {
+    position: sticky;
+    z-index: 1;
+    top: 0;
+    padding: 0.6rem 0.85rem;
+    border-bottom: 1px solid var(--pd-border);
+    background: var(--pd-surface);
+    color: var(--pd-text-muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .p-datatable-tbody > tr > td {
+    overflow: hidden;
+    padding: 0.625rem 0.85rem;
+    border-bottom: 1px solid var(--pd-border-subtle);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.pd-search-row {
+  cursor: pointer;
+
+  &:hover {
+    background: var(--pd-hover-bg);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--pd-accent);
+    outline-offset: -2px;
+  }
+}
+
+.pd-search-row-writing {
+  opacity: 0.65;
+}
+
+.pd-search-name {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+
+  pr-file-system-icon {
+    flex: 0 0 auto;
+    --pd-icon-size: 1rem;
+  }
+
+  .pd-search-name-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.pd-inline-rename {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.pd-inline-rename-input {
+  width: 100%;
+  min-width: 0;
+  height: 2rem;
+  font: inherit;
+}
+
+.pd-inline-rename-error {
+  color: var(--pd-danger);
+  font-size: 0.75rem;
+  white-space: normal;
+}
+
+.pd-inline-delete-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.15rem;
+  margin-left: auto;
+}
+
+.pd-inline-delete-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.2rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: var(--pd-hover-bg);
+    outline: none;
+  }
+
+  .material-symbols-outlined {
+    font-size: 1rem;
+  }
+}
+
+.pd-inline-delete-confirm {
+  color: var(--pd-danger);
+}
+
+.pd-write-spinner {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 1rem;
+  animation: pd-search-spin 0.9s linear infinite;
+}
+
+@keyframes pd-search-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pd-muted {
+  color: var(--pd-text-muted);
+}
+
+.pd-search-location {
+  direction: ltr;
+}
+
+.pd-search-size {
+  text-align: right;
+}
+
+.pd-search-empty {
+  padding: 2rem;
+  color: var(--pd-text-muted);
+  text-align: center;
+}

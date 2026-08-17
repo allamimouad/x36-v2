@@ -1,61 +1,61 @@
 import { Injectable, type Signal, computed, signal } from '@angular/core';
+import type { FileSystemNode } from '../../models/file-system-node.model';
 
 export type ClipboardMode = 'cut' | 'copy';
 
 @Injectable()
 export class ClipboardService {
+    public readonly nodes: Signal<readonly FileSystemNode[]>;
     public readonly ids: Signal<ReadonlySet<string>>;
     public readonly mode: Signal<ClipboardMode | null>;
     public readonly isEmpty: Signal<boolean>;
 
-    private readonly idsSignal = signal<ReadonlySet<string>>(new Set<string>());
+    private readonly nodesSignal = signal<readonly FileSystemNode[]>([]);
     private readonly modeSignal = signal<ClipboardMode | null>(null);
 
     constructor() {
-        this.ids = this.idsSignal.asReadonly();
+        this.nodes = this.nodesSignal.asReadonly();
+        this.ids = computed(() => new Set(this.nodesSignal().map(({ id }) => id)));
         this.mode = this.modeSignal.asReadonly();
-        this.isEmpty = computed(() => this.idsSignal().size === 0);
+        this.isEmpty = computed(() => this.nodesSignal().length === 0);
     }
 
     public has(id: string): boolean {
-        return this.idsSignal().has(id);
+        return this.nodesSignal().some((node) => node.id === id);
     }
 
-    public cut(ids: Iterable<string>): void {
-        this.set(ids, 'cut');
+    public cut(nodes: Iterable<FileSystemNode>): void {
+        this.set(nodes, 'cut');
     }
 
-    public copy(ids: Iterable<string>): void {
-        this.set(ids, 'copy');
+    public copy(nodes: Iterable<FileSystemNode>): void {
+        this.set(nodes, 'copy');
     }
 
     public clear(): void {
-        this.idsSignal.set(new Set<string>());
+        this.nodesSignal.set([]);
         this.modeSignal.set(null);
     }
 
     /**
-   * Drop any clipboard ids that were removed from the cache (e.g. a moved subtree).
+   * Drop clipboard nodes whose ids were removed (e.g. a moved or deleted subtree).
    * If that empties the clipboard, the mode is cleared too.
    */
     public pruneReferences(removedIds: Iterable<string>): void {
         const removed = new Set(removedIds);
         if (removed.size === 0) { return; }
-        const current = this.idsSignal();
-        let changed = false;
-        const next = new Set<string>();
-        for (const id of current) {
-            if (removed.has(id)) { changed = true; }
-            else { next.add(id); }
-        }
-        if (!changed) { return; }
-        this.idsSignal.set(next);
-        if (next.size === 0) { this.modeSignal.set(null); }
+        const current = this.nodesSignal();
+        const next = current.filter(({ id }) => !removed.has(id));
+        if (next.length === current.length) { return; }
+        this.nodesSignal.set(next);
+        if (next.length === 0) { this.modeSignal.set(null); }
     }
 
-    private set(ids: Iterable<string>, mode: ClipboardMode): void {
-        const next = new Set(ids);
-        this.idsSignal.set(next);
-        this.modeSignal.set(next.size > 0 ? mode : null);
+    private set(nodes: Iterable<FileSystemNode>, mode: ClipboardMode): void {
+        const unique = new Map<string, FileSystemNode>();
+        for (const node of nodes) { unique.set(node.id, node); }
+        const next = [...unique.values()];
+        this.nodesSignal.set(next);
+        this.modeSignal.set(next.length > 0 ? mode : null);
     }
 }

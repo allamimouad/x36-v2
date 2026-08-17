@@ -111,6 +111,7 @@ The `src/app/project-documents/` folder will be copied verbatim to another machi
 ### 3.3 Navigation
 
 - **Double-click a folder on the right** → opens that folder
+- **Double-click a file on the right** → opens it in its online application
 - **Single-click a folder on the tree** → opens that folder
 - **Current folder is highlighted in the tree** whenever visible there
 - **Back / forward / up** like browser history:
@@ -118,6 +119,9 @@ The `src/app/project-documents/` folder will be copied verbatim to another machi
   - Forward: undoes Back
   - Up: navigates to parent (truncates forward history, same as a fresh nav)
 - **Breadcrumb path is fully clickable**: clicking any segment navigates there
+- Entering a folder always obtains a fresh listing: direct folder navigation loads its
+  children, path resolution returns the target listing, Back/Forward revalidates a
+  restored folder, and restoring a search reruns its scope/query.
 - `canGoBack`, `canGoForward`, `canGoUp` are `computed` signals; buttons disable via signal inputs
 
 ### 3.4 Drag-and-drop — full matrix
@@ -222,6 +226,34 @@ All scenarios must work:
 - The frontend and streaming backend accept one bounded raw-body request per file up
   to the configurable 250 MiB limit without changing the endpoint
 
+### 3.10 Recursive name search
+
+- Search is scoped to the currently open folder and its descendants in that folder's
+  one document list. Searching a list root therefore covers the complete list.
+- Match file and folder **names only**, case-insensitively; never search file contents.
+- Submit on Enter with at least three trimmed characters. Do not issue a request for
+  every keyboard event.
+- Every result contains a complete canonical `FolderNode` or `FileNode`, plus canonical
+  list-relative item/parent paths used only for address-bar navigation. The backend
+  maps its raw SharePoint item DTO into this application contract.
+- Double-clicking/pressing Enter on a folder result opens that folder. The same action
+  on a file opens its online application. Single-click does not navigate; locating a
+  file is an explicit `Open File Location` action in its context menu.
+- Folder and search screens are distinct navigation-history entries. Opening a result
+  adds its folder screen; Back restores the search scope/query and reruns it instead of
+  retaining stale results. Resubmitting while already on a search screen replaces that
+  entry's query rather than adding another history position.
+- Clearing the input exits to the preceding folder entry. Navigating independently to
+  another folder adds a normal folder entry and clears the temporary search results.
+- Search results reuse normal item operations: folder open/rename/copy/delete and file
+  location/open/rename/copy/delete/download. Rename and delete confirmation remain inline.
+- Copy retains the complete source node in `ClipboardService`; Paste prefers a newer
+  cached version when present and otherwise uses that retained node.
+- Search results never enter `FileSystemStore`. Only activating a result may update the
+  store through path resolution. Successful rename/delete updates the cache only when
+  the target is already cached; Copy inserts its returned node only when the destination
+  is cached. The active search reruns after rename/delete.
+
 ---
 
 ## 4. Data Models
@@ -263,6 +295,26 @@ export interface FileNode {
 export function isFolder(n: FileSystemNode): n is FolderNode {
   return n.kind === 'folder';
 }
+
+export type DocumentSearchResult = FileSystemNode & {
+  listRelativePath: string;       // canonical path used by address-bar resolution
+  parentListRelativePath: string; // canonical containing-folder resolver path
+};
+
+export interface DocumentSearchResponse {
+  results: DocumentSearchResult[];
+  totalMatches: number;
+  truncated: boolean;
+}
+
+export interface FolderLocation {
+  folderId: string;
+  breadcrumb?: ResolvedBreadcrumbContext;
+}
+
+export type NavigationHistoryEntry =
+  | { kind: 'folder'; folder: FolderLocation }
+  | { kind: 'search'; scope: FolderLocation; query: string };
 ```
 
 **Why `listKey`, `id`, AND `path`**: `listKey` is stable domain routing context used with `projectId` to select the backend-owned SharePoint site/library. `id` is an opaque UUID used for store lookups, drag targets, selection, clipboard, and navigation; it is never treated as globally unique without its list context. `path` is the mutable, human-readable backend path used for display and for operations that require a URL. **Rename** updates `path` for the item and any loaded descendants but leaves `id` and `listKey` untouched. **Move** is replace-on-success: it drops the moved node's cached subtree and re-inserts only the server-returned node. A same-list move retains `listKey`; a cross-list move returns the destination `listKey`. Stale descendant references are pruned rather than preserved (see §10).
@@ -299,6 +351,13 @@ export abstract class FileSystemApi {
    */
   abstract resolveDocumentPath(projectId: string, listKey: DocumentListKey, path: string):
     Observable<{ canonicalPath: string; listing: { currentFolder: FolderNode; folders: FolderNode[]; files: FileNode[] } }>;
+
+  /** Search names recursively below `scope`; paging stays private to the adapter/backend. */
+  abstract searchDocuments(
+    projectId: string,
+    scope: FolderNode,
+    query: string,
+  ): Observable<DocumentSearchResponse>;
 
   /** Create under `parent`; backend resolves collisions and returns the persisted name. */
   abstract createFolder(projectId: string, parent: FolderNode, name: string): Observable<FolderNode>;
@@ -385,6 +444,8 @@ because a recursive copy may contain children.
 - **Simulated latency**: 150–400ms random for reads, 250–600ms for writes, 300–1500ms for uploads (proportional to file size)
 - **Simulated errors**: 5% random failure rate on writes, configurable via `MOCK_CONFIG.errorRate` token; errors throw `FileSystemError('network', ...)`. `MOCK_CONFIG.unavailableFolderPaths` can also force deterministic `not-found` reads for specific list-relative paths.
 - **Constraint enforcement** (mandatory — the mock behaves like real SharePoint):
+  - Search scans the complete in-memory subtree, matches names case-insensitively,
+    returns canonical list-relative paths, and never crosses into the other list
   - Create resolves the requested default name to a unique canonical name (`New folder`, `New folder (1)`, …)
   - Name collision check on rename/move (throw `name-collision`)
   - Copy resolves root-name collisions with backend-equivalent KeepBoth naming
@@ -449,7 +510,7 @@ complete; the remaining operations retain implementation-pending Observable erro
 **`FileSystemStore`** (entity cache, keyed by `id`):
 - Entities: `FileSystemNode`
 - State: `projectId: string | null`, `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, FileSystemError | undefined>`, `folderIdsWithLoadedChildren: string[]`, `isInitializing: boolean`, `initializedRoots: DocumentListRoots | null`
-- Methods: `connectProject(projectId)` (reactive `rxMethod`: the container passes its `projectId` input signal once; every change resets project state and re-initializes, with `switchMap` cancelling any in-flight load; imperative calls with a plain id retry the same project), `initialize(projectId)` (promise facade over one initialization — returns `DocumentListRoots` with each list marked `loaded`, `not-found`, or `error`; used by unit tests), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(id, newName)`, `delete(ids)`, `move(ids, targetParentId)`, `copy(ids, targetParentId)`, `invalidate(parentId)`, `upload(parentId, file, onProgress, signal)`
+- Methods: `connectProject(projectId)` (reactive `rxMethod`: the container passes its `projectId` input signal once; every change resets project state and re-initializes, with `switchMap` cancelling any in-flight load; imperative calls with a plain id retry the same project), `initialize(projectId)` (promise facade over one initialization — returns `DocumentListRoots` with each list marked `loaded`, `not-found`, or `error`; used by unit tests), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(nodeOrId, newName)`, `delete(nodeOrId)`, `move(ids, targetParentId)`, `copy(nodeOrId, targetNodeOrId)`, `invalidate(parentId)`, `upload(parentId, file, onProgress, signal)`
 - Depends on `FileSystemApi` (injected), not on a concrete class
 
 **`NavigationStore`**:
@@ -461,7 +522,8 @@ complete; the remaining operations retain implementation-pending Observable erro
 - Plain injectable signal service, not a Signal Store
 - State: `ids: ReadonlySet<string>`, `mode: 'cut' | 'copy' | null`
 - Computed/helpers: `isEmpty`, `has(id)`
-- Methods: `cut(ids)`, `copy(ids)`, `clear()`
+- State: retained canonical `nodes`, derived `ids`, `mode`, and `isEmpty`
+- Methods: `cut(nodes)`, `copy(nodes)`, `clear()`
 - Paste orchestration belongs in `ProjectDocuments` or a dedicated use-case service because it coordinates `ClipboardService`, `NavigationStore`, and `FileSystemStore`
 
 All stores and feature services are provided at `ProjectDocuments` level.

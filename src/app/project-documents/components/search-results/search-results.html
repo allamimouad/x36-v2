@@ -1,0 +1,120 @@
+<div class="pd-search-results">
+  @if (loading()) {
+    <div class="pd-search-state" role="status">
+      <p-progressSpinner styleClass="pd-search-spinner" strokeWidth="3" />
+      <span>Searching…</span>
+    </div>
+  } @else if (error(); as message) {
+    <div class="pd-search-state pd-search-error" role="alert">
+      <span class="material-symbols-outlined" aria-hidden="true">error</span>
+      <span>{{ message }}</span>
+    </div>
+  } @else {
+    @if (truncated()) {
+      <p class="pd-search-truncated" role="status">
+        Showing {{ results().length }} of {{ totalMatches() }} results. Refine your search to see
+        fewer matches.
+      </p>
+    }
+    <p-table [value]="results()" dataKey="id" styleClass="pd-search-table">
+      <ng-template pTemplate="header">
+        <tr>
+          <th pSortableColumn="name" style="width: 32%">Name <p-sortIcon field="name" /></th>
+          <th pSortableColumn="kind" style="width: 12%">Type <p-sortIcon field="kind" /></th>
+          <th pSortableColumn="parentListRelativePath" style="width: 26%">
+            Location <p-sortIcon field="parentListRelativePath" />
+          </th>
+          <th pSortableColumn="modifiedAt" style="width: 18%">
+            Last Modified <p-sortIcon field="modifiedAt" />
+          </th>
+          <th style="width: 12%" class="pd-search-size">Size</th>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-result>
+        <tr
+          class="pd-search-row"
+          [class.pd-search-row-writing]="writingIds().has(result.id)"
+          tabindex="0"
+          [attr.data-testid]="'pd-search-result-' + result.id"
+          (dblclick)="activate($event, result)"
+          (keydown)="activate($event, result)"
+          (contextmenu)="openContextMenu($event, result)"
+        >
+          <td>
+            @if (renamingId() === result.id) {
+              <div class="pd-inline-rename">
+                <input
+                  pInputText
+                  #renameInput
+                  type="text"
+                  class="pd-inline-rename-input"
+                  [value]="inlineRenameValue()"
+                  [disabled]="writingIds().has(result.id)"
+                  [attr.aria-invalid]="renameError() ? 'true' : null"
+                  aria-label="Rename search result"
+                  (click)="$event.stopPropagation()"
+                  (input)="onInlineRenameInput($event)"
+                  (keydown)="onInlineRenameKeydown($event, result)"
+                  (blur)="onInlineRenameBlur(result)"
+                />
+                @if (renameError(); as renameMessage) {
+                  <small class="pd-inline-rename-error" role="alert">{{ renameMessage }}</small>
+                }
+              </div>
+            } @else {
+              <span class="pd-search-name">
+                @if (result.kind === 'folder') {
+                  <pr-file-system-icon name="folder" />
+                } @else {
+                  <pr-file-system-icon [fileName]="result.name" />
+                }
+                <span class="pd-search-name-text">{{ result.name }}</span>
+                @if (deleteConfirmationId() === result.id) {
+                  <span class="pd-inline-delete-actions" data-pd-delete-confirmation>
+                    <button
+                      #deleteCancelButton
+                      type="button"
+                      class="pd-inline-delete-button pd-inline-delete-cancel"
+                      title="Cancel delete"
+                      [attr.aria-label]="'Cancel deleting ' + result.name"
+                      (pointerdown)="$event.stopPropagation()"
+                      (click)="cancelDelete($event)"
+                      (keydown)="onDeleteButtonKeydown($event)"
+                    >
+                      <span class="material-symbols-outlined" aria-hidden="true">close</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="pd-inline-delete-button pd-inline-delete-confirm"
+                      title="Confirm delete"
+                      [attr.aria-label]="'Confirm deleting ' + result.name"
+                      (pointerdown)="$event.stopPropagation()"
+                      (click)="confirmDelete($event, result)"
+                      (keydown)="onDeleteButtonKeydown($event)"
+                    >
+                      <span class="material-symbols-outlined" aria-hidden="true">check</span>
+                    </button>
+                  </span>
+                }
+                @if (writingIds().has(result.id)) {
+                  <span class="material-symbols-outlined pd-write-spinner" aria-hidden="true">
+                    progress_activity
+                  </span>
+                }
+              </span>
+            }
+          </td>
+          <td class="pd-muted">{{ result.kind === 'folder' ? 'Folder' : 'File' }}</td>
+          <td class="pd-muted pd-search-location">{{ location(result) }}</td>
+          <td class="pd-muted">{{ result.modifiedAt | date: 'dd-MM-yyyy HH:mm' }}</td>
+          <td class="pd-muted pd-search-size">{{ size(result) }}</td>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="emptymessage">
+        <tr>
+          <td colspan="5" class="pd-search-empty">No results for “{{ query() }}”.</td>
+        </tr>
+      </ng-template>
+    </p-table>
+  }
+</div>

@@ -28,13 +28,12 @@ GET {siteUrl}/_api/web/lists(guid'{libraryId}')/items
 
 For the first backend implementation:
 
-1. page through each configured project library without a server-side name filter;
+1. page through the selected configured project library without a server-side name filter;
 2. follow SharePoint's continuation URL/token;
 3. normalize each returned row;
 4. apply case-insensitive filename matching in Java;
-5. combine Execution and Marketing results;
-6. return a lightweight domain search result;
-7. navigate or hydrate the selected result through the existing canonical APIs.
+5. keep rows inside the requested scope path and map matches to canonical application nodes;
+6. return those nodes with list-relative item and parent paths for navigation.
 
 This is a delivery-oriented candidate, not a claim that list-item scanning scales
 indefinitely. The performance and threshold tests below decide whether it is safe for
@@ -70,11 +69,11 @@ Request these SharePoint fields and verify their exact target-farm representatio
 | `UniqueId` | Stable SharePoint GUID | `id` |
 | `FileLeafRef` | File or folder name | `name` |
 | `FileRef` | Full server-relative item path | `path` |
-| `FileDirRef` | Full server-relative parent path | `parentPath` |
+| `FileDirRef` | Full server-relative parent path | parent lookup + navigation path |
 | `FSObjType` | File/folder discriminator (`0` file, `1` folder) | `kind` |
 | `File/Length` | Canonical file size in bytes; requires expanding `File` | `sizeBytes` for files |
 | `File_x0020_Type` | File extension | `extension` |
-| `Folder/ItemCount` | Direct child count for a folder; requires expanding `Folder` | Optional folder search metadata |
+| `Folder/ItemCount` | Direct child count for a folder; requires expanding `Folder` | `itemCount` |
 | `Created` | Creation timestamp | `createdAt` |
 | `Modified` | Modification timestamp | `modifiedAt` |
 | `Editor/Title` | Last modifier's display name | `modifiedBy` |
@@ -85,10 +84,11 @@ contains only the item name, while `FileRef` contains the full server-relative p
 field `File_x0020_Size`, but it does not project that field reliably through this OData
 collection. Use `File/Length`, which has been manually verified, as the canonical size.
 
-The search row does **not** need to be a complete `FolderNode` or `FileNode`. In
-particular, list-item search does not need to return canonical folder `itemCount`, a
-parent folder GUID, or file launch/download capability links. Those belong to the
-normal listing or canonical by-id response.
+The public search row **is** a complete `FolderNode` or `FileNode`. Build a
+`serverRelativePath -> UniqueId` folder lookup while scanning the list so `FileDirRef`
+can map to the canonical `parentId` without a request per result. Reuse the normal
+mapping/link-building helpers for `itemCount`, `contentType`, `webUrl`, `onlineUrl`,
+`desktopUrl`, and `downloadUrl`; do not expose the raw SharePoint item DTO.
 
 ## Proposed domain search result
 
@@ -101,34 +101,34 @@ The backend should isolate Angular from SharePoint's list-row shape:
   "kind": "file",
   "name": "Contract 2026.docx",
   "path": "/sites/project/Execution Documents/Contracts/Contract 2026.docx",
-  "parentPath": "/sites/project/Execution Documents/Contracts",
-  "relativePath": "Contracts/Contract 2026.docx",
-  "parentRelativePath": "Contracts",
+  "parentId": "51ff8ae2-01bc-4dac-8857-86be4562c3c1",
+  "listRelativePath": "Contracts/Contract 2026.docx",
+  "parentListRelativePath": "Contracts",
   "sizeBytes": 184320,
-  "extension": "docx",
+  "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "createdAt": "2026-08-01T08:20:00Z",
   "modifiedAt": "2026-08-12T14:45:00Z",
-  "modifiedBy": "Jane Doe"
+  "modifiedBy": "Jane Doe",
+  "onlineUrl": "https://sharepoint.example/.../Contract%202026.docx",
+  "desktopUrl": "ms-word:ofe|u|https://sharepoint.example/.../Contract%202026.docx",
+  "downloadUrl": "https://sharepoint.example/.../Contract%202026.docx?download=1"
 }
 ```
 
 - `listKey` is supplied by the domain route/configuration, not by SharePoint.
-- `relativePath` and `parentRelativePath` are derived by the backend from the
+- `listRelativePath` and `parentListRelativePath` are derived by the backend from the
   configured library root and canonical `FileRef`/`FileDirRef` values.
-- Folder results omit file-only `sizeBytes` and `extension`.
+- Folder results use the normal `FolderNode` shape and omit file-only fields.
 - Never fabricate a missing UUID, path, or kind.
 
 ### Selection behavior
 
-- Selecting a **folder** navigates to `listKey + relativePath` through the existing
+- Double-clicking a **folder** navigates to `listKey + listRelativePath` through the existing
   path-resolution flow.
-- Selecting a **file** navigates to `listKey + parentRelativePath`, then focuses the
-  returned `id` after the canonical parent listing loads.
-- If a details/action screen needs a complete node immediately, hydrate the selected
-  `id` through `GetFileById` or `GetFolderById`. Do not hydrate every search hit.
-
-This preserves one canonical mapping for normal file-manager rows while keeping search
-lightweight.
+- Double-clicking a **file** opens its `onlineUrl`. `Open File Location` in the context
+  menu navigates to `listKey + parentListRelativePath`.
+- Item operations use the complete result node directly. Search results remain
+  transient and are not inserted into the normal entity cache.
 
 ---
 
@@ -304,9 +304,9 @@ GET {{executionSiteUrl}}/_api/web/GetFolderById('{{folderUniqueId}}')
     &$expand=ListItemAllFields/Editor
 ```
 
-Verify that name, path, kind, and UUID agree with the list-item row. This proves that a
-selected lightweight search result can load the canonical object without a path-based
-identity guess.
+Verify that name, path, kind, UUID, metadata, and capability links agree with the
+list-item mapping. This is a diagnostic comparison for the canonical search mapper,
+not a per-result hydration step in the production algorithm.
 
 ## Test 4 — Paging
 
@@ -495,7 +495,7 @@ status. Do not silently label the first matches in ID order as the complete resu
 
 ## Backend algorithm
 
-For each domain list:
+For the route-selected domain list:
 
 1. authorize `projectId` and resolve backend-owned `(projectId, listKey)` configuration;
 2. create the first SharePoint request using the verified projection, `ID asc`, and a
@@ -507,7 +507,7 @@ For each domain list:
 5. normalize each row and match only `FileLeafRef` in Java;
 6. collect at most the public result limit while continuing far enough to know whether
    the response is truncated;
-7. combine the two lists and return domain DTOs.
+7. map matches to canonical nodes, add list-relative navigation paths, and return them.
 
 Implementation constraints:
 
@@ -530,11 +530,12 @@ Implementation constraints:
   every key event;
 - require at least 3 characters;
 - show a search-specific loading state;
-- render a lightweight results view with name, kind, location/list, modified date, and
-  optional size;
-- selecting a result navigates to its folder/location as described above;
+- render the canonical result nodes in a search-specific view with name, kind,
+  location/list, modified date, and optional size;
+- double-click opens a folder result or a file's online application; locating a file is
+  an explicit context-menu action;
 - clearly show partial-list failures or an explicit incomplete-scan state;
-- do not replace the normal file table's canonical node contract with the search DTO.
+- expose normal item actions from search without inserting the rows into the entity cache.
 
 ## When this candidate must be rejected
 

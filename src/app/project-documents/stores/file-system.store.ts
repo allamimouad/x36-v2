@@ -393,40 +393,74 @@ export const FileSystemStore = signalStore(
             return created;
         };
 
-        const rename = async (id: string, newName: string): Promise<FileSystemNode> => {
+        const _mutationNode = (
+            input: string | string[] | FileSystemNode,
+            method: string
+        ): FileSystemNode => {
+            if (typeof input === 'object' && !Array.isArray(input)) {
+                return store.entityMap()[input.id] ?? input;
+            }
+            const id = onlySingleId(input, method);
             const node = store.entityMap()[id];
             if (!node) {
                 throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
             }
+
+            return node;
+        };
+
+        const _targetFolder = (input: string | FolderNode): FolderNode => {
+            const target = typeof input === 'string'
+                ? store.entityMap()[input]
+                : store.entityMap()[input.id] ?? input;
+            if (!target || !isFolder(target)) {
+                const id = typeof input === 'string' ? input : input.id;
+                throw new FileSystemError('not-found', `Target folder not found: ${id}`);
+            }
+
+            return target;
+        };
+
+        const rename = async (
+            input: string | FileSystemNode,
+            newName: string
+        ): Promise<FileSystemNode> => {
+            const node = _mutationNode(input, 'rename');
             if (node.parentId === null) {
                 throw new FileSystemError('invalid-name', 'Root folder cannot be renamed');
             }
-            const parent = store.entityMap()[node.parentId];
-            if (!parent || !isFolder(parent)) {
-                throw new FileSystemError(
-                    'not-found',
-                    `Parent folder not found in cache: ${node.parentId}`
-                );
+            const cachedNode = store.entityMap()[node.id];
+            if (cachedNode) {
+                const parent = store.entityMap()[cachedNode.parentId ?? ''];
+                if (!parent || !isFolder(parent)) {
+                    throw new FileSystemError(
+                        'not-found',
+                        `Parent folder not found in cache: ${cachedNode.parentId}`
+                    );
+                }
             }
             const renamed = await firstValueFrom(api.rename(_requireProjectId(), node, newName));
-            const updated = _updateCachedSubtreePaths(
-                id,
-                node.parentId,
-                renamed.path,
-                renamed.name
-            );
-            patchState(store, setEntities(updated), setEntity<FileSystemNode>(renamed));
-            _unmarkLoaded(id);
+            if (cachedNode) {
+                const updated = _updateCachedSubtreePaths(
+                    node.id,
+                    node.parentId,
+                    renamed.path,
+                    renamed.name
+                );
+                patchState(store, setEntities(updated), setEntity<FileSystemNode>(renamed));
+                _unmarkLoaded(node.id);
+            }
 
             return renamed;
         };
 
-        const deleteNodes = async (ids: string | string[]): Promise<void> => {
-            const id = onlySingleId(ids, 'delete');
-            const subtree = _cachedSubtree(id);
-            const node = subtree.find((candidate) => candidate.id === id);
-            if (!node) { throw new FileSystemError('not-found', `Node not found in cache: ${id}`); }
+        const deleteNodes = async (
+            input: string | string[] | FileSystemNode
+        ): Promise<void> => {
+            const node = _mutationNode(input, 'delete');
+            const subtree = store.entityMap()[node.id] ? _cachedSubtree(node.id) : [];
             await firstValueFrom(api.delete(_requireProjectId(), node));
+            if (subtree.length === 0) { return; }
             patchState(store, removeEntities(subtree.map((candidate) => candidate.id)));
             _adjustParentCount(node.parentId, -1);
             // Clear loaded markers for every removed folder, not just the root — loaded
@@ -489,20 +523,18 @@ export const FileSystemStore = signalStore(
             return removedIds;
         };
 
-        const copy = async (ids: string | string[], targetParentId: string): Promise<void> => {
-            const id = onlySingleId(ids, 'copy');
-            const source = store.entityMap()[id];
-            if (!source) {
-                throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
-            }
-            const targetParent = store.entityMap()[targetParentId];
-            if (!targetParent || !isFolder(targetParent)) {
-                throw new FileSystemError(
-                    'not-found',
-                    `Target folder not found in cache: ${targetParentId}`
-                );
-            }
-            if (isFolder(source) && _cachedSubtreeIds(id).includes(targetParentId)) {
+        const copy = async (
+            input: string | string[] | FileSystemNode,
+            targetInput: string | FolderNode
+        ): Promise<void> => {
+            const source = _mutationNode(input, 'copy');
+            const targetParent = _targetFolder(targetInput);
+            const cachedDescendant = store.entityMap()[source.id] &&
+                _cachedSubtreeIds(source.id).includes(targetParent.id);
+            const pathDescendant = source.listKey === targetParent.listKey &&
+                (targetParent.path === source.path ||
+                    targetParent.path.startsWith(`${source.path}/`));
+            if (isFolder(source) && (cachedDescendant || pathDescendant)) {
                 throw new FileSystemError(
                     'descendant-move',
                     'Cannot copy a folder into itself or a descendant'
@@ -511,8 +543,10 @@ export const FileSystemStore = signalStore(
             const copied = await firstValueFrom(
                 api.copy(_requireProjectId(), source, targetParent)
             );
-            patchState(store, setEntity<FileSystemNode>(copied));
-            _adjustParentCount(targetParentId, 1);
+            if (store.entityMap()[targetParent.id]) {
+                patchState(store, setEntity<FileSystemNode>(copied));
+                _adjustParentCount(targetParent.id, 1);
+            }
         };
 
         const upload = async (

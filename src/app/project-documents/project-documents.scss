@@ -151,8 +151,39 @@ $pd-control-height: 2.25rem;
     width: 16rem;
     max-width: 28vw;
     height: $pd-control-height;
+    padding-right: 2rem;
     padding-left: 1.9rem;
     font-size: 0.8125rem;
+  }
+
+  .pd-search-clear {
+    position: absolute;
+    right: 0.35rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--pd-text-muted);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--pd-hover-bg);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--pd-accent);
+    }
+
+    .material-symbols-outlined {
+      font-size: 1rem;
+      line-height: 1;
+      user-select: none;
+    }
   }
 }
 

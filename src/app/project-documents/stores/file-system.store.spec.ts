@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { delay, map, throwError } from 'rxjs';
+import { delay, firstValueFrom, map, throwError } from 'rxjs';
 import type {
     DocumentListRoots,
     DocumentListRootStatus
@@ -290,6 +290,46 @@ describe('FileSystemStore project-scoped API contract', () => {
 
         expect(source.listKey).toBe('EXECUTION');
         expect(deleteNode).toHaveBeenCalledOnceWith('project-123', source);
+    });
+
+    it('mutates a canonical search node without inserting the source into the cache', async () => {
+        const roots = await store.initialize('project-123');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
+        const { results } = await firstValueFrom(
+            api.searchDocuments('project-123', executionRoot, 'signed')
+        );
+        const source = results.find((node) => !isFolder(node));
+        if (!source) { throw new Error('Expected an uncached search file'); }
+        expect(store.entityMap()[source.id]).toBeUndefined();
+        const renameNode = spyOn(api, 'rename').and.callThrough();
+
+        const renamed = await store.rename(source, 'renamed-search-result.pdf');
+
+        expect(renameNode).toHaveBeenCalledOnceWith(
+            'project-123',
+            source,
+            'renamed-search-result.pdf'
+        );
+        expect(renamed.name).toBe('renamed-search-result.pdf');
+        expect(store.entityMap()[source.id]).toBeUndefined();
+    });
+
+    it('copies an uncached canonical search node into a cached destination', async () => {
+        const roots = await store.initialize('project-123');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
+        const { results } = await firstValueFrom(
+            api.searchDocuments('project-123', executionRoot, 'signed')
+        );
+        const source = results.find((node) => !isFolder(node));
+        if (!source) { throw new Error('Expected an uncached search file'); }
+        const copyNode = spyOn(api, 'copy').and.callThrough();
+
+        await store.copy(source, executionRoot);
+
+        expect(copyNode).toHaveBeenCalledOnceWith('project-123', source, executionRoot);
+        expect(store.entities().some(
+            (node) => node.parentId === executionRoot.id && node.name === source.name
+        )).toBeTrue();
     });
 
     it('move replaces the cached subtree with the returned node and removed ids', async () => {

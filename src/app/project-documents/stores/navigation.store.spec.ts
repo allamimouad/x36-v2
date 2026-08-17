@@ -52,6 +52,7 @@ describe('NavigationStore', () => {
     it('starts with empty navigation state before any navigation', () => {
         expect(nav.currentFolderId()).toBeNull();
         expect(nav.history()).toEqual([]);
+        expect(nav.currentHistoryEntry()).toBeNull();
         expect(nav.currentHistoryIndex()).toBe(-1);
         expect(nav.expandedTreeIds().size).toBe(0);
         expect(nav.selectedIds().size).toBe(0);
@@ -67,7 +68,7 @@ describe('NavigationStore', () => {
     it('navigateTo records history and sets current', () => {
         nav.navigateTo(rootId);
         expect(nav.currentFolderId()).toBe(rootId);
-        expect(nav.history()).toEqual([{ folderId: rootId }]);
+        expect(nav.history()).toEqual([folderHistory(rootId)]);
         expect(nav.currentHistoryIndex()).toBe(0);
     });
 
@@ -75,7 +76,7 @@ describe('NavigationStore', () => {
         nav.initialize({ currentFolderId: rootId, expandedRootIds: [rootId] });
 
         expect(nav.currentFolderId()).toBe(rootId);
-        expect(nav.history()).toEqual([{ folderId: rootId }]);
+        expect(nav.history()).toEqual([folderHistory(rootId)]);
         expect(nav.currentHistoryIndex()).toBe(0);
         expect(nav.expandedTreeIds().has(rootId)).toBe(true);
     });
@@ -83,8 +84,61 @@ describe('NavigationStore', () => {
     it('navigateTo to the same id is a no-op', () => {
         nav.navigateTo(rootId);
         nav.navigateTo(rootId);
-        expect(nav.history()).toEqual([{ folderId: rootId }]);
+        expect(nav.history()).toEqual([folderHistory(rootId)]);
         expect(nav.currentHistoryIndex()).toBe(0);
+    });
+
+    it('records search as its own view and replaces a resubmitted search query', () => {
+        nav.navigateTo(rootId);
+
+        nav.openSearch(' contract ');
+
+        expect(nav.history()).toEqual([
+            folderHistory(rootId),
+            { kind: 'search', scope: { folderId: rootId }, query: 'contract' }
+        ]);
+        expect(nav.currentHistoryEntry()?.kind).toBe('search');
+
+        nav.openSearch('vendor');
+
+        expect(nav.history().length).toBe(2);
+        expect(nav.currentHistoryEntry()).toEqual({
+            kind: 'search',
+            scope: { folderId: rootId },
+            query: 'vendor'
+        });
+    });
+
+    it('restores a search view through Back and exits it without retaining results', () => {
+        nav.navigateTo(rootId);
+        nav.openSearch('contract');
+        nav.navigateTo(docsId);
+
+        nav.back();
+
+        expect(nav.currentFolderId()).toBe(rootId);
+        expect(nav.currentHistoryEntry()?.kind).toBe('search');
+
+        nav.exitSearch();
+
+        expect(nav.currentFolderId()).toBe(rootId);
+        expect(nav.currentHistoryEntry()).toEqual(folderHistory(rootId));
+        expect(nav.canGoForward()).toBe(true);
+    });
+
+    it('resubmitting a restored search truncates its forward folder history', () => {
+        nav.navigateTo(rootId);
+        nav.openSearch('contract');
+        nav.navigateTo(docsId);
+        nav.back();
+
+        nav.openSearch('vendor');
+
+        expect(nav.canGoForward()).toBeFalse();
+        expect(nav.history()).toEqual([
+            folderHistory(rootId),
+            { kind: 'search', scope: { folderId: rootId }, query: 'vendor' }
+        ]);
     });
 
     it('back walks the history backwards and disables at the start', () => {
@@ -111,7 +165,7 @@ describe('NavigationStore', () => {
         nav.navigateTo(docsId);
         nav.back();
         nav.navigateTo(sharedId);
-        expect(nav.history()).toEqual([{ folderId: rootId }, { folderId: sharedId }]);
+        expect(nav.history()).toEqual([folderHistory(rootId), folderHistory(sharedId)]);
         expect(nav.canGoForward()).toBe(false);
     });
 
@@ -159,6 +213,13 @@ describe('NavigationStore', () => {
         expect(folders.map((f) => f.name)).toEqual(['Contracts', 'Schedules', 'Site Reports']);
     });
 });
+
+function folderHistory(folderId: string): {
+    kind: 'folder';
+    folder: { folderId: string };
+} {
+    return { kind: 'folder', folder: { folderId } };
+}
 
 const fakeRoot: FolderNode = {
     kind: 'folder',
@@ -245,7 +306,7 @@ describe('NavigationStore load triggering', () => {
         nav.initialize({ currentFolderId: fakeRoot.id, expandedRootIds: [fakeRoot.id] });
 
         expect(nav.currentFolderId()).toBe(fakeRoot.id);
-        expect(nav.history()).toEqual([{ folderId: fakeRoot.id }]);
+        expect(nav.history()).toEqual([folderHistory(fakeRoot.id)]);
         expect(nav.expandedTreeIds().has(fakeRoot.id)).toBe(true);
         expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
     });
@@ -425,7 +486,7 @@ describe('NavigationStore load triggering', () => {
         expect(nav.history().length).toBe(2);
     });
 
-    it('Back/Forward restores resolved breadcrumb context without reloading it', () => {
+    it('Back/Forward restores resolved breadcrumb context and revalidates the folder', () => {
         nav.navigateTo(fakeRoot.id);
         nav.openResolvedFolder(fakeDocs.id, { listKey: 'EXECUTION', path: 'Documents' });
 
@@ -437,7 +498,7 @@ describe('NavigationStore load triggering', () => {
         nav.forward();
         expect(nav.currentFolderId()).toBe(fakeDocs.id);
         expect(nav.currentBreadcrumb()).toEqual({ listKey: 'EXECUTION', path: 'Documents' });
-        expect(reader.loadChildrenSpy).not.toHaveBeenCalled();
+        expect(reader.loadChildrenSpy).toHaveBeenCalledOnceWith(fakeDocs.id);
     });
 
     it('pathSegments builds path-based segments for a resolved entry', () => {

@@ -96,20 +96,20 @@
 
 _What should the next session work on?_
 
-1. Run
-   `docs/backend-operations/verify-sharepoint-render-list-data-folder-search.md` on
-   the target farm. First test lightweight nested `RecursiveAll`, then endpoint-native
-   continuation paging and optional in-place filename search. If recursive enumeration
-   remains threshold-blocked, compare the already-working root scan plus Java path/name
-   filtering with Search REST; do not adopt one-request-per-folder traversal by
-   default.
-2. Browser-check Folder / File selection, the upload panel, cancellation, and a local
+1. Browser-check local search from both a list root and a nested folder: three-character
+   validation, mixed file/folder matches, empty results, Clear/Escape, and result
+   navigation to a folder or a file's containing folder.
+2. Write the backend implementation handoff against the now-stable
+   `searchDocuments(projectId, scope, query)` response contract. The backend should use
+   the verified root `GET .../items` continuation scan, then filter list/path/name in
+   Java; do not revive threshold-blocked nested recursive CAML or folder traversal.
+3. Browser-check Folder / File selection, the upload panel, cancellation, and a local
    tree containing nested empty folders in Edge/Chrome.
-3. Browser-check the three context-menu variants, hover submenus, inline delete
+4. Browser-check the three context-menu variants, hover submenus, inline delete
    confirmation, and forced write errors.
-4. Run the Phase 2 acceptance checks for create, inline rename, delete confirmation,
+5. Run the Phase 2 acceptance checks for create, inline rename, delete confirmation,
    and tree/table synchronization.
-5. Run Karma locally with Chrome/Edge installed (the agent environment can build the
+6. Run Karma locally with Chrome/Edge installed (the agent environment can build the
    suite but has no browser binary).
 
 Backend upload implementation handoff: use
@@ -124,6 +124,29 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 ## Decisions Log
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
+
+- **Search contract implemented locally before backend generation** (2026-08-17):
+  `FileSystemApi.searchDocuments(projectId, scope, query)` scopes one request to the
+  current folder and its single `listKey`. It returns (`results`, `totalMatches`,
+  `truncated`); each result is a complete canonical `FileSystemNode` plus
+  `listRelativePath` and `parentListRelativePath`. Folder double-click opens the folder,
+  file double-click opens its online application, and file-location navigation remains
+  an explicit context-menu action. Search is name-only,
+  case-insensitive, recursive, submitted on Enter, and requires three characters. The
+  response wrapper deliberately allows a later backend-owned cap without presenting
+  an incomplete array as complete. SharePoint `/items` transport DTOs remain internal
+  and must be mapped into this contract rather than exposed to Angular.
+- **Search is a navigation view, not an entity-cache mutation** (2026-08-17): history
+  is a discriminated union of folder and search entries. A search entry stores only
+  its folder location and query; opening a result adds a folder entry, and Back/Forward
+  reruns the restored search instead of retaining results. Repeated Enter submissions
+  replace the current search entry. Search never inserts its rows into `FileSystemStore`;
+  only the existing path resolver caches an activated destination folder and children.
+  Complete result nodes enable folder open/rename/copy/delete and file open/rename/
+  copy/delete/download. The clipboard retains the canonical source node so Paste still
+  works after leaving the transient search view. Rename/delete cache maintenance is
+  conditional on the target already being cached; Copy inserts the server result when
+  its destination is cached. The active search reruns after rename/delete.
 
 - **Native `GetItems` paging verified; nested `RecursiveAll` remains threshold-blocked**
   (2026-08-17): the target farm accepts later POST pages through
@@ -310,7 +333,7 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
 - **Mock persistence**: fresh state every refresh, no localStorage. Reason: matches user's request; simpler mental model during dev.
 - **Move is replace-on-success, not repath-preserve** (2026-06-24): after a successful `move`, the moved node's cached subtree is dropped and only the server-returned `moved` node is inserted (collapsed/unloaded), instead of repathing and keeping descendants. Reason: under a multi-user backend the cached descendants may be stale (another user changed the folder), so dropping + refetch-on-expand is fresher and matches the pessimistic stance. `rename` keeps repath (its descendants don't move). Consequences handled: a guard blocks moving any folder whose cached subtree contains `currentFolderId` (lives in the container, which has both the cache and `currentFolderId`); `FileSystemStore.move` returns the removed ids; `NavigationStore.pruneReferences` + `ClipboardService.pruneReferences` drop dangling expanded/selected/focused/renaming/clipboard refs; stale Back/Forward history entries become `navigationError` "tombstones" (advance index, set `currentFolderId`, show an unavailable message in the right pane + footer, no backend load), cleared on any valid navigation; `refresh()` no-ops on a tombstone. Go Up is unaffected (current folder is guaranteed valid).
 - **Two document lists per project (Execution + Marketing)** (2026-06-25; list context revised 2026-07-21; copy exception added 2026-07-30; casing aligned 2026-08-06): a project has two document libraries selected by `DocumentListKey = 'EXECUTION' | 'MARKETING'`; they may live on the same or different SharePoint sites. The frontend uses the backend's uppercase values directly and never sees SharePoint list GUIDs or backend configuration. Every node carries its domain `listKey`. Reads are `listDocumentRoot(projectId, listKey)` and `listDocuments(projectId, parent)`. Writes remain node-based: list-scoped adapters read context from the nodes, while copy maps the nodes to complete server-relative parent paths, omits the source list key, and sends `newParent.listKey` for the returned copy's domain context. `FileSystemStore` holds both trees in one entity cache and uses `initializedRoots` as the single source for per-list availability and root identity; the former store-level `rootIdByList` duplication was removed. Navigation uses the node key directly for cached breadcrumb/address paths, while address-bar labels remain lowercase and parsing remains case-insensitive.
-- **Editable address-bar path navigation** (2026-06-26): users can type a list-relative path (`execution/Contracts/2026`) to jump to any folder, even uncached. Path segments are **real folder names, case-insensitive**; the backend returns the **canonical casing**. New read `resolveDocumentPath(projectId, listKey, path) → { canonicalPath, listing }` (target only, no ancestors); `FileSystemStore.loadPathListing` caches just the target (+`isResolvingPath` flag). Navigation `history` became `NavigationHistoryEntry[]` (`{ folderId, breadcrumb? }`); `openResolvedFolder` records a resolved entry without `loadChildren`; Back/Forward restore breadcrumb context and don't reload resolved entries; tombstone behavior preserved. `PathSegment` is now `{ label, id?, listKey?, path? }` — id-based for cached chains, path-based (re-resolve on click) for resolved ones. `PathBar` is a controlled dumb component (fixed `/{projectLabel}/` prefix + edit mode via `editing`/`editRequested`/`editCancelled`/`pathSubmitted`); list-key **validation is in the container**. **Up** from a resolved folder re-resolves the parent path (ancestors aren't cached); cached Up unchanged. Typed-path nav never changes `expandedTreeIds` (the tree may not reveal the folder — intentional). Cached breadcrumb roots now read `node.listKey`; root availability comes from `initializedRoots`. Backend suggestion + SPEC §5 updated with the resolve-path endpoint.
+- **Editable address-bar path navigation** (2026-06-26): users can type a list-relative path (`execution/Contracts/2026`) to jump to any folder, even uncached. Path segments are **real folder names, case-insensitive**; the backend returns the **canonical casing**. New read `resolveDocumentPath(projectId, listKey, path) → { canonicalPath, listing }` (target only, no ancestors); `FileSystemStore.loadPathListing` caches just the target (+`isResolvingPath` flag). Navigation `history` became `NavigationHistoryEntry[]` (`{ folderId, breadcrumb? }`); `openResolvedFolder` records a resolved entry without a duplicate `loadChildren` because path resolution already returned the listing; Back/Forward restore breadcrumb context and revalidate every restored folder entry; tombstone behavior preserved. `PathSegment` is now `{ label, id?, listKey?, path? }` — id-based for cached chains, path-based (re-resolve on click) for resolved ones. `PathBar` is a controlled dumb component (fixed `/{projectLabel}/` prefix + edit mode via `editing`/`editRequested`/`editCancelled`/`pathSubmitted`); list-key **validation is in the container**. **Up** from a resolved folder re-resolves the parent path (ancestors aren't cached); cached Up unchanged. Typed-path nav never changes `expandedTreeIds` (the tree may not reveal the folder — intentional). Cached breadcrumb roots now read `node.listKey`; root availability comes from `initializedRoots`. Backend suggestion + SPEC §5 updated with the resolve-path endpoint.
 - **Copy is pessimistic even as single op**: copy creates a new entity on the server, so we need the real id before inserting into the store.
 - **Mock id strategy**: `id = crypto.randomUUID()` per node, generated at seed time and on create/copy. Reason: the id never changes for an entity's lifetime, so references to a given node survive a rename or a move *of that node* without remapping (move drops the moved node's descendants — see the move decision). Matches SharePoint's per-item `UniqueId` (GUID) — the SP adapter uses that directly.
 - **FileSystemApi is explicitly project/list-scoped, with path-based copy as the exception**: every method receives `projectId`; read methods also receive `listKey`, directly or through the folder node. Retrieval is `listDocumentRoot(projectId, listKey)` plus `listDocuments(projectId, parent)`. Mutations receive full nodes. List-scoped adapters extract context from their nodes; copy derives complete source/destination parent paths, sends no source list key, and includes the destination list key required by the returned node.
@@ -381,6 +404,22 @@ _Things noticed during implementation but not fixed in the current phase. Review
 ## Session Notes
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
+
+- **2026-08-17 — local recursive name search implemented**: added the stable
+  `FileSystemApi.searchDocuments(projectId, scope, query)` contract with canonical
+  node results wrapped with `totalMatches` and `truncated` so a
+  later backend result cap cannot silently look complete. The mock searches the
+  complete current-folder
+  subtree within one list, case-insensitively, while the toolbar submits only on Enter
+  with a three-character minimum. A dumb search-results table shows type, canonical
+  list-relative location, modified time, and size; double-click opens a folder or a
+  file's online application, while file-location navigation stays in the context menu.
+  Search state is component-scoped and cancels superseded requests. Folder/search
+  navigation retains only scope/query and reruns restored searches; results are not
+  cached. Search rows support the normal item actions, and the application clipboard
+  retains complete source nodes for Paste. The SharePoint adapter remains a compile-safe stub for the later backend
+  route. App/spec TypeScript compilation, focused lint, the development build, and
+  `git diff --check` pass; browser Karma execution remains unavailable here.
 
 - **2026-08-17 — focused `RenderListDataAsStream` folder-search probe**: added a
   copy-paste Postman guide that first tests lightweight nested recursive enumeration,

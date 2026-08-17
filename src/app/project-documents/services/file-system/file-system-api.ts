@@ -1,5 +1,6 @@
 import type { Observable } from 'rxjs';
 import type { DocumentListing, ResolvedDocumentPath } from '../../models/document-listing.model';
+import type { DocumentSearchResponse } from '../../models/document-search-result.model';
 import type { DocumentListKey } from '../../models/document-list.model';
 import type { FileNode, FileSystemNode, FolderNode } from '../../models/file-system-node.model';
 
@@ -43,6 +44,13 @@ export abstract class FileSystemApi {
         listKey: DocumentListKey,
         path: string,
     ): Observable<ResolvedDocumentPath>;
+
+    /** Search names recursively below `scope`; adapters keep backend paging private. */
+    public abstract searchDocuments(
+        projectId: string,
+        scope: FolderNode,
+        query: string,
+    ): Observable<DocumentSearchResponse>;
 
     /**
      * Create a new folder under `parent`. The backend owns collision resolution and
