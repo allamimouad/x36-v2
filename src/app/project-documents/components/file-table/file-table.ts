@@ -99,7 +99,7 @@ export class FileTable {
                 kind: 'file',
                 typeLabel: ext ? ext.toUpperCase() : 'FILE',
                 sizeLabel: formatSize(f.sizeBytes),
-                sortSize: f.sizeBytes,
+                sortSize: f.sizeBytes ?? -1,
                 modifiedAt: f.modifiedAt,
                 modifiedBy: f.modifiedBy ?? '—',
                 node: f
@@ -242,7 +242,8 @@ export class FileTable {
     }
 }
 
-function formatSize(bytes: number): string {
+function formatSize(bytes: number | undefined): string {
+    if (bytes === undefined) { return '—'; }
     if (bytes < 1024) { return `${bytes} B`; }
     if (bytes < 1024 * 1024) { return `${(bytes / 1024).toFixed(1)} KB`; }
     if (bytes < 1024 * 1024 * 1024) { return `${(bytes / (1024 * 1024)).toFixed(1)} MB`; }

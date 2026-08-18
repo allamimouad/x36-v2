@@ -9,7 +9,7 @@ export interface FolderNode {
     path: string;
     name: string;
     parentId: string | null;
-    itemCount: number;
+    itemCount?: number;
     createdAt: string;
     modifiedAt: string;
     modifiedBy?: string;
@@ -23,7 +23,7 @@ export interface FileNode {
     path: string;
     name: string;
     parentId: string;
-    sizeBytes: number;
+    sizeBytes?: number;
     createdAt: string;
     modifiedAt: string;
     modifiedBy?: string;

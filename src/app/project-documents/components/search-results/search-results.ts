@@ -99,18 +99,6 @@ export class SearchResults {
         return `${result.listKey.toLowerCase()}${suffix}`;
     }
 
-    protected size(result: FileSystemNode): string {
-        if (result.kind === 'folder') { return ''; }
-        const bytes = result.sizeBytes;
-        if (bytes < 1024) { return `${bytes} B`; }
-        if (bytes < 1024 * 1024) { return `${(bytes / 1024).toFixed(1)} KB`; }
-        if (bytes < 1024 * 1024 * 1024) {
-            return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-        }
-
-        return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-    }
-
     protected onInlineRenameInput(event: Event): void {
         this.inlineRenameValue.set((event.target as HTMLInputElement).value);
         this.renameEdited.emit();

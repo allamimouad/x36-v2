@@ -29,6 +29,11 @@ describe('SearchResults', () => {
         row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
 
         expect(host().textContent).toContain('execution/Contracts');
+        expect(host().textContent).toContain('Created');
+        expect(host().textContent).toContain('Last Modified');
+        expect(host().textContent).toContain('Modified By');
+        expect(host().textContent).toContain('Editor');
+        expect(host().textContent).not.toContain('Size');
         expect(activated).toHaveBeenCalledOnceWith(result);
     });
 
@@ -99,7 +104,6 @@ const result: FileSystemNode = {
     createdAt: '2026-08-17T09:00:00Z',
     modifiedAt: '2026-08-17T10:00:00Z',
     modifiedBy: 'Editor',
-    sizeBytes: 1024,
     contentType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     onlineUrl: 'https://sharepoint.example/report.docx',
     downloadUrl: 'https://sharepoint.example/report.docx?download=1'

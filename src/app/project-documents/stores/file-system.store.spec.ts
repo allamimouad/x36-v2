@@ -434,6 +434,7 @@ describe('FileSystemStore project-scoped API contract', () => {
             (node): node is FolderNode =>
                 isFolder(node) &&
                 node.parentId === executionRoot.id &&
+                node.itemCount !== undefined &&
                 node.itemCount > 0
         );
         if (!source) { throw new Error('Expected a non-empty execution folder'); }

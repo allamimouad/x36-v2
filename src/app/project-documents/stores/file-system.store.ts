@@ -324,6 +324,7 @@ export const FileSystemStore = signalStore(
             if (!parentId) { return; }
             const parent = store.entityMap()[parentId];
             if (!parent || !isFolder(parent)) { return; }
+            if (parent.itemCount === undefined) { return; }
             patchState(
                 store,
                 setEntity<FileSystemNode>({

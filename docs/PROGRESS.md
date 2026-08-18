@@ -405,12 +405,23 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-08-18 — search projection reduced after target-farm timing**: target testing
+  showed that expanding SharePoint `File`/`Folder` increased the list scan from roughly
+  10 seconds to roughly one minute. Search now keeps the existing `FileSystemNode`
+  models but treats file `sizeBytes` and folder `itemCount` as optional metadata,
+  removes Size from the search table, and displays the directly selected Created and
+  Modified timestamps plus `Editor/Title` as Modified By. Normal folder listing may
+  still provide size/count. The backend handoff now explicitly requests no `File` or
+  `Folder` expansion, never fabricates zero values, and requires no `$orderby` because
+  paging follows SharePoint's opaque continuation. Development build passes.
+
 - **2026-08-17 — local recursive name search implemented**: added the stable
   `FileSystemApi.searchDocuments(projectId, scope, query)` contract with canonical
   node results returned as a plain `FileSystemNode[]`. The mock searches the complete current-folder
   subtree within one list, case-insensitively, while the toolbar submits only on Enter
   with a three-character minimum. A dumb search-results table shows type, canonical
-  location derived from canonical node/root paths, modified time, and size;
+  location derived from canonical node/root paths, Created, Last Modified, and
+  Modified By; search does not display file size;
   double-click opens a folder or a
   file's online application, while file-location navigation stays in the context menu.
   Search state is component-scoped and cancels superseded requests. Folder/search

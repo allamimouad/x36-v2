@@ -23,8 +23,9 @@ GET /projects/123/document-lists/EXECUTION/documents/8ac4.../search?q=contract
 It searches file and folder **names only**, case-insensitively, inside the selected
 folder and all of its descendants in exactly one configured document list.
 
-The response is a JSON array of the same complete canonical file/folder nodes returned
-by the normal document-listing endpoints:
+The response is a JSON array using the same canonical file/folder node models as the
+normal document-listing endpoints. Search deliberately omits the expensive file-size
+and folder-item-count metadata:
 
 ```json
 [
@@ -35,7 +36,6 @@ by the normal document-listing endpoints:
     "name": "Contract 2026.docx",
     "path": "/sites/project/Execution Documents/Contracts/Contract 2026.docx",
     "parentId": "51ff8ae2-01bc-4dac-8857-86be4562c3c1",
-    "sizeBytes": 184320,
     "createdAt": "2026-08-01T08:20:00Z",
     "modifiedAt": "2026-08-12T14:45:00Z",
     "modifiedBy": "Jane Doe",
@@ -49,9 +49,12 @@ by the normal document-listing endpoints:
 A folder result uses the existing canonical folder-node fields instead:
 
 ```text
-kind, listKey, id, name, path, parentId, itemCount,
-createdAt, modifiedAt, modifiedBy, webUrl
+kind, listKey, id, name, path, parentId, createdAt, modifiedAt, modifiedBy, webUrl
 ```
+
+`sizeBytes` on files and `itemCount` on folders are optional in the shared frontend
+models. Normal folder listing may continue to populate them; search must not fabricate
+zero values when those properties were not fetched.
 
 Use the exact casing and JSON conventions already used by the existing document-listing
 endpoints. The frontend expects `kind` values compatible with its existing `file` and
@@ -222,25 +225,26 @@ FSObjType
 Created
 Modified
 Editor/Title
-File/Length
-Folder/ItemCount
 ```
 
-Expand the relationships required by the real SharePoint DTO, normally:
+Expand only the editor relationship:
 
 ```text
 Editor
-File
-Folder
 ```
+
+Do not select or expand `File/Length`, `Folder/ItemCount`, `File`, or `Folder` for
+search. Target-farm measurement showed that the file/folder expansions dominate the
+request time, while the search table does not display either value.
 
 Reuse already-existing projections and link generation required by the normal listing
 mapper. Do not introduce a second definition of what constitutes a canonical
 file/folder node.
 
-Use a bounded SharePoint page size consistent with the verified request (up to 1000)
-and a stable ID ordering if the endpoint/client already expresses it. The list may
-contain more than the 5000-item view threshold; page size does not imply total size.
+Use a bounded SharePoint page size consistent with the verified request (up to 1000).
+No explicit ordering is required: follow SharePoint's opaque continuation exactly.
+The list may contain more than the 5000-item view threshold; page size does not imply
+total size.
 
 ### Continuation paging
 
@@ -359,8 +363,6 @@ FileDirRef          -> canonical parent server-relative path
 Created             -> createdAt
 Modified            -> modifiedAt
 Editor.Title        -> modifiedBy
-File.Length         -> file sizeBytes (parse safely as long)
-Folder.ItemCount    -> folder itemCount
 ```
 
 Use the backend route/configuration for `listKey`; SharePoint does not own that domain
@@ -368,9 +370,10 @@ value.
 
 ### Public canonical node mapping
 
-The result must contain the same canonical node information as normal listing
-responses, because the frontend performs rename, delete, copy, online/local open, and
-download directly from search results.
+The result must use the same canonical node types and contain the identity, path,
+parent, timestamp, editor, and capability information required for rename, delete,
+copy, online/local open, and download directly from search results. File size and
+folder item count are the only deliberately omitted canonical metadata.
 
 For files, reuse the existing helpers/mappers for:
 
@@ -484,12 +487,12 @@ entity cache.
 - File double-click opens `onlineUrl`.
 - Folder navigation and `Open File Location` derive the list-relative target from the
   canonical result `path` and the already-loaded canonical library-root `path`.
-- Rename/delete/copy/open/download use the complete canonical node returned by search.
+- Rename/delete/copy/open/download use the canonical node returned by search.
 - Copy retains the complete source node until Paste.
 - Back/Forward reruns the saved scope/query.
 
 Do not change this public response into raw SharePoint list-item DTOs or require the
-frontend to hydrate every selected result.
+frontend to hydrate every selected result merely to perform an operation.
 
 ---
 
@@ -526,7 +529,8 @@ The work is complete when:
 3. The resolved path is verified to belong to the configured library.
 4. All SharePoint `/items` pages are followed iteratively.
 5. Java applies slash-bounded subtree filtering plus case-insensitive name matching.
-6. Mixed file/folder rows map to complete canonical nodes with correct parent GUIDs.
+6. Mixed file/folder rows map to the existing canonical node types with correct parent
+   GUIDs and without file/folder expansion metadata.
 7. The endpoint returns a plain array of the same canonical nodes used by normal
    document listing, with no search-specific DTO properties or response wrapper.
 8. Existing layering, authentication, configuration, mappers, URL builders, and error

@@ -13,15 +13,20 @@
     <p-table [value]="results()" dataKey="id" styleClass="pd-search-table">
       <ng-template pTemplate="header">
         <tr>
-          <th pSortableColumn="name" style="width: 32%">Name <p-sortIcon field="name" /></th>
-          <th pSortableColumn="kind" style="width: 12%">Type <p-sortIcon field="kind" /></th>
-          <th pSortableColumn="path" style="width: 26%">
+          <th pSortableColumn="name" style="width: 24%">Name <p-sortIcon field="name" /></th>
+          <th pSortableColumn="kind" style="width: 9%">Type <p-sortIcon field="kind" /></th>
+          <th pSortableColumn="path" style="width: 22%">
             Location <p-sortIcon field="path" />
           </th>
-          <th pSortableColumn="modifiedAt" style="width: 18%">
+          <th pSortableColumn="createdAt" style="width: 15%">
+            Created <p-sortIcon field="createdAt" />
+          </th>
+          <th pSortableColumn="modifiedAt" style="width: 15%">
             Last Modified <p-sortIcon field="modifiedAt" />
           </th>
-          <th style="width: 12%" class="pd-search-size">Size</th>
+          <th pSortableColumn="modifiedBy" style="width: 15%">
+            Modified By <p-sortIcon field="modifiedBy" />
+          </th>
         </tr>
       </ng-template>
       <ng-template pTemplate="body" let-result>
@@ -100,13 +105,14 @@
           </td>
           <td class="pd-muted">{{ result.kind === 'folder' ? 'Folder' : 'File' }}</td>
           <td class="pd-muted pd-search-location">{{ location(result) }}</td>
+          <td class="pd-muted">{{ result.createdAt | date: 'dd-MM-yyyy HH:mm' }}</td>
           <td class="pd-muted">{{ result.modifiedAt | date: 'dd-MM-yyyy HH:mm' }}</td>
-          <td class="pd-muted pd-search-size">{{ size(result) }}</td>
+          <td class="pd-muted">{{ result.modifiedBy ?? '—' }}</td>
         </tr>
       </ng-template>
       <ng-template pTemplate="emptymessage">
         <tr>
-          <td colspan="5" class="pd-search-empty">No results for “{{ query() }}”.</td>
+          <td colspan="6" class="pd-search-empty">No results for “{{ query() }}”.</td>
         </tr>
       </ng-template>
     </p-table>
