@@ -384,7 +384,7 @@ After retrieving all pages, verify the intended backend match locally/manually a
 `FileLeafRef`:
 
 - trim the user query;
-- reject fewer than 3 characters;
+- reject only an empty trimmed query; one-character names are valid;
 - compare case-insensitively with `Locale.ROOT` semantics;
 - match the item name only, not document content or other metadata;
 - include both files and folders;
@@ -464,7 +464,7 @@ GET /projects/{projectId}/document-lists/{listKey}/documents/{folderId}/search?q
 
 Suggested rules:
 
-- `q` is required, trimmed, and at least 3 characters;
+- `q` is required and non-empty after trimming;
 - `listKey` selects exactly one configured document list;
 - `folderId` selects the root of the recursive search scope;
 - never silently return an incomplete scan as if it were complete.
@@ -513,7 +513,7 @@ Implementation constraints:
 
 - submit search on Enter or after an explicit action; do not scan both libraries on
   every key event;
-- require at least 3 characters;
+- require a non-empty trimmed query;
 - show a search-specific loading state;
 - render the canonical result nodes in a search-specific view with name, kind,
   location/list, modified date, and optional size;

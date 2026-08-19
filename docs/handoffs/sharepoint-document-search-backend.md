@@ -119,7 +119,7 @@ GET /projects/{projectId}/document-lists/{listKey}/documents/{folderId}/search?q
 - `projectId`: existing project identifier and authorization boundary.
 - `listKey`: exactly one domain document list, `EXECUTION` or `MARKETING`.
 - `folderId`: the SharePoint folder `UniqueId`; it may identify the list root.
-- `q`: required, trimmed, minimum three characters.
+- `q`: required and non-empty after trimming; one-character names are valid.
 
 Do not accept any of the following from the frontend:
 
@@ -137,8 +137,8 @@ project-wide `/projects/{projectId}/documents/search` proposal.
 
 ### Validation and errors
 
-- Trim `q`; reject missing or fewer-than-three-character queries with the project's
-  normal `400 Bad Request` validation response.
+- Trim `q`; reject a missing or empty query with the project's normal `400 Bad Request`
+  validation response. Do not impose a minimum beyond one character.
 - Resolve and authorize `projectId + listKey` through the existing backend-owned
   configuration flow.
 - Reuse the existing not-found/error mapping for an unknown folder.

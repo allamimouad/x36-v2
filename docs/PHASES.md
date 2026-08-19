@@ -146,7 +146,7 @@
 **Local recursive name search**
 - Add `searchDocuments(projectId, scope, query)` to `FileSystemApi` and implement it in
   the mock over the complete selected-folder subtree.
-- Submit from the toolbar on Enter with a three-character minimum; do not search on
+- Submit from the toolbar on Enter with a non-empty trimmed query; do not search on
   every keystroke.
 - Render canonical file/folder nodes with search-specific list-relative location.
   Double-click opens folders or a file's online application; file-location navigation

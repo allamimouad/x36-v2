@@ -372,9 +372,9 @@ export class ProjectDocuments {
     protected submitSearch(): void {
         const query = this.searchText().trim();
         if (!this.navigation.currentFolder() || this.fileSystem.isInitializing()) { return; }
-        if (query.length < 3) {
+        if (query.length === 0) {
             this.search.clear();
-            this.searchValidationError.set('Enter at least 3 characters to search.');
+            this.searchValidationError.set('Enter a name to search.');
 
             return;
         }

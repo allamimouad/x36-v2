@@ -231,8 +231,8 @@ All scenarios must work:
 - Search is scoped to the currently open folder and its descendants in that folder's
   one document list. Searching a list root therefore covers the complete list.
 - Match file and folder **names only**, case-insensitively; never search file contents.
-- Submit on Enter with at least three trimmed characters. Do not issue a request for
-  every keyboard event.
+- Submit on Enter with a non-empty trimmed query, including one-character names. Do not
+  issue a request for every keyboard event.
 - Every result uses the normal canonical `FolderNode` or `FileNode` model. Search omits
   the expensive optional `itemCount`/`sizeBytes` metadata, but preserves identity,
   paths, timestamps, editor, and operation capabilities. The frontend derives

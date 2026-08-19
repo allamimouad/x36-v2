@@ -63,6 +63,16 @@ describe('MockFileSystemApi search', () => {
         expect(response).toEqual([]);
     });
 
+    it('allows a one-character name query', async () => {
+        const root = await executionRoot();
+
+        const results = await firstValueFrom(
+            api.searchDocuments('project-123', root, 'a')
+        );
+
+        expect(results.length).toBeGreaterThan(0);
+    });
+
     async function executionRoot(): Promise<FolderNode> {
         return (await firstValueFrom(api.listDocumentRoot('project-123', 'EXECUTION')))
             .currentFolder;

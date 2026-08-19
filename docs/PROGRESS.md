@@ -96,9 +96,9 @@
 
 _What should the next session work on?_
 
-1. Browser-check local search from both a list root and a nested folder: three-character
-   validation, mixed file/folder matches, empty results, Clear/Escape, and result
-   navigation to a folder or a file's containing folder.
+1. Browser-check local search from both a list root and a nested folder: non-empty
+   validation, one-character names, mixed file/folder matches, empty results,
+   Clear/Escape, and result navigation to a folder or a file's containing folder.
 2. Write the backend implementation handoff against the now-stable
    `searchDocuments(projectId, scope, query)` response contract. The backend should use
    the verified root `GET .../items` continuation scan, then filter list/path/name in
@@ -133,7 +133,7 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
   Folder double-click opens the folder,
   file double-click opens its online application, and file-location navigation remains
   an explicit context-menu action. Search is name-only,
-  case-insensitive, recursive, submitted on Enter, and requires three characters. The
+  case-insensitive, recursive, submitted on Enter, and requires a non-empty query. The
   SharePoint `/items` transport DTOs remain internal and must be mapped into this
   contract rather than exposed to Angular.
 - **Search is a navigation view, not an entity-cache mutation** (2026-08-17): history
@@ -405,6 +405,13 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-08-20 — search accepts short file/folder names**: replaced the arbitrary
+  three-character minimum with non-empty trimmed validation so legitimate names such
+  as `D0`, or even a single-character name, can be found. Search remains explicit on
+  Enter rather than running per keystroke. The frontend, mock, backend handoff, and
+  verification contract are aligned, with focused mock coverage for a one-character
+  query.
+
 - **2026-08-18 — search projection reduced after target-farm timing**: target testing
   showed that expanding SharePoint `File`/`Folder` increased the list scan from roughly
   10 seconds to roughly one minute. Search now keeps the existing `FileSystemNode`
@@ -419,7 +426,7 @@ _One line per session, newest at top. Include date, phase, what was completed, a
   `FileSystemApi.searchDocuments(projectId, scope, query)` contract with canonical
   node results returned as a plain `FileSystemNode[]`. The mock searches the complete current-folder
   subtree within one list, case-insensitively, while the toolbar submits only on Enter
-  with a three-character minimum. A dumb search-results table shows type, canonical
+  with non-empty-query validation. A dumb search-results table shows type, canonical
   location derived from canonical node/root paths, Created, Last Modified, and
   Modified By; search does not display file size;
   double-click opens a folder or a

@@ -7,8 +7,8 @@ export function searchMockNodes(
     query: string
 ): FileSystemNode[] {
     const normalizedQuery = query.trim().toLocaleLowerCase();
-    if (normalizedQuery.length < 3) {
-        throw new FileSystemError('unknown', 'Search requires at least three characters');
+    if (normalizedQuery.length === 0) {
+        throw new FileSystemError('unknown', 'Search requires a non-empty query');
     }
     const results: FileSystemNode[] = [];
     for (const node of nodes.values()) {
