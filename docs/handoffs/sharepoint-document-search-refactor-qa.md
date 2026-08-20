@@ -21,3 +21,16 @@ and mutable counter workarounds.
 Also use the explicit name `normalizedScopePrefix` for the normalized scope path with
 exactly one trailing slash before applying
 `normalizedFileRef.startsWith(normalizedScopePrefix)`.
+
+## Is the revised single-helper plan approved?
+
+Yes, with two corrections:
+
+1. `consumePages` must count processed items and return that `long`. The fallback
+   consumer must not increment another counter; assign the returned value to
+   `scannedItemCount`.
+2. Empty results are valid, but preserve the current behavior for a null response body
+   rather than introducing new silent handling.
+
+Do not add or change continuation-URL validation. Everything else in the revised plan
+is approved.
