@@ -1,5 +1,6 @@
 import { DestroyRef, inject, Injectable, signal, type Signal } from '@angular/core';
 import type { Subscription } from 'rxjs';
+import { FileSystemError } from '../../models/file-system-error.model';
 import type { FileSystemNode, FolderNode } from '../../models/file-system-node.model';
 import { FileSystemApi } from '../file-system/file-system-api';
 
@@ -9,7 +10,7 @@ export class DocumentSearchService {
     public readonly results: Signal<FileSystemNode[]>;
     public readonly activeQuery: Signal<string | null>;
     public readonly isSearching: Signal<boolean>;
-    public readonly error: Signal<unknown | null>;
+    public readonly error: Signal<FileSystemError | null>;
     public readonly activeScopeId: Signal<string | null>;
 
     private readonly api = inject(FileSystemApi);
@@ -17,7 +18,7 @@ export class DocumentSearchService {
     private readonly _results = signal<FileSystemNode[]>([]);
     private readonly _activeQuery = signal<string | null>(null);
     private readonly _isSearching = signal(false);
-    private readonly _error = signal<unknown | null>(null);
+    private readonly _error = signal<FileSystemError | null>(null);
     private readonly _activeScopeId = signal<string | null>(null);
     private request: Subscription | null = null;
     private requestVersion = 0;
@@ -48,7 +49,11 @@ export class DocumentSearchService {
             },
             error: (error: unknown) => {
                 if (version !== this.requestVersion) { return; }
-                this._error.set(error);
+                this._error.set(
+                    error instanceof FileSystemError
+                        ? error
+                        : new FileSystemError('unknown', 'Document search failed', error)
+                );
                 this._isSearching.set(false);
             },
             complete: () => {
