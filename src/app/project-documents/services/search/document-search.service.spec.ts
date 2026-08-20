@@ -49,16 +49,16 @@ describe('DocumentSearchService', () => {
 
 function response(query: string): FileSystemNode[] {
     return [{
-            kind: 'file',
-            listKey: 'EXECUTION',
-            id: query,
-            name: `${query}.pdf`,
-            path: `/execution/${query}.pdf`,
-            parentId: 'root',
-            createdAt: '2026-08-17T09:00:00Z',
-            modifiedAt: '2026-08-17T10:00:00Z',
-            sizeBytes: 10
-        }];
+        kind: 'file',
+        listKey: 'EXECUTION',
+        id: query,
+        name: `${query}.pdf`,
+        path: `/execution/${query}.pdf`,
+        parentId: 'root',
+        createdAt: '2026-08-17T09:00:00Z',
+        modifiedAt: '2026-08-17T10:00:00Z',
+        sizeBytes: 10
+    }];
 }
 
 const scope: FolderNode = {

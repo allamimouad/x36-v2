@@ -107,6 +107,7 @@ export class MockFileSystemApi extends FileSystemApi {
                 throw new FileSystemError('not-found', `Folder not found in ${scope.listKey}`);
             }
             this.assertFolderAvailable(canonicalScope);
+
             return searchMockNodes(this.nodes, canonicalScope, query);
         });
     }

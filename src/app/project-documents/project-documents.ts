@@ -400,7 +400,7 @@ export class ProjectDocuments {
 
     protected async openSearchResultLocation(result: FileSystemNode): Promise<void> {
         const root = this.fileSystem.initializedRoots()?.[result.listKey];
-        if (!root || root.status !== 'loaded') {
+        if (root?.status !== 'loaded') {
             this.notifications.error(
                 new FileSystemError('not-found', `${result.listKey} document root is unavailable`)
             );
