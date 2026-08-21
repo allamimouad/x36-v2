@@ -52,6 +52,32 @@ describe('SearchResults', () => {
         expect(requested).toHaveBeenCalledOnceWith({ event, result });
     });
 
+    it('emits an empty-context request when the search surface is right-clicked', () => {
+        const requested = jasmine.createSpy('requested');
+        fixture.componentInstance.emptyContextMenuRequested.subscribe(requested);
+        const surface = host().querySelector<HTMLElement>('.pd-search-results');
+        if (!surface) { throw new Error('Expected search results surface'); }
+        const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+
+        surface.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBeTrue();
+        expect(requested).toHaveBeenCalledOnceWith(event);
+    });
+
+    it('does not open the empty-context menu from a table header', () => {
+        const requested = jasmine.createSpy('requested');
+        fixture.componentInstance.emptyContextMenuRequested.subscribe(requested);
+        const header = host().querySelector<HTMLElement>('thead');
+        if (!header) { throw new Error('Expected search results header'); }
+        const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+
+        header.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBeTrue();
+        expect(requested).not.toHaveBeenCalled();
+    });
+
     it('submits an inline file rename while preserving the extension', () => {
         const renamed = jasmine.createSpy('renamed');
         fixture.componentInstance.renameSubmitted.subscribe(renamed);

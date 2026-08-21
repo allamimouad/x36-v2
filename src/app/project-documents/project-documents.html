@@ -82,6 +82,7 @@
       [segments]="navigation.pathSegments()"
       [projectLabel]="projectLabel()"
       [editablePath]="currentEditablePath()"
+      [contextLabel]="searchActive() ? 'Search results in' : null"
       [editing]="pathEditing()"
       [resolving]="fileSystem.isResolvingPath()"
       [pathError]="pathError()"
@@ -122,7 +123,7 @@
       <button
         pButton
         type="button"
-        [disabled]="!navigation.currentFolder() || creatingFolder()"
+        [disabled]="!navigation.currentFolder() || creatingFolder() || searchActive()"
         [loading]="creatingFolder()"
         pTooltip="Create a folder"
         tooltipPosition="bottom"
@@ -137,7 +138,7 @@
       <button
         pButton
         type="button"
-        [disabled]="!navigation.currentFolder()"
+        [disabled]="!navigation.currentFolder() || searchActive()"
         pTooltip="Upload files or a folder"
         tooltipPosition="bottom"
         severity="secondary"
@@ -282,6 +283,7 @@
             [deleteConfirmationId]="searchDeleteConfirmationId()"
             (resultActivated)="onSearchResultActivated($event)"
             (contextMenuRequested)="onSearchResultContextMenu($event)"
+            (emptyContextMenuRequested)="onSearchEmptyContextMenu($event)"
             (renameSubmitted)="onInlineRenameRequested($event)"
             (renameCancelled)="cancelInlineRename()"
             (renameEdited)="inlineRenameError.set(null)"

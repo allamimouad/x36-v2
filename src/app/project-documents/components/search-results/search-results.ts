@@ -40,6 +40,7 @@ export class SearchResults {
     public readonly deleteConfirmationId = input<string | null>(null);
     public readonly resultActivated = output<FileSystemNode>();
     public readonly contextMenuRequested = output<SearchResultContextMenuRequest>();
+    public readonly emptyContextMenuRequested = output<MouseEvent>();
     public readonly renameSubmitted = output<ItemRenameRequest>();
     public readonly renameCancelled = output();
     public readonly renameEdited = output();
@@ -87,6 +88,12 @@ export class SearchResults {
         event.preventDefault();
         event.stopPropagation();
         this.contextMenuRequested.emit({ event, result });
+    }
+
+    protected openEmptyContextMenu(event: MouseEvent): void {
+        event.preventDefault();
+        if ((event.target as HTMLElement).closest('thead')) { return; }
+        this.emptyContextMenuRequested.emit(event);
     }
 
     protected location(result: FileSystemNode): string {

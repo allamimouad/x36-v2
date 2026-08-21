@@ -453,6 +453,10 @@ export class ProjectDocuments {
         ]);
     }
 
+    protected onSearchEmptyContextMenu(event: MouseEvent): void {
+        this.showContextMenu(event, this.disabledSearchContextMenu());
+    }
+
     protected onNodeContextMenu(request: NodeContextMenuRequest): void {
         this.focusedSurface.set(request.source);
         this.navigation.focus(request.node.id);
@@ -1130,6 +1134,21 @@ export class ProjectDocuments {
                 currentFolder === null,
                 currentFolder ? this.uploadMenuItems(currentFolder) : undefined
             )
+        ];
+    }
+
+    private disabledSearchContextMenu(): MenuItem[] {
+        return [
+            this.menuItem(
+                'Create new Folder',
+                'create_new_folder',
+                'pd-menu-create-folder',
+                undefined,
+                true
+            ),
+            { separator: true },
+            this.menuItem('Paste', 'content_paste', 'pd-menu-paste', undefined, true),
+            this.menuItem('Upload', 'upload', 'pd-menu-upload', undefined, true)
         ];
     }
 

@@ -1,4 +1,7 @@
 <span #prefix class="pd-project-prefix">
+  @if (contextLabel(); as label) {
+    <span class="pd-context-label">{{ label }}:</span>
+  }
   <span class="pd-project-name">{{ projectLabel() }}</span>
   <span class="material-symbols-outlined pd-sep" aria-hidden="true">chevron_right</span>
 </span>

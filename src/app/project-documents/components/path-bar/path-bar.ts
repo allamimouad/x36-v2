@@ -42,6 +42,7 @@ export class PathBar {
     public readonly segments = input.required<PathSegment[]>();
     public readonly projectLabel = input.required<string>();
     public readonly editablePath = input<string>('');
+    public readonly contextLabel = input<string | null>(null);
     public readonly editing = input<boolean>(false);
     public readonly resolving = input<boolean>(false);
     public readonly pathError = input<string | null>(null);
@@ -88,7 +89,7 @@ export class PathBar {
             [seg.id ?? '', seg.listKey ?? '', seg.path ?? '', seg.label].join('\u001f')
         );
 
-        return [this.projectLabel(), ...parts].join('\u001e');
+        return [this.contextLabel() ?? '', this.projectLabel(), ...parts].join('\u001e');
     });
 
     private readonly effectiveCollapsed = computed(() => {

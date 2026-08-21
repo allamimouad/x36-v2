@@ -1,4 +1,4 @@
-<div class="pd-search-results">
+<div class="pd-search-results" (contextmenu)="openEmptyContextMenu($event)">
   @if (loading()) {
     <div class="pd-search-state" role="status">
       <span class="pd-search-loading">

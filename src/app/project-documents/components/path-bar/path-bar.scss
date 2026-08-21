@@ -28,8 +28,14 @@
 }
 
 .pd-project-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pd-context-label {
+  flex: 0 0 auto;
   white-space: nowrap;
 }
 
