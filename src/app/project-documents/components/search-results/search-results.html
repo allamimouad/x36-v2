@@ -1,8 +1,12 @@
 <div class="pd-search-results">
   @if (loading()) {
     <div class="pd-search-state" role="status">
-      <p-progressSpinner styleClass="pd-search-spinner" strokeWidth="3" />
-      <span>Searching…</span>
+      <span class="pd-search-loading">
+        <span class="pd-search-loading-spinner">
+          <p-progressSpinner styleClass="pd-search-spinner" strokeWidth="3" />
+        </span>
+        <span>Searching…</span>
+      </span>
     </div>
   } @else if (error(); as message) {
     <div class="pd-search-state pd-search-error" role="alert">

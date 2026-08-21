@@ -31,6 +31,8 @@ import {
 import { simulateMockUpload } from './mock-upload';
 import { searchMockNodes } from './mock-search';
 
+const SEARCH_SCREENSHOT_DELAY_MS = 3_000;
+
 @Injectable()
 export class MockFileSystemApi extends FileSystemApi {
     private readonly config: MockConfig = inject(MOCK_CONFIG);
@@ -109,7 +111,7 @@ export class MockFileSystemApi extends FileSystemApi {
             this.assertFolderAvailable(canonicalScope);
 
             return searchMockNodes(this.nodes, canonicalScope, query);
-        });
+        }, SEARCH_SCREENSHOT_DELAY_MS);
     }
 
     public override createFolder(
@@ -335,8 +337,8 @@ export class MockFileSystemApi extends FileSystemApi {
     }
 
     /** Simulated read: emits the factory result after randomized read latency. */
-    private read<T>(factory: () => T): Observable<T> {
-        return timer(this.latencyMs('read')).pipe(map(factory));
+    private read<T>(factory: () => T, additionalDelayMs = 0): Observable<T> {
+        return timer(this.latencyMs('read') + additionalDelayMs).pipe(map(factory));
     }
 
     /**

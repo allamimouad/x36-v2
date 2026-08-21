@@ -19,6 +19,18 @@
   color: var(--pd-text-muted);
 }
 
+.pd-search-loading {
+  position: relative;
+}
+
+.pd-search-loading-spinner {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 0.35rem);
+  display: flex;
+  transform: translateY(-50%);
+}
+
 .pd-search-error {
   color: var(--pd-danger);
 
