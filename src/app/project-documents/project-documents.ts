@@ -190,6 +190,11 @@ export class ProjectDocuments {
             this.navigation.currentHistoryEntry()?.kind === 'search' ||
             this.searchValidationError() !== null
     );
+    protected readonly createFolderButtonDisabled = computed(() => {
+        return !this.navigation.currentFolder() ||
+            this.searchActive() ||
+            this.creatingFolder();
+    });
     protected readonly searchRootPath = computed(() => {
         const scope = this.navigation.currentFolder();
         if (!scope) { return '/'; }
