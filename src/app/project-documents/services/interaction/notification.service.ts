@@ -15,7 +15,8 @@ const ERROR_MESSAGES: Record<FileSystemErrorCode, string> = {
         'Close it and try again in a moment.',
     'descendant-move': 'A folder cannot be placed inside itself or one of its subfolders.',
     'permission-denied': 'You do not have permission to perform this action.',
-    network: 'Connection problem — try again.',
+    network: 'We could not complete this action. Try again later. ' +
+        'If the problem persists, contact support.',
     cancelled: 'The operation was cancelled.',
     'too-large': 'This file is larger than the upload limit.',
     unknown: 'Something went wrong. Please try again.'

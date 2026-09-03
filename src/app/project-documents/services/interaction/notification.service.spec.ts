@@ -36,7 +36,11 @@ describe('NotificationService', () => {
                 'This file is currently open and locked for editing. ' +
                     'Close it and try again in a moment.'
             ],
-            ['network', 'Connection problem — try again.'],
+            [
+                'network',
+                'We could not complete this action. Try again later. ' +
+                    'If the problem persists, contact support.'
+            ],
             ['cancelled', 'The operation was cancelled.'],
             ['too-large', 'This file is larger than the upload limit.'],
             ['unknown', 'Something went wrong. Please try again.']
@@ -61,7 +65,8 @@ describe('NotificationService', () => {
             jasmine.objectContaining<ToastMessageOptions>({
                 key: PROJECT_DOCUMENTS_TOAST_KEY,
                 severity: 'error',
-                detail: 'Connection problem — try again.',
+                detail: 'We could not complete this action. Try again later. ' +
+                    'If the problem persists, contact support.',
                 sticky: true,
                 data: { retry }
             })

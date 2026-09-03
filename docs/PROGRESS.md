@@ -405,6 +405,14 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-09-04 — safer generic mutation failures and retry scope**: replaced the
+  misleading network-only toast wording with a neutral action-failure message that
+  directs persistent failures to support. Create, rename, delete, and copy/paste no
+  longer offer a direct Retry because their remote outcome may be ambiguous; existing
+  read/navigation retries and the upload-specific retry lifecycle remain unchanged.
+  App/spec TypeScript compilation, focused lint, the development build, and
+  `git diff --check` pass. No backend or API-contract changes.
+
 - **2026-08-20 — search accepts short file/folder names**: replaced the arbitrary
   three-character minimum with non-empty trimmed validation so legitimate names such
   as `D0`, or even a single-character name, can be found. Search remains explicit on

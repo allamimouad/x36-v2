@@ -493,10 +493,7 @@ export class ProjectDocuments {
                 this.notifications.success(`Folder “${created.name}” was created.`);
             }
         } catch (error) {
-            this.notifications.error(
-                error,
-                this.retryForReadError(error, () => void this.createFolder(parent.id))
-            );
+            this.notifications.error(error);
         } finally {
             this.creatingFolder.set(false);
         }
@@ -630,13 +627,7 @@ export class ProjectDocuments {
             if (fieldError) {
                 this.inlineRenameError.set(fieldError);
             } else {
-                this.notifications.error(
-                    error,
-                    this.retryForReadError(
-                        error,
-                        () => void this.onInlineRenameRequested({ ...request, name })
-                    )
-                );
+                this.notifications.error(error);
             }
         } finally {
             this.setWriting(request.node.id, false);
@@ -683,10 +674,7 @@ export class ProjectDocuments {
             this.refreshActiveSearch();
             this.notifications.success(`“${node.name}” was deleted.`);
         } catch (error) {
-            this.notifications.error(
-                error,
-                this.retryForReadError(error, () => void this.deleteNode(node))
-            );
+            this.notifications.error(error);
         } finally {
             this.setWriting(node.id, false);
         }
@@ -724,10 +712,7 @@ export class ProjectDocuments {
             await this.fileSystem.copy(source, target);
             this.notifications.success(`“${source.name}” was copied.`);
         } catch (error) {
-            this.notifications.error(
-                error,
-                this.retryForReadError(error, () => void this.pasteInto(target))
-            );
+            this.notifications.error(error);
         } finally {
             this.setWriting(target.id, false);
             this.pasting.set(false);
