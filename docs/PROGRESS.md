@@ -405,6 +405,13 @@ _Things noticed during implementation but not fixed in the current phase. Review
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 
+- **2026-09-16 — initial-folder navigation PR review**: saved the screenshot-based
+  review comment in `docs/review.md` for transfer to the other computer. Suggested
+  reusing `relativePathFromRoot` with the requested list's loaded root and choosing
+  the initial folder in the existing initialization flow, retaining query parameters.
+  Documentation only; no runtime changes or checks. Next: share the comment and
+  review the revised PR; existing implementation work and deferred issues remain.
+
 - **2026-09-04 — safer generic mutation failures and retry scope**: replaced the
   misleading network-only toast wording with a neutral action-failure message that
   directs persistent failures to support. Create, rename, delete, and copy/paste no
