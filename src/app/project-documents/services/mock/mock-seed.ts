@@ -369,6 +369,7 @@ export function buildSeed(): SeedResult {
         const rootPath = `${ROOT_PATH}${listKey.toLowerCase()}`;
         const root: FolderNode = {
             kind: 'folder',
+            isRecycleBin: false,
             listKey,
             id: rootId,
             path: rootPath,
@@ -400,6 +401,7 @@ function addFolder(
     const itemCount = (spec.folders?.length ?? 0) + (spec.files?.length ?? 0);
     const folder: FolderNode = {
         kind: 'folder',
+        isRecycleBin: false,
         listKey,
         id: crypto.randomUUID(),
         path,

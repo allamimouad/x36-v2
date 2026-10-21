@@ -1,5 +1,6 @@
 import type { Signal } from '@angular/core';
 import type { FileSystemNode } from '../models/file-system-node.model';
+import type { DocumentListRoots } from '../models/document-list.model';
 
 /**
  * Read-and-load surface exposed to consumers (e.g. `NavigationStore`) that need
@@ -15,6 +16,7 @@ export abstract class FileSystemReader {
     public abstract readonly entities: Signal<FileSystemNode[]>;
     public abstract readonly folderIdsWithLoadedChildren: Signal<string[]>;
     public abstract readonly folderIdsWithLoadingChildren: Signal<string[]>;
+    public abstract readonly initializedRoots: Signal<DocumentListRoots | null>;
 
     /** Fetch (or refetch) the children of `parentId` and cache them. */
     public abstract loadChildren(parentId: string): Promise<void>;

@@ -99,7 +99,7 @@
         type="text"
         placeholder="Search this folder"
         [value]="searchText()"
-        [disabled]="!navigation.currentFolder() || fileSystem.isInitializing()"
+        [disabled]="!navigation.currentFolder() || fileSystem.isInitializing() || navigation.currentFolderIsRecycleBin()"
         [attr.aria-invalid]="searchValidationError() ? 'true' : null"
         aria-label="Search files and folders"
         data-testid="pd-search"
@@ -138,7 +138,7 @@
       <button
         pButton
         type="button"
-        [disabled]="!navigation.currentFolder() || searchActive()"
+        [disabled]="uploadButtonDisabled()"
         pTooltip="Upload files or a folder"
         tooltipPosition="bottom"
         severity="secondary"
@@ -195,6 +195,7 @@
             <h2 class="pd-tree-section-title">{{ projectLabel() }} - {{ label }}</h2>
             <pr-folder-tree
               [nodes]="nodes"
+              [readonlyAccessByListKey]="navigation.readonlyAccessByListKey()"
               [currentFolderId]="navigation.currentFolderId()"
               [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
               [writingIds]="writingIds()"
@@ -230,27 +231,27 @@
             <ng-template #panel>
               <ng-container
                 [ngTemplateOutlet]="treeSection"
-                [ngTemplateOutletContext]="marketingSectionContext()"
+                [ngTemplateOutletContext]="executionSectionContext()"
               />
             </ng-template>
             <ng-template #panel>
               <ng-container
                 [ngTemplateOutlet]="treeSection"
-                [ngTemplateOutletContext]="executionSectionContext()"
+                [ngTemplateOutletContext]="marketingSectionContext()"
               />
             </ng-template>
           </p-splitter>
         } @else {
-          @if (marketingRootAvailable()) {
-            <ng-container
-              [ngTemplateOutlet]="treeSection"
-              [ngTemplateOutletContext]="marketingSectionContext()"
-            />
-          }
           @if (executionRootAvailable()) {
             <ng-container
               [ngTemplateOutlet]="treeSection"
               [ngTemplateOutletContext]="executionSectionContext()"
+            />
+          }
+          @if (marketingRootAvailable()) {
+            <ng-container
+              [ngTemplateOutlet]="treeSection"
+              [ngTemplateOutletContext]="marketingSectionContext()"
             />
           }
         }
@@ -292,6 +293,11 @@
           />
         } @else {
           <pr-file-table
+            [projectName]="projectLabel()"
+            [currentFolderListKey]="navigation.currentFolder()?.listKey ?? null"
+            [currentFolderIsRecycleBin]="navigation.currentFolderIsRecycleBin()"
+            [isCurrentFolderReadonly]="navigation.isCurrentFolderReadonly()"
+            [documentRootPath]="searchRootPath()"
             [folders]="navigation.currentFolderChildren().folders"
             [files]="navigation.currentFolderChildren().files"
             [loading]="isCurrentLoading() || fileSystem.isResolvingPath() || bootstrapLoading()"
@@ -347,4 +353,11 @@
     />
   }
 
+  <pr-recycle-bin-dialogs
+    [pendingDelete]="permanentDeleteTarget()"
+    [restoreError]="restoreError()"
+    (deleteConfirmed)="confirmPermanentDelete($event)"
+    (deleteCancelled)="permanentDeleteTarget.set(null)"
+    (errorClosed)="restoreError.set(null)"
+  />
 </div>

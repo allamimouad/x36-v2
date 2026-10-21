@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- Store methods share the entity cache and request state. */
 import { inject, isDevMode } from '@angular/core';
 import { withDevToolsStub, withDevtools, withMapper } from '@angular-architects/ngrx-toolkit';
 import {
@@ -79,6 +80,7 @@ export const FileSystemStore = signalStore(
     withEntities<FileSystemNode>(),
     withState(initialState),
     fileSystemDevtoolsFeature(),
+    // eslint-disable-next-line max-lines-per-function -- Methods share private cache helpers.
     withMethods((store, api = inject(FileSystemApi)) => {
     // The `_`-prefixed functions below are private local closures (internal helpers),
     // NOT NgRx private store members — they are not returned from `withMethods`.
@@ -132,7 +134,8 @@ export const FileSystemStore = signalStore(
                     (listing): RootLoadResult => ({
                         listKey,
                         listing,
-                        root: { status: 'loaded', root: listing.currentFolder }
+                        root: { status: 'loaded', root: listing.currentFolder,
+                            isListReadonly: listing.isListReadonly ?? false }
                     })
                 ),
                 catchError((e) => {
@@ -251,7 +254,9 @@ export const FileSystemStore = signalStore(
                     );
                 }
                 const listing = await firstValueFrom(
-                    api.listDocuments(_requireProjectId(), parent)
+                    parent.isRecycleBin
+                        ? api.getRecycleBinItems(_requireProjectId(), parent.id)
+                        : api.listDocuments(_requireProjectId(), parent)
                 );
                 _applyListing(listing);
             } catch (e) {
@@ -469,6 +474,30 @@ export const FileSystemStore = signalStore(
             _unmarkLoaded(...subtree.filter(isFolder).map((folder) => folder.id));
         };
 
+        const deleteRecycleBinNodes = async (ids: string | string[]): Promise<void> => {
+            const id = onlySingleId(ids, 'delete');
+            const node = store.entityMap()[id];
+            if (!node?.parentId) {
+                throw new FileSystemError('not-found', 'Recycle bin item not found');
+            }
+            await firstValueFrom(api.deletePermanentlyRecycleBinItem(
+                _requireProjectId(), node.parentId, node.id
+            ));
+            patchState(store, removeEntities(_cachedSubtreeIds(id)));
+        };
+
+        const restoreRecycleBinNodes = async (ids: string | string[]): Promise<void> => {
+            const id = onlySingleId(ids, 'restore');
+            const node = store.entityMap()[id];
+            if (!node?.parentId) {
+                throw new FileSystemError('not-found', 'Recycle bin item not found');
+            }
+            await firstValueFrom(api.restoreRecycleBinItem(
+                _requireProjectId(), node.parentId, node.id
+            ));
+            patchState(store, removeEntities(_cachedSubtreeIds(id)));
+        };
+
         // Clear loaded/loading markers for a removed subtree only (incl. its root, so a
         // moved node shows collapsed/unloaded at the destination). Old/target parents stay
         // loaded — their child lists are correct via the local remove + insert.
@@ -588,6 +617,8 @@ export const FileSystemStore = signalStore(
             createFolder,
             rename,
             delete: deleteNodes,
+            deleteRecycleBinNodes,
+            restoreRecycleBinNodes,
             move,
             copy,
             upload

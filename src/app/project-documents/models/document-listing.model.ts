@@ -4,6 +4,7 @@ export interface DocumentListing {
     currentFolder: FolderNode;
     folders: FolderNode[];
     files: FileNode[];
+    isListReadonly?: boolean;
 }
 
 /** Result of resolving a typed list-relative path to a folder. */

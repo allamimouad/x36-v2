@@ -269,6 +269,35 @@ export class SharePointFileSystemApi extends FileSystemApi {
         return throwError(() => new Error(IMPLEMENTATION_PENDING));
     }
 
+    /** Read deleted items through the application's recycle-bin client. */
+    public override getRecycleBinItems(
+        _projectId: string,
+        _listGuid: string
+    ): Observable<DocumentListing> {
+        // TODO: connect the recycle-bin listing operation.
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
+
+    /** Restore an item through the application's recycle-bin client. */
+    public override restoreRecycleBinItem(
+        _projectId: string,
+        _listGuid: string,
+        _nodeId: string
+    ): Observable<void> {
+        // TODO: connect the recycle-bin restore operation.
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
+
+    /** Delete an item through the application's recycle-bin client. */
+    public override deletePermanentlyRecycleBinItem(
+        _projectId: string,
+        _listGuid: string,
+        _nodeId: string
+    ): Observable<void> {
+        // TODO: connect the recycle-bin delete operation.
+        return throwError(() => new Error(IMPLEMENTATION_PENDING));
+    }
+
     /**
    * POST the complete File as one raw request to the list-scoped backend upload route.
    * Report browser-to-backend progress, honor `signal`, and emit the returned FileNode.

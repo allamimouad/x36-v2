@@ -17,7 +17,7 @@ export const DOCUMENT_LIST_LABELS: Record<DocumentListKey, string> = {
 };
 
 export type DocumentListRootStatus =
-    | { status: 'loaded'; root: FolderNode }
+    | { status: 'loaded'; root: FolderNode; isListReadonly?: boolean }
     | { status: 'not-found' }
     | { status: 'error'; error: FileSystemError };
 

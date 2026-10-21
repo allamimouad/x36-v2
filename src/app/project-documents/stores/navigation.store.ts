@@ -16,6 +16,8 @@ import {
     type FileSystemNode,
     type FolderNode
 } from '../models/file-system-node.model';
+import { DOCUMENT_LIST_KEYS } from '../models/document-list.model';
+import { FolderNodeResponseAccessLevelEnum } from '../models/document-access.model';
 import { FileSystemReader } from './file-system-reader';
 
 /**
@@ -77,6 +79,7 @@ export const NAVIGATION_UNAVAILABLE = 'This folder is no longer available from t
 export const NavigationStore = signalStore(
     withState(initialState),
     navigationDevtoolsFeature(),
+    // eslint-disable-next-line max-lines-per-function -- Computed signals share the store context.
     withComputed((store) => {
         const fsReader = inject(FileSystemReader);
         const entityMap = fsReader.entityMap;
@@ -89,6 +92,32 @@ export const NavigationStore = signalStore(
 
             return node && isFolder(node) ? node : null;
         });
+
+        const currentFolderIsRecycleBin = computed<boolean | null>(
+            () => currentFolder()?.isRecycleBin ?? null
+        );
+        const readonlyAccessByListKey = computed<ReadonlyMap<DocumentListKey, boolean>>(() => {
+            const roots = fsReader.initializedRoots();
+            const result = new Map<DocumentListKey, boolean>();
+            if (!roots) { return result; }
+            for (const key of DOCUMENT_LIST_KEYS) {
+                const root = roots[key];
+                result.set(key, root.status === 'loaded' && !!root.isListReadonly);
+            }
+
+            return result;
+        });
+        const isListReadonly = computed(
+            () => {
+                const key = currentFolder()?.listKey;
+
+                return key ? readonlyAccessByListKey().get(key) ?? false : false;
+            }
+        );
+        const isCurrentFolderReadonly = computed(
+            () => currentFolder()?.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly ||
+                isListReadonly()
+        );
 
         const parentId = computed<string | null>(() => currentFolder()?.parentId ?? null);
 
@@ -142,6 +171,10 @@ export const NavigationStore = signalStore(
 
         return {
             currentFolder,
+            currentFolderIsRecycleBin,
+            readonlyAccessByListKey,
+            isListReadonly,
+            isCurrentFolderReadonly,
             parentId,
             currentHistoryEntry,
             currentBreadcrumb,
@@ -152,6 +185,7 @@ export const NavigationStore = signalStore(
             canGoUp
         };
     }),
+    // eslint-disable-next-line max-lines-per-function -- Methods share private navigation closures.
     withMethods((store) => {
         const fsReader = inject(FileSystemReader);
 

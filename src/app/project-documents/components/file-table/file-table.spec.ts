@@ -81,6 +81,49 @@ describe('FileTable', () => {
         expect(submitted).toHaveBeenCalledOnceWith({ node: folder, name: 'Reports.2026' });
     });
 
+    it('hides the virtual recycle bin from ordinary listings', () => {
+        fixture.componentRef.setInput('folders', [folder, { ...folder,
+            id: 'bin', name: 'Recycle Bin', isRecycleBin: true }]);
+        fixture.detectChanges();
+        expect(hostElement().querySelector('[data-testid="pd-row-bin"]')).toBeNull();
+        expect(hostElement().querySelector(`[data-testid="pd-row-${folder.id}"]`)).not.toBeNull();
+    });
+
+    it('shows deleted metadata without navigation or empty-space actions', () => {
+        fixture.componentRef.setInput('currentFolderIsRecycleBin', true);
+        fixture.componentRef.setInput('projectName', 'Project');
+        fixture.componentRef.setInput('currentFolderListKey', 'EXECUTION');
+        fixture.componentRef.setInput('documentRootPath', '/Documents');
+        const activated = jasmine.createSpy('activated');
+        const emptyMenu = jasmine.createSpy('emptyMenu');
+        fixture.componentInstance.itemDoubleClicked.subscribe(activated);
+        fixture.componentInstance.emptyContextMenuRequested.subscribe(emptyMenu);
+        fixture.detectChanges();
+
+        const host = hostElement();
+        expect([...host.querySelectorAll('.pd-th-label')].map((el) => el.textContent?.trim()))
+            .toEqual(['File Name', 'Path', 'Deleted', 'Deleted By', 'Size']);
+        expect(host.textContent).toContain(file.name);
+        expect(host.textContent).toContain('Project/execution/Reports');
+        host.querySelector(`[data-testid="pd-row-${file.id}"]`)?.dispatchEvent(
+            new MouseEvent('dblclick', { bubbles: true }));
+        host.querySelector('.pd-table-surface')?.dispatchEvent(
+            new MouseEvent('contextmenu', { bubbles: true }));
+        expect(activated).not.toHaveBeenCalled();
+        expect(emptyMenu).not.toHaveBeenCalled();
+    });
+
+    it('suppresses blank-space drops in a read-only current folder', () => {
+        fixture.componentRef.setInput('isCurrentFolderReadonly', true);
+        fixture.detectChanges();
+        const dropped = jasmine.createSpy('dropped');
+        fixture.componentInstance.currentFolderDropped.subscribe(dropped);
+        const space = hostElement().querySelector('.pd-current-folder-space');
+        expect(space).not.toBeNull();
+        space?.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
+        expect(dropped).not.toHaveBeenCalled();
+    });
+
     function button(testId: string): HTMLButtonElement | null {
         return hostElement().querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`);
     }
@@ -106,6 +149,7 @@ describe('FileTable', () => {
 
 const folder: FolderNode = {
     kind: 'folder',
+    isRecycleBin: false,
     listKey: 'EXECUTION',
     id: 'folder-1',
     path: '/Documents/Reports',

@@ -6,8 +6,10 @@
 
 ## Current Status
 
-**Active Phase**: Phase 2 — Mutations
-**Overall Progress**: 1 / 5 phases complete
+**Active Work**: Four-PR synchronization completed (2026-10-21). Next: internal drag-and-drop.
+**Implementation Status**: Browsing, mutations, single-item copy/paste, uploads,
+recursive search, recycle bin, access flags, and initial folder links are implemented.
+Cut, multi-selection/bulk operations, and internal drag-and-drop remain deferred.
 
 ---
 
@@ -94,23 +96,17 @@
 
 ## Current Focus
 
-_What should the next session work on?_
-
-1. Browser-check local search from both a list root and a nested folder: non-empty
-   validation, one-character names, mixed file/folder matches, empty results,
-   Clear/Escape, and result navigation to a folder or a file's containing folder.
-2. Write the backend implementation handoff against the now-stable
-   `searchDocuments(projectId, scope, query)` response contract. The backend should use
-   the verified root `GET .../items` continuation scan, then filter list/path/name in
-   Java; do not revive threshold-blocked nested recursive CAML or folder traversal.
-3. Browser-check Folder / File selection, the upload panel, cancellation, and a local
-   tree containing nested empty folders in Edge/Chrome.
-4. Browser-check the three context-menu variants, hover submenus, inline delete
-   confirmation, and forced write errors.
-5. Run the Phase 2 acceptance checks for create, inline rename, delete confirmation,
-   and tree/table synchronization.
-6. Run Karma locally with Chrome/Edge installed (the agent environment can build the
-   suite but has no browser binary).
+1. Review the synchronized behavior locally, then begin the separately authorized
+   internal drag-and-drop work. Mutations/actions already exist; do not rebuild them.
+2. Use [the four-PR handoff](handoffs/pr-sync.md) when transferring this
+   feature. Keep the destination's generated services, working SharePoint adapter,
+   providers, and shared popup/reporting integrations.
+3. Permission gaps deliberately preserved from the PRs (protected search results,
+   actual row/tree drops, cross-list paste target access) need a separate decision
+   before hardening. No new role inference or mutation retries were added.
+4. Complete manual Edge/Chrome acceptance and real backend verification for uploads,
+   search, and recycle-bin operations on the destination. The local browser suite
+   now runs successfully: 140 tests passed in headless Chrome.
 
 Backend upload implementation handoff: use
 `docs/backend-operations/upload-file-feign-buffered.md` for the first bounded
@@ -122,6 +118,14 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 ---
 
 ## Decisions Log
+
+- **2026-10-21 — PR synchronization**: user authorized all four screenshot
+  PRs on `sync/pr-changes`, chose exact PR permission behavior, local mocks and
+  popup equivalents, and a Google Material SVG. Recycle bin is now in scope.
+  Execution is displayed/opened first; both initial URL parameters are resolved
+  after normal initialization and then cleared. Backend-generated dependencies and
+  target-only application integrations are retained on the destination. See the
+  handoff for file boundaries and deliberately preserved gaps.
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
@@ -402,6 +406,17 @@ _Things noticed during implementation but not fixed in the current phase. Review
 ---
 
 ## Session Notes
+
+- **2026-10-21 — four PRs applied**: implemented recycle-bin data/UI and nested mock
+  restore, backend-supplied folder/file/list access, and Execution-first/URL initial
+  navigation. Added local modal confirmation/error components and Google bin SVG.
+  Required model flags were added to fixtures; stale seed-count/file-location
+  expectations were corrected. App/spec TypeScript, development/production builds,
+  and diff check pass. Karma: **140/140 pass** in headless Chrome 147. Lint: no
+  errors, only the existing two path-bar accessibility warnings. Production retains
+  initial-bundle/container-style budget warnings. No dependency or system package
+  changes; browser runtime dependencies were extracted into `/tmp` for testing.
+  Unrelated launch configuration and investigation document were left untouched.
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 

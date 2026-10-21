@@ -30,6 +30,8 @@ import {
 } from './mock-node-utils';
 import { simulateMockUpload } from './mock-upload';
 import { searchMockNodes } from './mock-search';
+import { MockRecycleBin } from './mock-recycle-bin';
+import { applyMockAccess } from './mock-access';
 
 const SEARCH_SCREENSHOT_DELAY_MS = 3_000;
 
@@ -45,6 +47,15 @@ export class MockFileSystemApi extends FileSystemApi {
     );
     /** Stand-in for the signed-in user; stamped as `modifiedBy` on every mutation. */
     private readonly currentUser = 'You';
+    private readonly recycleBin = new MockRecycleBin(this.nodes);
+
+    constructor() {
+        super();
+        for (const rootId of Object.values(this.rootIdByList)) {
+            this.recycleBin.addBin(this.requireFolder(rootId));
+        }
+        applyMockAccess(this.nodes, this.config);
+    }
 
     public override listDocumentRoot(
         _projectId: string,
@@ -134,6 +145,7 @@ export class MockFileSystemApi extends FileSystemApi {
             const now = nowIso();
             const folder: FolderNode = {
                 kind: 'folder',
+                isRecycleBin: false,
                 listKey: parentNode.listKey,
                 id: crypto.randomUUID(),
                 path: joinPath(parentNode.path, canonicalName),
@@ -253,11 +265,36 @@ export class MockFileSystemApi extends FileSystemApi {
             const ids = isFolder(current)
                 ? collectDescendantIds(this.nodes, current.id)
                 : [current.id];
+            const subtree = ids.map((id) => clone(this.requireNode(id)));
+            this.recycleBin.recycle(current, subtree);
             for (const nodeId of ids) {
                 this.nodes.delete(nodeId);
             }
             touchParentCounts(this.nodes, parentId);
         });
+    }
+
+    public override getRecycleBinItems(
+        _projectId: string,
+        listGuid: string
+    ): Observable<DocumentListing> {
+        return this.read(() => this.recycleBin.listing(listGuid));
+    }
+
+    public override restoreRecycleBinItem(
+        _projectId: string,
+        listGuid: string,
+        nodeId: string
+    ): Observable<void> {
+        return this.write(() => this.recycleBin.restore(listGuid, nodeId));
+    }
+
+    public override deletePermanentlyRecycleBinItem(
+        _projectId: string,
+        listGuid: string,
+        nodeId: string
+    ): Observable<void> {
+        return this.write(() => this.recycleBin.deletePermanently(listGuid, nodeId));
     }
 
     public override upload(
@@ -314,6 +351,7 @@ export class MockFileSystemApi extends FileSystemApi {
             throw new FileSystemError('not-found', `Folder not found in ${listKey}: ${parentId}`);
         }
         this.assertFolderAvailable(parent);
+        if (parent.isRecycleBin) { return this.recycleBin.listing(parent.id); }
         const folders: FolderNode[] = [];
         const files: FileNode[] = [];
         for (const node of this.nodes.values()) {
@@ -324,7 +362,10 @@ export class MockFileSystemApi extends FileSystemApi {
         folders.sort((a, b) => a.name.localeCompare(b.name));
         files.sort((a, b) => a.name.localeCompare(b.name));
 
-        return { currentFolder: clone(parent), folders, files };
+        return {
+            currentFolder: clone(parent), folders, files,
+            isListReadonly: this.config.readonlyListKeys?.includes(listKey) ?? false
+        };
     }
 
     private assertFolderAvailable(folder: FolderNode): void {

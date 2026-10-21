@@ -7,6 +7,8 @@
 >
 > **Before starting any work**: read `PROGRESS.md` to see which phase is active.
 > **Before ending your session**: update `PROGRESS.md` with what you completed, what you deferred, and what the next session should pick up.
+> **Authorized scope update (2026-10-21):** the four PRs are synchronized locally, including recycle bin, backend-supplied access rules, and initial folder links. This explicitly extends the original scope; internal drag-and-drop remains deferred. See `handoffs/pr-sync.md`.
+>
 > **Never implement features from a future phase.** If you notice something needed later, note it in `PROGRESS.md` under "Deferred" and move on.
 > **Git publishing rule**: commit and push to `main` by default. Create or use another
 > branch only when the user explicitly asks for one.
@@ -87,7 +89,7 @@ The `src/app/project-documents/` folder will be copied verbatim to another machi
 
 ### 3.1 Layout
 
-- **Left pane**: folder tree (folders only, no files)
+- **Left pane**: folder tree (folders only, no files), Execution above Marketing; each list has a recycle-bin leaf sorted after ordinary folders
 - **Right pane**: contents of the currently-open folder (folders + files)
 - **Top bar**: back / forward / up buttons, clickable breadcrumb path, action buttons (new folder, upload), search input
 - **Bottom status bar**: selection count, current folder item count
@@ -110,6 +112,8 @@ The `src/app/project-documents/` folder will be copied verbatim to another machi
 
 ### 3.3 Navigation
 
+- Initially open Execution when available, otherwise Marketing.
+- Optional URL query parameters `listKey` (case-insensitive) and `folderPath` (full backend path) resolve a folder after default initialization. Both must be non-empty. On success or failure, clear query parameters with `replaceUrl`; default navigation stays in history.
 - **Double-click a folder on the right** → opens that folder
 - **Double-click a file on the right** → opens it in its online application
 - **Single-click a folder on the tree** → opens that folder
@@ -258,6 +262,38 @@ All scenarios must work:
 
 ---
 
+### 3.11 Recycle bin and backend-supplied access
+
+- Every folder carries `isRecycleBin`; the virtual bin appears only in the tree, as
+  a leaf. Deleted folders never expand into that tree. Ordinary table counts exclude
+  the virtual bin.
+- A bin view lists full File Name, Path (project/list/original relative path), Deleted,
+  Deleted By, and Size, initially newest deletion first. Empty text is
+  "The recycle bin is empty." Search, create, upload, empty-area context menus,
+  double-click navigation, and ordinary table editing/drop targets are unavailable.
+- Deleted-item context menus expose Restore and Delete. Restore reports success or
+  an escaped error dialog. Permanent Delete requires a modal Cancel/Confirm step.
+  Both writes remove the bin record from cache only after API success; restored
+  contents appear when their original location is next loaded.
+- `accessLevel` is optional. Folder `Protected` disables rename/delete while keeping
+  contents writable; `Readonly` disables rename/delete and upload within the folder.
+  File `Readonly`, or a read-only current folder, disables file rename/delete.
+  Copy/open/download retain their existing rules.
+- Root listing `isListReadonly` feeds a map keyed by document list. Current-folder
+  access combines its own flag and its list flag. Folder context menus and tree
+  dragover use the destination folder's list; file menus use the current folder.
+  Bin Restore/Delete are disabled for a read-only current list.
+- Current-folder read-only state disables create/upload, empty-area writes, paste,
+  and blank-space dragover/drop. Paste also checks the target's own access flag.
+  Row-folder dragover checks own/current-folder access; tree dragover checks own/list
+  access and excludes recycle bins.
+- This synchronization preserves the reviewed PR behavior, including gaps in
+  protected search-result actions, actual row/tree drop handlers, and target-list
+  paste checks. These are recorded in the handoff for separate follow-up; backend
+  authorization remains required.
+
+---
+
 ## 4. Data Models
 
 ```ts
@@ -267,13 +303,15 @@ export type FileSystemNode = FolderNode | FileNode;
 
 export interface FolderNode {
   kind: 'folder';
+  isRecycleBin: boolean;
+  accessLevel?: FolderNodeResponseAccessLevelEnum;
   listKey: DocumentListKey; // domain list/site routing context
   id: string;              // stable, opaque UUID (SharePoint UniqueId); never the path
   path: string;            // full path from root, e.g. "/Documents/Reports/2026"
   name: string;
   parentId: string | null; // null for root
   itemCount?: number;       // omitted by lightweight recursive search
-  createdAt: string;       // ISO
+  createdAt?: string;       // ISO
   modifiedAt: string;      // ISO
   modifiedBy?: string;
   webUrl?: string;         // absolute SharePoint browser URL for this folder
@@ -281,13 +319,14 @@ export interface FolderNode {
 
 export interface FileNode {
   kind: 'file';
+  accessLevel?: FileNodeResponseAccessLevelEnum;
   listKey: DocumentListKey;
   id: string;
   path: string;
   name: string;
   parentId: string;
   sizeBytes?: number;      // omitted by lightweight recursive search
-  createdAt: string;
+  createdAt?: string;
   modifiedAt: string;
   modifiedBy?: string;
   contentType?: string;
@@ -326,6 +365,7 @@ export abstract class FileSystemApi {
   /** List the root of one document list (`listKey`) with its direct children. */
   abstract listDocumentRoot(projectId: string, listKey: DocumentListKey): Observable<{
     currentFolder: FolderNode;
+    isListReadonly?: boolean;
     folders: FolderNode[];
     files: FileNode[];
   }>;
@@ -333,6 +373,7 @@ export abstract class FileSystemApi {
   /** List direct children; the adapter extracts `parent.listKey` and `parent.id`. */
   abstract listDocuments(projectId: string, parent: FolderNode): Observable<{
     currentFolder: FolderNode;
+    isListReadonly?: boolean;
     folders: FolderNode[];
     files: FileNode[];
   }>;
@@ -366,6 +407,10 @@ export abstract class FileSystemApi {
 
   /** Delete a folder (recursive) or file. */
   abstract delete(projectId: string, node: FileSystemNode): Observable<void>;
+
+  abstract getRecycleBinItems(projectId: string, listGuid: string): Observable<DocumentListing>;
+  abstract restoreRecycleBinItem(projectId: string, listGuid: string, nodeId: string): Observable<void>;
+  abstract deletePermanentlyRecycleBinItem(projectId: string, listGuid: string, nodeId: string): Observable<void>;
 
   /** Upload a file. Emits progress (0-100). Returns the created FileNode. */
   abstract upload(
@@ -430,6 +475,13 @@ because a recursive copy may contain children.
 ## 6. Mock Implementation Requirements
 
 `MockFileSystemApi` must:
+
+- Create one virtual bin per list and retain deleted subtree snapshots. Restore keeps
+  original ids and restores paths under the current original parent; missing parents
+  and name collisions leave records recoverable. Permanent deletion removes snapshots.
+- Exclude bins/deleted records from recursive search. Support mock configuration for
+  `readonlyListKeys`, `protectedFolderPaths`, and `readonlyFolderPaths`; default demo
+  examples are protected `execution/Contracts` and read-only `marketing/Press`.
 
 - **In-memory tree**: `Map<string, FileSystemNode>` seeded from `mock-seed.ts`
 - **Seed data**: two document-list roots (`execution`, `marketing`) with nested folders and mixed file types (`.pdf`, `.docx`, `.xlsx`, `.png`, `.txt`). The local mock includes `execution/Unavailable on open` to simulate a folder that appears in a listing but returns `not-found` when opened.
@@ -503,7 +555,7 @@ complete; the remaining operations retain implementation-pending Observable erro
 **`FileSystemStore`** (entity cache, keyed by `id`):
 - Entities: `FileSystemNode`
 - State: `projectId: string | null`, `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, FileSystemError | undefined>`, `folderIdsWithLoadedChildren: string[]`, `isInitializing: boolean`, `initializedRoots: DocumentListRoots | null`
-- Methods: `connectProject(projectId)` (reactive `rxMethod`: the container passes its `projectId` input signal once; every change resets project state and re-initializes, with `switchMap` cancelling any in-flight load; imperative calls with a plain id retry the same project), `initialize(projectId)` (promise facade over one initialization — returns `DocumentListRoots` with each list marked `loaded`, `not-found`, or `error`; used by unit tests), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(nodeOrId, newName)`, `delete(nodeOrId)`, `move(ids, targetParentId)`, `copy(nodeOrId, targetNodeOrId)`, `invalidate(parentId)`, `upload(parentId, file, onProgress, signal)`
+- Methods: `connectProject(projectId)` (reactive `rxMethod`: the container passes its `projectId` input signal once; every change resets project state and re-initializes, with `switchMap` cancelling any in-flight load; imperative calls with a plain id retry the same project), `initialize(projectId)` (promise facade over one initialization — returns `DocumentListRoots` with each list marked `loaded`, `not-found`, or `error`; used by unit tests), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(nodeOrId, newName)`, `delete(nodeOrId)`, `deleteRecycleBinNodes(ids)`, `restoreRecycleBinNodes(ids)`, `move(ids, targetParentId)`, `copy(nodeOrId, targetNodeOrId)`, `invalidate(parentId)`, `upload(parentId, file, onProgress, signal)`
 - Depends on `FileSystemApi` (injected), not on a concrete class
 
 **`NavigationStore`**:
@@ -707,7 +759,6 @@ export const FILE_MANAGER_CONFIG = new InjectionToken<FileManagerConfig>('FILE_M
 - Document preview
 - Check-in / check-out
 - Search within file contents
-- Recycle bin
 - Favorites / pinned folders
 
 Don't implement, don't stub. If the spec seems to suggest one of these, it's wrong — flag it, don't build it.

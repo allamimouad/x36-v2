@@ -10,6 +10,14 @@
   styleClass="pd-tree"
 >
   <ng-template let-node pTemplate="default">
+    @if (node.data.isRecycleBin) {
+      <span class="pd-tree-node"
+        (dragenter)="onExternalFolderDragOver($event, node)"
+        (dragover)="onExternalFolderDragOver($event, node)">
+        <pr-file-system-icon name="recyclebin" />
+        <span class="pd-tree-label">{{ node.label }}</span>
+      </span>
+    } @else {
     <span
       class="pd-tree-node"
       [class.pd-tree-node-writing]="writingIds().has(node.key)"
@@ -79,5 +87,6 @@
         <span class="material-symbols-outlined pd-write-spinner" aria-hidden="true">progress_activity</span>
       }
     </span>
+    }
   </ng-template>
 </p-tree>

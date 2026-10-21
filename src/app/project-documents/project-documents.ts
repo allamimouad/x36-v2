@@ -13,6 +13,12 @@ import {
     viewChild
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
+import { ActivatedRoute, Router } from '@angular/router';
+import {
+    FolderNodeResponseAccessLevelEnum,
+    FileNodeResponseAccessLevelEnum
+} from './models/document-access.model';
+import { RecycleBinDialogs } from './components/recycle-bin-dialogs/recycle-bin-dialogs';
 import {
     MessageService,
     type MenuItem,
@@ -97,6 +103,7 @@ interface PendingDelete {
         ContextMenuItem,
         UploadPanel,
         SearchResults,
+        RecycleBinDialogs,
         ButtonModule,
         ContextMenu,
         InputTextModule,
@@ -164,6 +171,8 @@ export class ProjectDocuments {
 
         return pending?.surface === 'search' ? pending.node.id : null;
     });
+    protected readonly permanentDeleteTarget = signal<FileSystemNode | null>(null);
+    protected readonly restoreError = signal<string | null>(null);
     protected readonly creatingFolder = signal(false);
     protected readonly pasting = signal(false);
     protected readonly toolbarUploadItems = signal<MenuItem[]>([]);
@@ -171,7 +180,8 @@ export class ProjectDocuments {
     protected readonly externalDropTargetId = signal<string | null>(null);
     protected readonly externalDropSurface = signal<'table' | 'tree' | null>(null);
     protected readonly currentFolderDropActive = computed(() => {
-        if (this.externalDropSurface() !== 'table' || this.currentFolderError()) {
+        if (this.externalDropSurface() !== 'table' || this.currentFolderError() ||
+            this.navigation.isCurrentFolderReadonly()) {
             return false;
         }
         const currentFolderId = this.navigation.currentFolderId();
@@ -193,8 +203,14 @@ export class ProjectDocuments {
     protected readonly createFolderButtonDisabled = computed(() => {
         return !this.navigation.currentFolder() ||
             this.searchActive() ||
+            this.navigation.currentFolderIsRecycleBin() ||
+            this.navigation.isCurrentFolderReadonly() ||
             this.creatingFolder();
     });
+    protected readonly uploadButtonDisabled = computed(() =>
+        !this.navigation.currentFolder() || this.searchActive() ||
+        this.navigation.currentFolderIsRecycleBin() || this.navigation.isCurrentFolderReadonly()
+    );
     protected readonly searchRootPath = computed(() => {
         const scope = this.navigation.currentFolder();
         if (!scope) { return '/'; }
@@ -319,14 +335,17 @@ export class ProjectDocuments {
         const folder = this.navigation.currentFolder();
         if (!folder || this.isCurrentLoading()) { return 'Loading…'; }
         const { folders, files } = this.navigation.currentFolderChildren();
-        const total = folders.length + files.length;
-        const folderCount = `${folders.length} folder${folders.length === 1 ? '' : 's'}`;
+        const visibleFolderCount = folders.filter((child) => !child.isRecycleBin).length;
+        const total = visibleFolderCount + files.length;
+        const folderCount = `${visibleFolderCount} folder${visibleFolderCount === 1 ? '' : 's'}`;
         const fileCount = `${files.length} file${files.length === 1 ? '' : 's'}`;
 
         return `${folderCount}, ${fileCount} (${total} total)`;
     });
 
     protected readonly bootstrapLoading = computed(() => this.fileSystem.isInitializing());
+    private readonly router = inject(Router);
+    private readonly route = inject(ActivatedRoute);
     private pendingFileTarget: FolderNode | null = null;
 
     constructor() {
@@ -337,6 +356,7 @@ export class ProjectDocuments {
         this.observeInitializedRoots();
         this.observeReadErrors();
         this.observeSearchHistory();
+        this.observeInitialFolderPath();
     }
 
     @HostListener('document:pointerdown', ['$event'])
@@ -440,7 +460,9 @@ export class ProjectDocuments {
 
             return;
         }
-        const locked = this.isWriting(result.id);
+        const locked = this.isWriting(result.id) ||
+            result.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly ||
+            this.navigation.isListReadonly();
         this.showContextMenu(request.event, [
             this.menuItem('Open Folder', 'folder_open', 'pd-menu-open-folder', () => {
                 void this.onSearchResultActivated(result);
@@ -467,9 +489,7 @@ export class ProjectDocuments {
         this.navigation.focus(request.node.id);
         this.showContextMenu(
             request.event,
-            isFolder(request.node)
-                ? this.folderContextMenu(request.node, request.source)
-                : this.fileContextMenu(request.node)
+            this.contextMenuForNode(request)
         );
     }
 
@@ -735,6 +755,7 @@ export class ProjectDocuments {
     }
 
     protected onItemDoubleClicked(node: FileSystemNode): void {
+        if (this.navigation.currentFolderIsRecycleBin()) { return; }
         if (!isFolder(node)) {
             this.openInOnlineApplication(node);
 
@@ -913,6 +934,16 @@ export class ProjectDocuments {
         this.clipboard.pruneReferences(removed);
     }
 
+    protected async confirmPermanentDelete(node: FileSystemNode): Promise<void> {
+        this.permanentDeleteTarget.set(null);
+        try {
+            await this.fileSystem.deleteRecycleBinNodes(node.id);
+            this.notifications.success(`"${node.name}" was permanently deleted.`);
+        } catch (error) {
+            this.notifications.error(error);
+        }
+    }
+
     private observeProjectChanges(): void {
         let uploadProjectId: string | undefined;
         effect(() => {
@@ -934,6 +965,38 @@ export class ProjectDocuments {
         const count = this.search.results().length;
 
         return `${count} search result${count === 1 ? '' : 's'}`;
+    }
+
+    private observeInitialFolderPath(): void {
+        effect(() => {
+            const roots = this.fileSystem.initializedRoots();
+            if (!roots || !DOCUMENT_LIST_KEYS.some((key) => roots[key].status === 'loaded')) {
+                return;
+            }
+            untracked(() => { void this.openInitialFolderPath(roots); });
+        });
+    }
+
+    private async openInitialFolderPath(roots: DocumentListRoots): Promise<void> {
+        const { listKey, folderPath } = this.route.snapshot.queryParams;
+        if (typeof listKey !== 'string' || typeof folderPath !== 'string' ||
+            !listKey || !folderPath) { return; }
+        try {
+            const key = DOCUMENT_LIST_KEYS.find(
+                (candidate) => candidate.toLowerCase() === listKey.toLowerCase()
+            );
+            const root = key ? roots[key] : undefined;
+            if (!key || root?.status !== 'loaded') {
+                throw new FileSystemError(
+                    'not-found', 'The requested document list is unavailable.'
+                );
+            }
+            await this.resolveAndOpen(key, relativePathFromRoot(root.root.path, folderPath));
+        } catch (error) {
+            this.notifications.error(error);
+        } finally {
+            await this.router.navigate([], { queryParams: {}, replaceUrl: true });
+        }
     }
 
     private observeInitializedRoots(): void {
@@ -1001,12 +1064,53 @@ export class ProjectDocuments {
         this.searchValidationError.set(null);
     }
 
+    private contextMenuForNode(request: NodeContextMenuRequest): MenuItem[] {
+        if (this.navigation.currentFolderIsRecycleBin() &&
+            request.node.parentId === this.navigation.currentFolderId()) {
+            return this.recycleBinContextMenu(request.node);
+        }
+
+        return isFolder(request.node)
+            ? this.folderContextMenu(request.node, request.source)
+            : this.fileContextMenu(request.node);
+    }
+
+    private isRightClickedFolderReadonly(folder: FolderNode): boolean {
+        return folder.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly ||
+            this.navigation.readonlyAccessByListKey().get(folder.listKey) === true;
+    }
+
+    private recycleBinContextMenu(node: FileSystemNode): MenuItem[] {
+        const readonly = this.navigation.isListReadonly();
+
+        return [
+            this.menuItem('Restore', 'undo', 'pd-menu-restore', () => {
+                void this.restoreRecycleBinItem(node);
+            }, readonly),
+            this.menuItem('Delete', 'delete', 'pd-menu-delete-permanently', () => {
+                this.permanentDeleteTarget.set(node);
+            }, readonly)
+        ];
+    }
+
+    private async restoreRecycleBinItem(node: FileSystemNode): Promise<void> {
+        try {
+            await this.fileSystem.restoreRecycleBinNodes(node.id);
+            this.notifications.success(`"${node.name}" was restored.`);
+        } catch (error) {
+            this.restoreError.set(error instanceof FileSystemError
+                ? error.message : this.notifications.userMessageFor(error));
+        }
+    }
+
     private folderContextMenu(
         folder: FolderNode,
         source: NodeSurface
     ): MenuItem[] {
         const locked = this.isWriting(folder.id);
         const root = folder.parentId === null;
+        const readonly = this.isRightClickedFolderReadonly(folder);
+        const protectedFolder = folder.accessLevel === FolderNodeResponseAccessLevelEnum.Protected;
 
         return [
             this.menuItem('Open Folder', 'folder_open', 'pd-menu-open-folder', () => {
@@ -1015,7 +1119,7 @@ export class ProjectDocuments {
             { separator: true },
             this.menuItem('Rename Folder', 'edit', 'pd-menu-rename-folder', () => {
                 this.startInlineRename(folder, source);
-            }, root || locked),
+            }, root || locked || readonly || protectedFolder),
             this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
                 this.copyToClipboard(folder);
             }, root || locked),
@@ -1024,14 +1128,14 @@ export class ProjectDocuments {
             }, locked || !this.canPaste(folder)),
             this.menuItem('Delete Folder', 'delete', 'pd-menu-delete-folder', () => {
                 this.requestDelete(folder, source);
-            }, root || locked),
+            }, root || locked || readonly || protectedFolder),
             { separator: true },
             this.menuItem(
                 'Upload within folder',
                 'upload',
                 'pd-menu-upload-within-folder',
                 undefined,
-                false,
+                readonly,
                 this.uploadMenuItems(folder)
             )
         ];
@@ -1039,6 +1143,8 @@ export class ProjectDocuments {
 
     private fileContextMenu(file: FileNode, source: NodeSurface = 'table'): MenuItem[] {
         const locked = this.isWriting(file.id);
+        const readonly = file.accessLevel === FileNodeResponseAccessLevelEnum.Readonly ||
+            this.navigation.isCurrentFolderReadonly();
         const openItems = this.fileOpenMenuItems(file, locked);
 
         return [
@@ -1053,13 +1159,13 @@ export class ProjectDocuments {
             { separator: true },
             this.menuItem('Rename File', 'edit', 'pd-menu-rename-file', () => {
                 this.startInlineRename(file, source);
-            }, locked),
+            }, locked || readonly),
             this.menuItem('Copy File', 'content_copy', 'pd-menu-copy-file', () => {
                 this.copyToClipboard(file);
             }, locked),
             this.menuItem('Delete File', 'delete', 'pd-menu-delete-file', () => {
                 this.requestDelete(file, source);
-            }, locked),
+            }, locked || readonly),
             { separator: true },
             this.menuItem('Download File', 'download', 'pd-menu-download-file', () => {
                 this.downloadFile(file);
@@ -1106,7 +1212,8 @@ export class ProjectDocuments {
 
     private emptyContextMenu(): MenuItem[] {
         const currentFolder = this.navigation.currentFolder();
-        const canCreate = currentFolder !== null && !this.creatingFolder();
+        const readonly = this.navigation.isCurrentFolderReadonly();
+        const canCreate = currentFolder !== null && !this.creatingFolder() && !readonly;
 
         return [
             this.menuItem('Create new Folder', 'create_new_folder', 'pd-menu-create-folder', () => {
@@ -1121,7 +1228,7 @@ export class ProjectDocuments {
                 'upload',
                 'pd-menu-upload',
                 undefined,
-                currentFolder === null,
+                currentFolder === null || readonly,
                 currentFolder ? this.uploadMenuItems(currentFolder) : undefined
             )
         ];
@@ -1184,8 +1291,9 @@ export class ProjectDocuments {
         return this.notifications.userMessageFor(error);
     }
 
-    private canPaste(_target: FolderNode): boolean {
-        return !this.pasting() &&
+    private canPaste(target: FolderNode): boolean {
+        return target.accessLevel !== FolderNodeResponseAccessLevelEnum.Readonly &&
+            !this.navigation.isCurrentFolderReadonly() && !this.pasting() &&
             this.clipboard.mode() === 'copy' &&
             this.clipboard.nodes().length === 1;
     }
@@ -1283,7 +1391,8 @@ export class ProjectDocuments {
         const buildNode = (folder: FolderNode, isRoot: boolean): TreeNode<FolderNode> => {
             const childFolders = all
                 .filter((n): n is FolderNode => isFolder(n) && n.parentId === folder.id)
-                .sort((a, b) => a.name.localeCompare(b.name));
+                .sort((a, b) => Number(a.isRecycleBin) - Number(b.isRecycleBin) ||
+                    a.name.localeCompare(b.name));
             const isLoaded = loaded.has(folder.id);
 
             return {
@@ -1294,9 +1403,10 @@ export class ProjectDocuments {
                     ? `${listKey[0]}${listKey.slice(1).toLowerCase()}`
                     : folder.name,
                 data: folder,
-                leaf: isLoaded && childFolders.length === 0,
+                leaf: folder.isRecycleBin || isLoaded && childFolders.length === 0,
                 expanded: expanded.has(folder.id),
-                children: isLoaded ? childFolders.map((child) => buildNode(child, false)) : []
+                children: isLoaded && !folder.isRecycleBin
+                    ? childFolders.map((child) => buildNode(child, false)) : []
             };
         };
 
@@ -1311,7 +1421,7 @@ export class ProjectDocuments {
         this.closePathEditor();
         const marketingRoot = this.rootFromStatus(roots.MARKETING);
         const executionRoot = this.rootFromStatus(roots.EXECUTION);
-        const currentRoot = marketingRoot ?? executionRoot;
+        const currentRoot = executionRoot ?? marketingRoot;
         this.logRootLoadErrors(roots);
         // No root at all: leave navigation untouched — `bootstrapError` derives the
         // message from the same roots result.

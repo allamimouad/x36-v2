@@ -22,6 +22,9 @@ import {
     FileSystemIcon
 } from '../../shared/file-system-icon/file-system-icon';
 
+import type { DocumentListKey } from '../../models/document-list.model';
+import { FolderNodeResponseAccessLevelEnum } from '../../models/document-access.model';
+
 @Component({
     selector: 'pr-folder-tree',
     standalone: true,
@@ -39,6 +42,8 @@ export class FolderTree {
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);
     public readonly deleteConfirmationId = input<string | null>(null);
+    public readonly readonlyAccessByListKey =
+        input<ReadonlyMap<DocumentListKey, boolean>>(new Map());
 
     public readonly nodeSelected = output<string>();
     public readonly nodeExpanded = output<string>();
@@ -150,6 +155,11 @@ export class FolderTree {
         event: DragEvent,
         node: TreeNode<FolderNode>
     ): void {
+        if (!this.isNodeDroppable(node)) {
+            event.preventDefault();
+
+            return;
+        }
         if (node.data) {
             this.externalFolderDragOver.emit({ event, target: node.data });
         }
@@ -162,6 +172,16 @@ export class FolderTree {
         if (node.data) {
             this.externalFolderDropped.emit({ event, target: node.data });
         }
+    }
+
+    private isNodeDroppable(node: TreeNode<FolderNode>): boolean {
+        if (node.data?.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly ||
+            node.data?.isRecycleBin) {
+            return false;
+        }
+        const listKey = node.data?.listKey;
+
+        return listKey ? !(this.readonlyAccessByListKey().get(listKey) ?? false) : false;
     }
 
     private submitInlineRename(node: TreeNode<FolderNode>): void {

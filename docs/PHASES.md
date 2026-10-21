@@ -2,6 +2,13 @@
 
 > **For the LLM**: Read `PROGRESS.md` to know which phase is active. Do NOT implement ahead of the current phase. When the current phase is marked complete in `PROGRESS.md`, only then proceed to the next. Each phase must end in a runnable, demoable state.
 
+
+**2026-10-21 scope update:** the user explicitly authorized synchronizing four
+PRs before internal drag-and-drop. Recycle bin, default-folder/list access flags,
+Execution-first navigation, and initial folder URL parameters now extend the original
+sequence. See [the synchronization handoff](handoffs/pr-sync.md). Existing
+mutation/upload/search work stays in place; this does not authorize internal drag work.
+
 ---
 
 ## Phase 1 — Foundation & Read-Only Browsing
