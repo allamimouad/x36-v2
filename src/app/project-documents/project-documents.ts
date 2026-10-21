@@ -68,12 +68,15 @@ import type {
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
 import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
-import { RecycleBinDialogs } from './components/recycle-bin-dialogs/recycle-bin-dialogs';
-import { SearchResults } from './components/search-results/search-results';
+import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
 import {
-    FolderNodeResponseAccessLevelEnum,
-    FileNodeResponseAccessLevelEnum
-} from './models/document-access.model';
+    ConfirmationPopup,
+    DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG
+} from '@shared/components/confirmation-popup/confirmation-popup';
+import { HttpErrorResponse } from '@angular/common/http';
+import { SearchResults } from './components/search-results/search-results';
+import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
+import { FileNodeResponseAccessLevelEnum } from '@api/model/fileNodeResponse';
 import { ActivatedRoute, Router } from '@angular/router';
 
 const DEFAULT_FOLDER_NAME = 'New folder';
@@ -103,7 +106,6 @@ interface PendingDelete {
         ContextMenuItem,
         UploadPanel,
         SearchResults,
-        RecycleBinDialogs,
         ButtonModule,
         ContextMenu,
         InputTextModule,
@@ -342,9 +344,8 @@ export class ProjectDocuments {
     });
 
     protected readonly bootstrapLoading = computed(() => this.fileSystem.isInitializing());
-    protected readonly permanentDeleteTarget = signal<FileSystemNode | null>(null);
-    protected readonly restoreError = signal<string | null>(null);
     private pendingFileTarget: FolderNode | null = null;
+    private readonly popupService = inject(PopupService);
     private readonly router = inject(Router);
     private readonly activatedRoute = inject(ActivatedRoute);
 
@@ -933,11 +934,6 @@ export class ProjectDocuments {
         this.clipboard.pruneReferences(removed);
     }
 
-    protected onRecycleBinDeleteConfirmed(node: FileSystemNode): void {
-        this.permanentDeleteTarget.set(null);
-        void this.confirmDeleteRecycleBinItem(node);
-    }
-
     private observeProjectChanges(): void {
         let uploadProjectId: string | undefined;
         effect(() => {
@@ -1215,7 +1211,16 @@ export class ProjectDocuments {
     }
 
     private deleteRecycleBinItem(node: FileSystemNode): void {
-        this.permanentDeleteTarget.set(node);
+        this.popupService.showPopup(
+            ConfirmationPopup,
+            { ...DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG, width: '28rem' },
+            {
+                confirmButtonText: 'Confirm',
+                declineButtonText: 'Cancel',
+                message: `Are you sure you want to permanently delete "${node.name}" ${node.kind}?`,
+                onAccept: () => void this.confirmDeleteRecycleBinItem(node)
+            }
+        );
     }
 
     private async confirmDeleteRecycleBinItem(node: FileSystemNode): Promise<void> {
@@ -1236,8 +1241,20 @@ export class ProjectDocuments {
                 `The ${node.kind} "${node.name}" has been successfully restored.`
             );
         } catch (error) {
-            this.restoreError.set(error instanceof FileSystemError
-                ? error.message : this.notifications.userMessageFor(error));
+            const sharepointError = error instanceof HttpErrorResponse
+                ? (error.error as { message: string })
+                : undefined;
+            this.popupService.showErrorPopupWithReportAction({
+                title: 'Cannot restore the item',
+                message: sharepointError?.message || 'An error occurred when trying to ' +
+                    'restore the item. Please refresh and try again.',
+                escapeMessage: true,
+                traceId:
+                    error instanceof HttpErrorResponse
+                        ? error.headers.get(TRACE_ID_HEADER) ?? undefined
+                        : undefined,
+                isClosable: true
+            });
         }
     }
 

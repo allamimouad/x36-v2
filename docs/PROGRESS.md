@@ -6,7 +6,8 @@
 
 ## Current Status
 
-**Active Work**: Four-PR synchronization and source alignment completed (2026-10-21).
+**Active Work**: Four-PR synchronization, source alignment, and popup / `@api`
+dependency alignment completed (2026-10-21).
 Next: internal drag-and-drop as a separate task.
 **Implementation Status**: Browsing, mutations, single-item copy/paste, uploads,
 recursive search, recycle bin, access flags, and initial folder links are implemented.
@@ -105,12 +106,18 @@ Cut, multi-selection/bulk operations, and internal drag-and-drop remain deferred
    Common names, declaration/property order, helpers, and templates now follow the
    screenshots. The handoff lists the remaining local adaptations and screenshot
    anchors; the alignment is kept as a separate commit on `sync/pr-changes`.
+   Popup imports and calls now match PR1. Their local implementations, aliases,
+   and demo providers live outside the copied feature directory; the destination
+   keeps its existing package, shared confirmation component, and reporting flow.
+   Access enums also use the original `@api/model/folderNodeResponse` and
+   `@api/model/fileNodeResponse` imports. Local equivalents live in `src/local/api/`;
+   keep the destination's generated models and `@api` alias when copying the feature.
 3. Permission gaps deliberately preserved from the PRs (protected search results,
    actual row/tree drops, cross-list paste target access) need a separate decision
    before hardening. No new role inference or mutation retries were added.
 4. Complete manual Edge/Chrome acceptance and real backend verification for uploads,
    search, and recycle-bin operations on the destination. The local browser suite
-   passed again after alignment: 140 tests in headless Chrome. App/spec TypeScript
+   passed again after popup and `@api` alignment: 142 tests in headless Chrome. App/spec TypeScript
    checks, development/production builds, lint, and whitespace checks pass; existing
    budget/accessibility warnings remain.
 
@@ -125,6 +132,36 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 
 ## Decisions Log
 
+- **2026-10-21 — Generated API import paths preserved**: user requested the same
+  outside-the-feature replacement approach for `@api` dependencies. Confirmed the
+  exact `folderNodeResponse` / `fileNodeResponse` paths in PR2 and the navigation
+  import in PR3. Node models, container, table, tree, navigation store, and the
+  mock access helper now import their access enums from those original paths.
+  Moved the existing constant/type definitions to `src/local/api/model/`, added
+  the local `@api/*` alias, and removed `models/document-access.model.ts` from the
+  feature. Names, values, declaration order, and permission behavior are preserved.
+  Destination generated clients/models and working SharePoint adapter/mappers
+  remain owned by that application. All 142 browser tests, app/spec TypeScript
+  checks, production build, lint, and whitespace checks pass. Existing budget and
+  path-bar accessibility warnings remain. No new tests or permission behavior
+  were added for this import-only refactor; internal drag-and-drop stays deferred.
+- **2026-10-21 — Popup dependencies match the destination imports**: user copies
+  the entire `project-documents/` directory and requested the original service API
+  instead of a feature-specific dialog replacement. The container now imports
+  `PopupService` / `TRACE_ID_HEADER` from `ibportal-web-ui-commons` and
+  `ConfirmationPopup` / its default config from the original `@shared` path.
+  Restored the photographed service injection, confirmation callback, HTTP error
+  message/trace extraction, and generic restore-error fallback. Removed
+  `RecycleBinDialogs`, its two signals, and the template wrapper. Local equivalents
+  live in `src/local/ibportal-web-ui-commons/` and `src/app/shared/`, mapped by
+  `tsconfig.json`; the lazy demo host supplies local popup providers. Local report
+  actions copy message/trace details, while the destination retains its existing
+  reporting integration. All 142 tests pass, including real dialog confirmation,
+  cancellation, escaped HTTP messages/trace IDs, and non-HTTP fallback behavior.
+  Dialog teardown is clean. Development/production builds, app/spec TypeScript,
+  lint, and whitespace checks pass. Production warns at 514.37 kB initial JS
+  (500 kB budget) and 4.52 kB container styles (4 kB); lint retains the two existing
+  path-bar accessibility warnings. Internal drag-and-drop remains deferred.
 - **2026-10-21 — Source alignment**: user requested minimal transfer differences,
   including variable names and declaration order. Restored the photographed
   toolbar/menu/navigation/store locals, helper sequence, bin table markup, and
@@ -133,6 +170,7 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
   parameters or unknown list keys are ignored without URL cleanup, matching PR4;
   recognized links clear all query parameters after the navigation attempt. No
   additional permission rules or internal drag-and-drop work was introduced.
+  The popup-dependency alignment above supersedes the feature-local dialog adaptation.
 - **2026-10-21 — PR synchronization**: user authorized all four screenshot
   PRs on `sync/pr-changes`, chose exact PR permission behavior, local mocks and
   popup equivalents, and a Google Material SVG. Recycle bin is now in scope.

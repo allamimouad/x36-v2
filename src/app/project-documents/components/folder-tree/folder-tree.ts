@@ -19,7 +19,7 @@ import type {
 } from '../../models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from '../../models/external-drop-request.model';
 import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
-import { FolderNodeResponseAccessLevelEnum } from '../../models/document-access.model';
+import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 import type { DocumentListKey } from '../../models/document-list.model';
 
 @Component({

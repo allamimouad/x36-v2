@@ -43,6 +43,7 @@ Useful screenshot anchors (paths relative to `tmp-screenshots/`):
 | Bin table and API declaration order | `pr1/20261020_234720.jpg` through `20261020_234903.jpg`; `pr1/20261020_235137.jpg` |
 | Store mutations, menus, sort/count helpers | `pr1/20261020_235451.jpg`, `20261020_235501.jpg`, `20261020_235718.jpg`, `20261020_235741.jpg`, `20261020_235753.jpg` |
 | Toolbar, menu locals, paste order | `pr2/20261021_014444.jpg`, `20261021_014514.jpg`, `20261021_014554.jpg` |
+| Generated access-enum imports | `pr2/20261021_014214.jpg`, `20261021_014316.jpg`, `20261021_014330.jpg`, `20261021_014444.jpg`; `pr3/20261021_015824.jpg` |
 | Navigation computeds, container bindings and menus | `pr3/20261021_015824.jpg`, `20261021_015848.jpg`, `20261021_015912.jpg`, `20261021_015955.jpg` |
 | Initial-navigation fields and helpers | `pr4/20261021_020941.jpg`, `20261021_021019.jpg`, `20261021_021039.jpg` |
 
@@ -51,19 +52,77 @@ The remaining local adaptations are explicit:
 - `MockFileSystemApi` remains the provider, with complete mock bin behavior rather
   than the photographed mock stubs. The container retains its `projectId` and
   `projectLabel` inputs instead of destination project-overview dependencies.
-- Access enums come from `document-access.model.ts` here; the destination uses
-  generated enums. Keep its existing generated imports and mapping.
-- Local `RecycleBinDialogs`, `permanentDeleteTarget`, and `restoreError` replace
-  shared popup/reporting services. The protected template handler
-  `onRecycleBinDeleteConfirmed` closes the local dialog and invokes the private
-  `confirmDeleteRecycleBinItem` helper. Preserve the destination popup integration
-  when transferring those helpers.
+- Access-enum imports now use the PR's `@api/model/folderNodeResponse` and
+  `@api/model/fileNodeResponse` paths. Local definitions resolve through an alias
+  outside `project-documents`; the destination uses its generated models directly.
+- Popup imports and calls now match PR1. Local implementations resolve through
+  aliases outside `project-documents`; see the dependency mapping below. There is
+  no feature-specific dialog component or dialog state to remove during transfer.
 - `documentRootPath` and `relativePathFromRoot` handle both short mock paths and
   full SharePoint paths. `transformPath` retains that normalization instead of
   assuming a fixed number of path segments.
 - Existing functionality outside the photographed regions stays in place. Local
   lint requirements retain necessary line wrapping and scoped suppressions;
   this alignment does not apply a repository-wide formatter.
+
+## Popup dependencies outside the copy boundary
+
+Copying `src/app/project-documents/` preserves the PR's original imports:
+
+```ts
+import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
+import {
+    ConfirmationPopup,
+    DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG
+} from '@shared/components/confirmation-popup/confirmation-popup';
+```
+
+The container injects `popupService` and uses the photographed `showPopup`
+confirmation and `showErrorPopupWithReportAction` error options. Restore failures
+read the HTTP response's message and trace-id header, use the PR's generic message
+when those details are unavailable, and request escaped text. Confirmation runs
+the delete operation only through `onAccept`.
+
+| Import or setup | Local implementation | Destination |
+| --- | --- | --- |
+| `ibportal-web-ui-commons` | `tsconfig.json` maps to `src/local/ibportal-web-ui-commons/index.ts` | Existing package and its exported trace-id constant |
+| `@shared/components/confirmation-popup/confirmation-popup` | `src/app/shared/components/confirmation-popup/` via `@shared/*` alias | Existing shared component and dialog config |
+| Local popup providers | `project-documents-demo.ts` provides `DialogService` and `PopupService` | Existing application providers |
+
+Keep these local aliases, library files, shared component, and demo host on this
+machine. Copy only the feature directory into the destination's existing popup
+setup; no popup imports, calls, or feature templates need changing. The earlier
+`components/recycle-bin-dialogs/` component, its signals, and template wrapper have
+been removed.
+
+The local service implements the API subset used here with PrimeNG DynamicDialog.
+Its error popup displays the trace ID and offers **Copy report details**. The
+destination package retains its existing reporting action. The local
+`TRACE_ID_HEADER` value is `X-Trace-Id`; the destination continues using its own
+package's constant. No private package installation or reporting endpoint is
+required for local development.
+
+## Generated API imports outside the copy boundary
+
+The node model, container, table, tree, navigation store, and mock helper use the
+original access-enum import paths where needed:
+
+```ts
+import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
+import { FileNodeResponseAccessLevelEnum } from '@api/model/fileNodeResponse';
+```
+
+`tsconfig.json` maps `@api/*` to `src/local/api/*`. The corresponding
+`model/folderNodeResponse.ts` and `model/fileNodeResponse.ts` files export the same
+local access constants/types previously used by the mocks. Their names, values,
+and permission behavior are preserved. The old feature-local
+`models/document-access.model.ts` has been removed.
+
+Leave `src/local/api/` and this local alias here when copying the feature. The
+destination keeps its existing `@api` mapping and generated models, so the copied
+imports resolve without editing. These local files implement only the exports
+used by this feature; the existing SharePoint adapter/mapper transfer boundaries
+below still apply.
 
 ## Transfer boundaries
 
@@ -79,13 +138,13 @@ The remaining local adaptations are explicit:
 - Port the three `FileSystemApi` bin signatures and corresponding store calls. As in
   the screenshots, `listGuid` is the bin folder id, and deleted-item `parentId` is
   that bin id. Deleted records have their own ids and retain original display paths.
-- Local `models/document-access.model.ts` supplies symbolic `Readonly`/`Protected`
-  equivalents. In the destination, use its generated access enums and DTO mapping;
-  preserve the existing returned values and actual wire representation.
-- `RecycleBinDialogs` replaces the unavailable shared popup dependency here. Keep
-  the destination popup service if desired, wiring the same cancel/confirm and
-  restore-failure flows. Backend trace-id reporting remains owned by that service;
-  there is no invented report endpoint in this local implementation.
+- Keep the destination's generated access enums and DTO mapping. Feature imports
+  already point to its `@api` model paths; preserve the existing returned values
+  and actual wire representation. Local enum equivalents remain outside the
+  copied directory.
+- Keep the destination popup package, confirmation component, and reporting flow.
+  Their import paths and method calls are already used by the feature; local
+  equivalents live outside the copied directory.
 - Keep destination providers, signing/dashboard/activity integrations and other
   files that do not exist in this standalone demo. Their photographed changes are
   outside the local feature's file tree. Review container imports/providers during
@@ -141,14 +200,17 @@ separate next task; its implementation has not been added during this sync.
 
 ## Verification (2026-10-21)
 
-- Repeated after source alignment. The initial-link spec now checks that an
-  invalid list key leaves the default folder and URL unchanged, matching PR4.
-- Headless Chrome 147 / Karma: **140 of 140 tests passed**, including the mock
+- Repeated after popup and `@api` dependency alignment. Integration checks cover the actual
+  local popup service: delete on confirm, no delete on cancel, HTTP error message
+  escaping and trace-id propagation, and generic non-HTTP restore failures. The
+  initial-link spec checks that an invalid list key leaves the default folder and
+  URL unchanged, matching PR4.
+- Headless Chrome 147 / Karma: **142 of 142 tests passed**, including the mock
   roundtrip/failure/list-isolation cases, store pessimism, tree drop affordances,
   destination-list menus, initial links, permanent-delete confirmation, and escaped
   restore-error text.
 - Development and production builds pass. Production reports the existing
-  warning thresholds: initial bundle 511.55 kB against 500 kB and container styles
+  warning thresholds: initial bundle 514.37 kB against 500 kB and container styles
   4.52 kB against 4 kB; neither reaches the error threshold.
 - App/spec TypeScript checks and `git diff --check` pass. Lint has no errors and
   retains the two existing path-bar accessibility warnings.

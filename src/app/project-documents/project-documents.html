@@ -352,12 +352,4 @@
       (completedCleared)="uploads.clearCompleted()"
     />
   }
-
-  <pr-recycle-bin-dialogs
-    [pendingDelete]="permanentDeleteTarget()"
-    [restoreError]="restoreError()"
-    (deleteConfirmed)="onRecycleBinDeleteConfirmed($event)"
-    (deleteCancelled)="permanentDeleteTarget.set(null)"
-    (errorClosed)="restoreError.set(null)"
-  />
 </div>

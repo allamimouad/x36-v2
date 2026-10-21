@@ -1,0 +1,19 @@
+@if (escapeMessage()) {
+  <p role="alert">{{ message() }}</p>
+} @else {
+  <div role="alert" [innerHTML]="message()"></div>
+}
+@if (traceId()) {
+  <p data-testid="popup-trace-id">Trace ID: {{ traceId() }}</p>
+}
+@if (reportCopyFailed()) {
+  <p role="status">Could not copy. Select the message and trace ID above to report the error.</p>
+}
+<div class="popup-actions">
+  <button pButton type="button" severity="secondary" (click)="copyReportDetails()">
+    {{ reportCopied() ? 'Details copied' : 'Copy report details' }}
+  </button>
+  @if (isClosable()) {
+    <button pButton type="button" severity="secondary" (click)="ref.close()">Close</button>
+  }
+</div>

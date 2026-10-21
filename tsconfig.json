@@ -3,6 +3,11 @@
 {
   "compileOnSave": false,
   "compilerOptions": {
+    "paths": {
+      "ibportal-web-ui-commons": ["./src/local/ibportal-web-ui-commons/index.ts"],
+      "@shared/*": ["./src/app/shared/*"],
+      "@api/*": ["./src/local/api/*"]
+    },
     "strict": true,
     "noImplicitOverride": true,
     "noPropertyAccessFromIndexSignature": true,

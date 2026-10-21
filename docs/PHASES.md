@@ -367,6 +367,14 @@ pickers or external OS drag-and-drop, with progress.
   compatible with a future single-request streaming transport
 - In `project-documents.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
 - Only after that swap, optionally delete `services/mock/` (mock backend + seed + mock config token) and the two `stores/*.spec.ts` if unit tests aren't kept in that repo
+- Popup imports/calls already match the photographed PRs. Keep the destination's
+  `ibportal-web-ui-commons` package and
+  `@shared/components/confirmation-popup/confirmation-popup`. Local equivalents
+  and their `tsconfig.json` aliases are outside `project-documents/`; leave them
+  here along with the demo host's popup providers. See `handoffs/pr-sync.md`.
+- Access-enum imports already use the PR's `@api/model/folderNodeResponse` and
+  `@api/model/fileNodeResponse` paths. Keep the destination's generated models and
+  `@api` alias. Their local equivalents live outside the feature in `src/local/api/`.
 - Icons: no component swap needed — `FileSystemIcon` is the only file-type icon component (the Material Symbols stand-in was deleted 2026-07-08). Copy `src/assets/icons/sharepoint-file-type-icons/` (the 8 SVGs) to the target app along with the feature folder, or replace them with the target's own set — the component only needs `<name>.svg` to exist for the 8 `FileSystemIconName` values
 - Fonts: the copied source uses Material Symbols (Outlined) ligature spans for UI chrome (nav-toolbar, container, path-bar). Ensure the target repo installs the `material-symbols` npm package and loads `material-symbols/outlined.css` (self-hosted — no CDN dependency)
 - Colors: nothing to do — `project-documents-theme.scss` already maps every `--pd-*` token to the shared palette via `@use '../../assets/styles/utils/colors'`, the exact path of the target repo's `_colors.scss` (which `@forward`s `ibportal-web-ui-commons`). Do **NOT** copy this repo's `src/assets/styles/utils/_colors.scss` — it is a local stand-in with the lib palette inlined; the target already has the real file. To adjust a color: change the mapping in `project-documents-theme.scss`, or add a variable to the target's `_colors.scss` and reference it. PrimeNG component internals (buttons, tree rows, table hover) are themed separately via the PrimeNG preset; file-type icon colors live in the SVGs

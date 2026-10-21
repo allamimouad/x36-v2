@@ -18,7 +18,7 @@ import {
     isFolder
 } from '../models/file-system-node.model';
 import { FileSystemReader } from './file-system-reader';
-import { FolderNodeResponseAccessLevelEnum } from '../models/document-access.model';
+import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 
 /**
  * A breadcrumb segment. Either id-based (cached navigation) or path-based (a folder

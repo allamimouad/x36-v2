@@ -1,4 +1,5 @@
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import {
@@ -6,8 +7,9 @@ import {
 } from '@angular/router';
 import type { MenuItem } from 'primeng/api';
 import { ContextMenu } from 'primeng/contextmenu';
+import { DialogService } from 'primeng/dynamicdialog';
 import { firstValueFrom, throwError } from 'rxjs';
-import { FileSystemError } from './models/file-system-error.model';
+import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
 import { isFolder, type FolderNode } from './models/file-system-node.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
 import { MOCK_CONFIG } from './services/mock/mock-config.token';
@@ -25,7 +27,7 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         queryParams = {};
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
-            providers: [provideRouter([]), provideNoopAnimations(),
+            providers: [provideRouter([]), provideNoopAnimations(), DialogService,
                 { provide: ActivatedRoute, useValue: { snapshot: {
                     get queryParamMap(): ParamMap { return convertToParamMap(queryParams); }
                 } } },
@@ -164,7 +166,42 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
                 .disabled).toBeTrue();
         });
 
-    it('shows restore failures as text and retains the deleted record', async () => {
+    it('shows escaped HTTP restore failures with their trace ID and retains the deleted record',
+        async () => {
+            await render();
+            await store.delete(folder('/execution/Schedules').id);
+            navigation.navigateTo(folder('/execution/Recycle Bin').id);
+            await render();
+            const record = store.entities().find((node): node is FolderNode =>
+                isFolder(node) && node.parentId === navigation.currentFolderId())!;
+            const api = fixture.debugElement.injector.get(FileSystemApi);
+            spyOn(api, 'restoreRecycleBinItem').and.returnValue(throwError(() =>
+                new HttpErrorResponse({
+                    status: 409,
+                    error: { message: '<b>Original name exists</b>' },
+                    headers: new HttpHeaders({ [TRACE_ID_HEADER]: 'restore-trace-123' })
+                })));
+            const showError = spyOn(TestBed.inject(PopupService), 'showErrorPopupWithReportAction')
+                .and.callThrough();
+            const item = menuFor(record).find((candidate) => candidate.label === 'Restore')!;
+            item.command?.({ item });
+            await render();
+            const dialogs = [...document.querySelectorAll('.p-dialog')];
+            const error = dialogs.find((dialog) => dialog.textContent?.includes('Cannot restore'));
+            expect(error?.textContent).toContain('<b>Original name exists</b>');
+            expect(error?.querySelector('b')).toBeNull();
+            expect(error?.textContent).toContain('restore-trace-123');
+            expect(showError).toHaveBeenCalledOnceWith({
+                title: 'Cannot restore the item',
+                message: '<b>Original name exists</b>',
+                escapeMessage: true,
+                traceId: 'restore-trace-123',
+                isClosable: true
+            });
+            expect(store.entityMap()[record.id]).toBeDefined();
+        });
+
+    it('shows the generic PR restore error for failures without an HTTP response', async () => {
         await render();
         await store.delete(folder('/execution/Schedules').id);
         navigation.navigateTo(folder('/execution/Recycle Bin').id);
@@ -172,15 +209,14 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         const record = store.entities().find((node): node is FolderNode =>
             isFolder(node) && node.parentId === navigation.currentFolderId())!;
         const api = fixture.debugElement.injector.get(FileSystemApi);
-        spyOn(api, 'restoreRecycleBinItem').and.returnValue(throwError(() =>
-            new FileSystemError('name-collision', '<b>Original name exists</b>')));
+        spyOn(api, 'restoreRecycleBinItem').and.returnValue(throwError(() => new Error('Failed')));
         const item = menuFor(record).find((candidate) => candidate.label === 'Restore')!;
         item.command?.({ item });
         await render();
-        const dialogs = [...document.querySelectorAll('.p-dialog')];
-        const error = dialogs.find((dialog) => dialog.textContent?.includes('Cannot restore'));
-        expect(error?.textContent).toContain('<b>Original name exists</b>');
-        expect(error?.querySelector('b')).toBeNull();
+        const error = document.querySelector('pr-error-popup');
+        expect(error?.textContent).toContain(
+            'An error occurred when trying to restore the item. Please refresh and try again.');
+        expect(error?.querySelector('[data-testid="popup-trace-id"]')).toBeNull();
         expect(store.entityMap()[record.id]).toBeDefined();
     });
 
@@ -199,12 +235,33 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         await render();
         expect(remove).not.toHaveBeenCalled();
         const confirm = document.querySelector<HTMLButtonElement>(
-            '[data-testid="pd-confirm-permanent-delete"]');
+            '[data-testid="confirmation-popup-confirm"]');
         expect(confirm).not.toBeNull();
         confirm?.click();
         await render();
         expect(remove).toHaveBeenCalledOnceWith('project-123', binId!, record.id);
         expect(store.entityMap()[record.id]).toBeUndefined();
         expect(host().textContent).toContain('The recycle bin is empty.');
+    });
+
+    it('keeps a recycle-bin record when the shared confirmation is cancelled', async () => {
+        await render();
+        await store.delete(folder('/execution/Schedules').id);
+        navigation.navigateTo(folder('/execution/Recycle Bin').id);
+        await render();
+        const record = store.entities().find((node): node is FolderNode =>
+            isFolder(node) && node.parentId === navigation.currentFolderId())!;
+        const api = fixture.debugElement.injector.get(FileSystemApi);
+        const remove = spyOn(api, 'deletePermanentlyRecycleBinItem').and.callThrough();
+        const item = menuFor(record).find((candidate) => candidate.label === 'Delete')!;
+        item.command?.({ item });
+        await render();
+        const cancel = document.querySelector<HTMLButtonElement>(
+            '[data-testid="confirmation-popup-cancel"]');
+        expect(cancel).not.toBeNull();
+        cancel?.click();
+        await render();
+        expect(remove).not.toHaveBeenCalled();
+        expect(store.entityMap()[record.id]).toBeDefined();
     });
 });

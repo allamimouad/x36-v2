@@ -1,4 +1,6 @@
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { DialogService } from 'primeng/dynamicdialog';
+import { PopupService } from 'ibportal-web-ui-commons';
 import { ProjectDocuments } from '../project-documents/project-documents';
 
 @Component({
@@ -6,6 +8,7 @@ import { ProjectDocuments } from '../project-documents/project-documents';
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [ProjectDocuments],
+    providers: [DialogService, PopupService],
     template: '<pr-project-documents [projectId]="projectId" [projectLabel]="projectLabel" />',
     styles: `
     :host {

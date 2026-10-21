@@ -1,4 +1,4 @@
-import { FolderNodeResponseAccessLevelEnum } from '../../models/document-access.model';
+import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 import { isFolder, type FileSystemNode } from '../../models/file-system-node.model';
 import type { MockConfig } from './mock-config.token';
 import { normalizeMockPath } from './mock-node-utils';

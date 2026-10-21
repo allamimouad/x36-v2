@@ -1,8 +1,6 @@
 import type { DocumentListKey } from './document-list.model';
-import type {
-    FolderNodeResponseAccessLevelEnum,
-    FileNodeResponseAccessLevelEnum
-} from './document-access.model';
+import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
+import { FileNodeResponseAccessLevelEnum } from '@api/model/fileNodeResponse';
 
 export type FileSystemNode = FolderNode | FileNode;
 

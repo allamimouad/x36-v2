@@ -88,6 +88,12 @@ declaration/property order, helper placement, and template structure wherever
 visible. Keep required local adaptations documented in `handoffs/pr-sync.md` so
 the common code remains easy to compare with the destination.
 
+Unavailable popup and generated API dependencies use the PR's original
+package/shared/`@api` import paths.
+Local equivalents, alias configuration, and demo providers live outside
+`src/app/project-documents/`, allowing the copied feature to use the destination's
+existing popup implementation and generated models without changing those imports.
+
 ---
 
 ## 3. Feature Requirements
@@ -278,12 +284,22 @@ All scenarios must work:
   double-click navigation, and ordinary table editing/drop targets are unavailable.
 - Deleted-item context menus expose Restore and Delete. Restore reports success or
   an escaped error dialog. Permanent Delete requires a modal Cancel/Confirm step.
+  Use `PopupService` and `TRACE_ID_HEADER` from `ibportal-web-ui-commons`, and
+  `ConfirmationPopup` with `DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG` from
+  `@shared/components/confirmation-popup/confirmation-popup`, matching PR1.
+  Confirmation uses `showPopup` with an `onAccept` callback; restore errors use
+  `showErrorPopupWithReportAction` with the HTTP message/trace ID or the PR's
+  generic fallback message. Local implementations live outside the feature.
   Both writes remove the bin record from cache only after API success; restored
   contents appear when their original location is next loaded.
 - `accessLevel` is optional. Folder `Protected` disables rename/delete while keeping
   contents writable; `Readonly` disables rename/delete and upload within the folder.
   File `Readonly`, or a read-only current folder, disables file rename/delete.
   Copy/open/download retain their existing rules.
+  Import `FolderNodeResponseAccessLevelEnum` from `@api/model/folderNodeResponse`
+  and `FileNodeResponseAccessLevelEnum` from `@api/model/fileNodeResponse`, as in
+  the PR. Local equivalents resolve to `src/local/api/` through the local alias;
+  the destination keeps its generated definitions.
 - Root listing `isListReadonly` feeds a map keyed by document list. Current-folder
   access combines its own flag and its list flag. Folder context menus and tree
   dragover use the destination folder's list; file menus use the current folder.

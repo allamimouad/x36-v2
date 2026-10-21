@@ -1,0 +1,7 @@
+<p>{{ message() }}</p>
+<div class="popup-actions">
+  <button pButton type="button" severity="secondary" data-testid="confirmation-popup-cancel"
+    (click)="ref.close()">{{ declineButtonText() }}</button>
+  <button pButton type="button" severity="danger" data-testid="confirmation-popup-confirm"
+    (click)="accept()">{{ confirmButtonText() }}</button>
+</div>
