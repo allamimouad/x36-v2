@@ -123,7 +123,7 @@
       <button
         pButton
         type="button"
-        [disabled]="createFolderButtonDisabled()"
+        [disabled]="isCreateFolderButtonDisabled()"
         [loading]="creatingFolder()"
         pTooltip="Create a folder"
         tooltipPosition="bottom"
@@ -138,7 +138,7 @@
       <button
         pButton
         type="button"
-        [disabled]="uploadButtonDisabled()"
+        [disabled]="isUploadButtonDisabled()"
         pTooltip="Upload files or a folder"
         tooltipPosition="bottom"
         severity="secondary"
@@ -195,7 +195,6 @@
             <h2 class="pd-tree-section-title">{{ projectLabel() }} - {{ label }}</h2>
             <pr-folder-tree
               [nodes]="nodes"
-              [readonlyAccessByListKey]="navigation.readonlyAccessByListKey()"
               [currentFolderId]="navigation.currentFolderId()"
               [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
               [writingIds]="writingIds()"
@@ -205,6 +204,7 @@
               [renamingId]="inlineRenameSurface() === 'tree' ? navigation.renamingId() : null"
               [renameError]="inlineRenameError()"
               [deleteConfirmationId]="treeDeleteConfirmationId()"
+              [readonlyAccessByListKey]="navigation.readonlyAccessByListKey()"
               (nodeSelected)="onTreeNodeSelected($event)"
               (nodeExpanded)="onTreeNodeExpanded($event)"
               (nodeCollapsed)="onTreeNodeCollapsed($event)"
@@ -293,11 +293,6 @@
           />
         } @else {
           <pr-file-table
-            [projectName]="projectLabel()"
-            [currentFolderListKey]="navigation.currentFolder()?.listKey ?? null"
-            [currentFolderIsRecycleBin]="navigation.currentFolderIsRecycleBin()"
-            [isCurrentFolderReadonly]="navigation.isCurrentFolderReadonly()"
-            [documentRootPath]="searchRootPath()"
             [folders]="navigation.currentFolderChildren().folders"
             [files]="navigation.currentFolderChildren().files"
             [loading]="isCurrentLoading() || fileSystem.isResolvingPath() || bootstrapLoading()"
@@ -310,7 +305,12 @@
               externalDropSurface() === 'table' ? externalDropTargetId() : null
             "
             [externalDragActive]="currentFolderDropActive()"
+            [projectName]="projectLabel()"
             [currentFolderName]="navigation.currentFolder()?.name ?? ''"
+            [currentFolderListKey]="navigation.currentFolder()?.listKey || null"
+            [currentFolderIsRecycleBin]="navigation.currentFolderIsRecycleBin()"
+            [isCurrentFolderReadonly]="navigation.isCurrentFolderReadonly()"
+            [documentRootPath]="searchRootPath()"
             (itemDoubleClicked)="onItemDoubleClicked($event)"
             (itemFocused)="onItemFocused($event)"
             (itemContextMenuRequested)="onNodeContextMenu($event)"
@@ -356,7 +356,7 @@
   <pr-recycle-bin-dialogs
     [pendingDelete]="permanentDeleteTarget()"
     [restoreError]="restoreError()"
-    (deleteConfirmed)="confirmPermanentDelete($event)"
+    (deleteConfirmed)="onRecycleBinDeleteConfirmed($event)"
     (deleteCancelled)="permanentDeleteTarget.set(null)"
     (errorClosed)="restoreError.set(null)"
   />

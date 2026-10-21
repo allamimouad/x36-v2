@@ -11,12 +11,71 @@ and chose the PR behavior, local mocks, local popup equivalents, and a Google SV
 | PR3 / #152 / CFO-11535 + CFO-12146 | List access | Root `isListReadonly`, navigation map, target-list folder/tree rules, read-only bin actions and search disabled in bins |
 | PR4 / CFO-12253 | Initial navigation | Execution first in tree/default navigation; initial `listKey` + `folderPath` query resolution and query cleanup |
 
+## Source alignment
+
+The follow-up alignment preserves the names, declaration and property order,
+helper placement, and template structure visible in the four PRs. This keeps the
+common code easy to compare during transfer. It is based on photographed diff
+regions, not a complete checkout of the destination repository.
+
+| Earlier local name or structure | Aligned source |
+| --- | --- |
+| `createFolderButtonDisabled`, `uploadButtonDisabled` | `isCreateFolderButtonDisabled`, `isUploadButtonDisabled`, immediately after `creatingFolder` |
+| `contextMenuForNode` | `getContextMenu`, after the initial-navigation and search-reset helpers |
+| `openInitialFolderPath` | `getInitialFolderParamsFromRoute` then `navigateToInitialFolder`; injected route named `activatedRoute` |
+| Inline bin confirmation and `confirmPermanentDelete` | `deleteRecycleBinItem`, `confirmDeleteRecycleBinItem`, then `restoreRecycleBinItem`, after `recycleBinContextMenu` |
+| Filtered `visibleFolderCount` | `foldersLength` and `getFoldersLengthDependingOnIfRootFolder`; subtract one bin at the root, as in the PR |
+| Inline tree sorting, `_loadRoot$` | `sortFoldersByAlphabeticalAndRecycleBin`, `_loadRoots` |
+| Dynamic `recycleColumns` array | Static five-column bin template from the PR |
+
+Folder-menu locals are ordered `locked`, `root`, `isProtected`, `isReadonly`;
+file-menu locals are `locked`, `openItems`, `isReadonly`. Navigation computeds and
+their returned properties follow the PR order: `currentFolder`,
+`currentFolderIsRecycleBin`, `isCurrentFolderReadonly`, `isListReadonly`, then
+`readonlyAccessByListKey`. Bin mutations use the same `id`, `subtree`, and `node`
+locals. Component inputs, node object properties, import members, tree helpers,
+and container bindings were also aligned where shown.
+
+Useful screenshot anchors (paths relative to `tmp-screenshots/`):
+
+| Region | Reference images |
+| --- | --- |
+| Bin table and API declaration order | `pr1/20261020_234720.jpg` through `20261020_234903.jpg`; `pr1/20261020_235137.jpg` |
+| Store mutations, menus, sort/count helpers | `pr1/20261020_235451.jpg`, `20261020_235501.jpg`, `20261020_235718.jpg`, `20261020_235741.jpg`, `20261020_235753.jpg` |
+| Toolbar, menu locals, paste order | `pr2/20261021_014444.jpg`, `20261021_014514.jpg`, `20261021_014554.jpg` |
+| Navigation computeds, container bindings and menus | `pr3/20261021_015824.jpg`, `20261021_015848.jpg`, `20261021_015912.jpg`, `20261021_015955.jpg` |
+| Initial-navigation fields and helpers | `pr4/20261021_020941.jpg`, `20261021_021019.jpg`, `20261021_021039.jpg` |
+
+The remaining local adaptations are explicit:
+
+- `MockFileSystemApi` remains the provider, with complete mock bin behavior rather
+  than the photographed mock stubs. The container retains its `projectId` and
+  `projectLabel` inputs instead of destination project-overview dependencies.
+- Access enums come from `document-access.model.ts` here; the destination uses
+  generated enums. Keep its existing generated imports and mapping.
+- Local `RecycleBinDialogs`, `permanentDeleteTarget`, and `restoreError` replace
+  shared popup/reporting services. The protected template handler
+  `onRecycleBinDeleteConfirmed` closes the local dialog and invokes the private
+  `confirmDeleteRecycleBinItem` helper. Preserve the destination popup integration
+  when transferring those helpers.
+- `documentRootPath` and `relativePathFromRoot` handle both short mock paths and
+  full SharePoint paths. `transformPath` retains that normalization instead of
+  assuming a fixed number of path segments.
+- Existing functionality outside the photographed regions stays in place. Local
+  lint requirements retain necessary line wrapping and scoped suppressions;
+  this alignment does not apply a repository-wide formatter.
+
 ## Transfer boundaries
 
 - Keep the destination repository's generated Swagger services/models and working
-  `SharePointFileSystemApi`. The local adapter remains a compile-safe reference with
-  unimplemented reads/recycle-bin operations; it is **not** a replacement for those
-  existing backend integrations. No generated service files are required here.
+  `services/file-system/sharepoint-file-system-api.ts`. The local adapter remains a
+  compile-safe reference with unimplemented reads/recycle-bin operations; it is
+  **not** a replacement for those existing backend integrations. No generated
+  service files are required here.
+- Keep the destination's `services/file-system/sharepoint-document.mapper.ts` and
+  `sharepoint-error.mapper.ts`. The local document mapper contains stubs and the
+  local error mapper is a reference; retain the destination's DTO mappings and
+  backend error/reporting details.
 - Port the three `FileSystemApi` bin signatures and corresponding store calls. As in
   the screenshots, `listGuid` is the bin folder id, and deleted-item `parentId` is
   that bin id. Deleted records have their own ids and retain original display paths.
@@ -30,15 +89,17 @@ and chose the PR behavior, local mocks, local popup equivalents, and a Google SV
 - Keep destination providers, signing/dashboard/activity integrations and other
   files that do not exist in this standalone demo. Their photographed changes are
   outside the local feature's file tree. Review container imports/providers during
-  transfer instead of overwriting the entire application configuration.
+  transfer instead of overwriting the entire application configuration. Keep its
+  shared `_colors.scss` as well.
 - Copy the new icon asset as well as the feature source. Its source is Google's
   [Material outlined delete icon](https://raw.githubusercontent.com/google/material-design-icons/master/src/action/delete/materialiconsoutlined/24px.svg),
   from [material-design-icons](https://github.com/google/material-design-icons),
   licensed under [Apache 2.0](https://github.com/google/material-design-icons/blob/master/LICENSE).
   The original SVG is saved as `src/assets/icons/sharepoint-file-type-icons/recyclebin.svg`.
 - Initial folder links require Angular Router, as in the screenshots. The local
-  demo already provides it. Query cleanup clears all parameters using `replaceUrl`;
-  default root initialization remains the first history entry.
+  demo already provides it. Once a valid link is attempted, query cleanup clears
+  all parameters using `replaceUrl`; default root initialization remains the first
+  history entry.
 
 ## Local review
 
@@ -55,7 +116,11 @@ The mock resets on refresh. Deleted records are list-isolated and excluded from 
 Example initial link:
 `/?listKey=execution&folderPath=%2Fexecution%2FContracts`.
 Both query parameters are required; the path uses the same full-path representation
-as the list root. Recycle-bin display paths use that root to support both the local
+as the list root. Missing/empty parameters or an unrecognized `listKey` are ignored
+and leave the URL unchanged. A recognized list key is matched case-insensitively;
+after the navigation attempt, all query parameters are cleared on success or
+failure. This follows PR4, including its invalid-key behavior.
+Recycle-bin display paths use that root to support both the local
 `/execution` paths and the destination's longer SharePoint paths.
 
 ## Deliberately preserved follow-up items
@@ -76,6 +141,8 @@ separate next task; its implementation has not been added during this sync.
 
 ## Verification (2026-10-21)
 
+- Repeated after source alignment. The initial-link spec now checks that an
+  invalid list key leaves the default folder and URL unchanged, matching PR4.
 - Headless Chrome 147 / Karma: **140 of 140 tests passed**, including the mock
   roundtrip/failure/list-isolation cases, store pessimism, tree drop affordances,
   destination-list menus, initial links, permanent-delete confirmation, and escaped

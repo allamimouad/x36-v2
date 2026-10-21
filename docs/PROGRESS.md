@@ -6,7 +6,8 @@
 
 ## Current Status
 
-**Active Work**: Four-PR synchronization completed (2026-10-21). Next: internal drag-and-drop.
+**Active Work**: Four-PR synchronization and source alignment completed (2026-10-21).
+Next: internal drag-and-drop as a separate task.
 **Implementation Status**: Browsing, mutations, single-item copy/paste, uploads,
 recursive search, recycle bin, access flags, and initial folder links are implemented.
 Cut, multi-selection/bulk operations, and internal drag-and-drop remain deferred.
@@ -100,13 +101,18 @@ Cut, multi-selection/bulk operations, and internal drag-and-drop remain deferred
    internal drag-and-drop work. Mutations/actions already exist; do not rebuild them.
 2. Use [the four-PR handoff](handoffs/pr-sync.md) when transferring this
    feature. Keep the destination's generated services, working SharePoint adapter,
-   providers, and shared popup/reporting integrations.
+   document/error mappers, providers, and shared popup/reporting integrations.
+   Common names, declaration/property order, helpers, and templates now follow the
+   screenshots. The handoff lists the remaining local adaptations and screenshot
+   anchors; the alignment is kept as a separate commit on `sync/pr-changes`.
 3. Permission gaps deliberately preserved from the PRs (protected search results,
    actual row/tree drops, cross-list paste target access) need a separate decision
    before hardening. No new role inference or mutation retries were added.
 4. Complete manual Edge/Chrome acceptance and real backend verification for uploads,
    search, and recycle-bin operations on the destination. The local browser suite
-   now runs successfully: 140 tests passed in headless Chrome.
+   passed again after alignment: 140 tests in headless Chrome. App/spec TypeScript
+   checks, development/production builds, lint, and whitespace checks pass; existing
+   budget/accessibility warnings remain.
 
 Backend upload implementation handoff: use
 `docs/backend-operations/upload-file-feign-buffered.md` for the first bounded
@@ -119,10 +125,18 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 
 ## Decisions Log
 
+- **2026-10-21 — Source alignment**: user requested minimal transfer differences,
+  including variable names and declaration order. Restored the photographed
+  toolbar/menu/navigation/store locals, helper sequence, bin table markup, and
+  template bindings. Local mocks, host inputs, enums, dialogs, path normalization,
+  and lint requirements remain documented adaptations. Initial links with missing
+  parameters or unknown list keys are ignored without URL cleanup, matching PR4;
+  recognized links clear all query parameters after the navigation attempt. No
+  additional permission rules or internal drag-and-drop work was introduced.
 - **2026-10-21 — PR synchronization**: user authorized all four screenshot
   PRs on `sync/pr-changes`, chose exact PR permission behavior, local mocks and
   popup equivalents, and a Google Material SVG. Recycle bin is now in scope.
-  Execution is displayed/opened first; both initial URL parameters are resolved
+  Execution is displayed/opened first; valid initial URL parameters are resolved
   after normal initialization and then cleared. Backend-generated dependencies and
   target-only application integrations are retained on the destination. See the
   handoff for file boundaries and deliberately preserved gaps.

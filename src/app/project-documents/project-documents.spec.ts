@@ -1,7 +1,9 @@
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
-import { ActivatedRoute, provideRouter, Router } from '@angular/router';
+import {
+    ActivatedRoute, convertToParamMap, type ParamMap, provideRouter, Router
+} from '@angular/router';
 import type { MenuItem } from 'primeng/api';
 import { ContextMenu } from 'primeng/contextmenu';
 import { firstValueFrom, throwError } from 'rxjs';
@@ -24,7 +26,9 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
             providers: [provideRouter([]), provideNoopAnimations(),
-                { provide: ActivatedRoute, useValue: { snapshot: { queryParams } } },
+                { provide: ActivatedRoute, useValue: { snapshot: {
+                    get queryParamMap(): ParamMap { return convertToParamMap(queryParams); }
+                } } },
                 { provide: MOCK_CONFIG, useValue: {
                     minLatencyMs: 0, maxLatencyMs: 0, errorRate: 0, enableErrors: false,
                     protectedFolderPaths: ['execution/Contracts'],
@@ -96,17 +100,16 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
             await render();
             expect(navigation.currentFolder()?.path).toBe('/execution/Contracts');
             expect(navigation.history().length).toBe(2);
-            expect(navigate).toHaveBeenCalledOnceWith([], { queryParams: {}, replaceUrl: true });
+            expect(navigate).toHaveBeenCalledOnceWith([], { queryParams: [], replaceUrl: true });
         });
 
-    it('keeps the default root on an invalid list and clears query parameters', async () => {
+    it('ignores an invalid initial list and leaves query parameters unchanged', async () => {
         queryParams['listKey'] = 'invalid';
         queryParams['folderPath'] = '/execution/Contracts';
         const navigate = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
-        spyOn(console, 'error');
         await render();
         expect(navigation.currentFolder()?.path).toBe('/execution');
-        expect(navigate).toHaveBeenCalledOnceWith([], { queryParams: {}, replaceUrl: true });
+        expect(navigate).not.toHaveBeenCalled();
     });
 
     it('applies target-list access to tree menus while another writable list is open', async () => {

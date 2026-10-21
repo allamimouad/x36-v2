@@ -15,20 +15,17 @@ import { TableModule } from 'primeng/table';
 import { ProgressSpinner } from 'primeng/progressspinner';
 import { Tooltip } from 'primeng/tooltip';
 import {
-    isFolder,
     type FileNode,
     type FileSystemNode,
-    type FolderNode
+    type FolderNode,
+    isFolder
 } from '../../models/file-system-node.model';
 import type {
     ItemRenameRequest,
     NodeContextMenuRequest
 } from '../../models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from '../../models/external-drop-request.model';
-import {
-    FileSystemIcon
-} from '../../shared/file-system-icon/file-system-icon';
-
+import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
 import { FolderNodeResponseAccessLevelEnum } from '../../models/document-access.model';
 import { relativePathFromRoot } from '../../utils/path.utils';
 
@@ -64,8 +61,8 @@ export class FileTable {
     public readonly deleteConfirmationId = input<string | null>(null);
     public readonly externalDropTargetId = input<string | null>(null);
     public readonly externalDragActive = input<boolean>(false);
-    public readonly currentFolderName = input<string>('');
     public readonly projectName = input<string>('');
+    public readonly currentFolderName = input<string>('');
     public readonly currentFolderListKey = input<string | null>(null);
     public readonly currentFolderIsRecycleBin = input<boolean | null>(null);
     public readonly isCurrentFolderReadonly = input<boolean>(false);
@@ -85,21 +82,16 @@ export class FileTable {
     public readonly currentFolderDragOver = output<DragEvent>();
     public readonly currentFolderDropped = output<DragEvent>();
 
-    protected readonly recycleColumns = [
-        { field: 'name', label: 'File Name', width: '28%' },
-        { field: 'path', label: 'Path', width: '30%' },
-        { field: 'modifiedAt', label: 'Deleted', width: '16%' },
-        { field: 'modifiedBy', label: 'Deleted By', width: '16%' },
-        { field: 'sortSize', label: 'Size', width: '10%' }
-    ];
     protected readonly rows = computed<RowVm[]>(() => {
         const out: RowVm[] = [];
         for (const f of this.folders()) {
-            if (f.isRecycleBin) { continue; }
+            if (f.isRecycleBin) {
+                continue;
+            }
             out.push({
                 id: f.id,
-                path: this.transformPath(f.path),
                 name: f.name,
+                path: f.path ? this.transformPath(f.path) : undefined,
                 kind: 'folder',
                 typeLabel: 'Folder',
                 sizeLabel: '',
@@ -113,8 +105,8 @@ export class FileTable {
             const { base, ext } = fileNameParts(f.name);
             out.push({
                 id: f.id,
-                path: this.transformPath(f.path),
-                name: this.currentFolderIsRecycleBin() ? f.name : base,
+                name: base,
+                path: f.path ? this.transformPath(f.path) : undefined,
                 kind: 'file',
                 typeLabel: ext ? ext.toUpperCase() : 'FILE',
                 sizeLabel: formatSize(f.sizeBytes),
@@ -189,8 +181,12 @@ export class FileTable {
     protected onEmptyContextMenu(event: MouseEvent): void {
         event.preventDefault();
         if ((event.target as HTMLElement).closest('thead') ||
-            this.currentFolderIsRecycleBin()) { return; }
-        if (!this.loading()) { this.emptyContextMenuRequested.emit(event); }
+            this.currentFolderIsRecycleBin()) {
+            return;
+        }
+        if (!this.loading()) {
+            this.emptyContextMenuRequested.emit(event);
+        }
     }
 
     protected onInlineRenameInput(event: Event): void {
@@ -272,21 +268,6 @@ export class FileTable {
         this.currentFolderDropped.emit(event);
     }
 
-    private transformPath(path: string): string {
-        const root = this.documentRootPath();
-        if (!root) { return path; }
-        const relativePath = relativePathFromRoot(root, path);
-        const listKey = this.currentFolderListKey()?.toLowerCase() ?? '';
-
-        return `/${listKey}${relativePath ? '/' + relativePath : ''}`;
-    }
-
-    private isDropInFolderDisabled(row: RowVm): boolean {
-        return isFolder(row.node) &&
-            (row.node.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly ||
-                this.isCurrentFolderReadonly());
-    }
-
     private submitInlineRename(row: RowVm): void {
         const editedName = this.inlineRenameValue();
         if (row.kind === 'folder') {
@@ -299,6 +280,23 @@ export class FileTable {
         const trimmedBase = editedName.trim();
         const completeName = ext && trimmedBase ? `${trimmedBase}.${ext}` : editedName;
         this.renameSubmitted.emit({ node: row.node, name: completeName });
+    }
+
+    private transformPath(path: string): string {
+        const root = this.documentRootPath();
+        if (!root) { return path; }
+        const pathAfterRoot = relativePathFromRoot(root, path);
+        const listKey = this.currentFolderListKey()
+            ? `/${this.currentFolderListKey()?.toLowerCase()}`
+            : '';
+
+        return pathAfterRoot ? `${listKey}/${pathAfterRoot}` : listKey;
+    }
+
+    private isDropInFolderDisabled(row: RowVm): boolean {
+        return isFolder(row.node) &&
+            (row.node.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly
+                || this.isCurrentFolderReadonly());
     }
 }
 

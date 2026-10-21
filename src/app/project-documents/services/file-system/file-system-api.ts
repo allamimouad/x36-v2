@@ -85,26 +85,6 @@ export abstract class FileSystemApi {
     /** Delete a folder (recursive) or file. */
     public abstract delete(projectId: string, node: FileSystemNode): Observable<void>;
 
-    /** List deleted files and folders for the recycle-bin/list identifier. */
-    public abstract getRecycleBinItems(
-        projectId: string,
-        listGuid: string
-    ): Observable<DocumentListing>;
-
-    /** Restore an item to its original location. */
-    public abstract restoreRecycleBinItem(
-        projectId: string,
-        listGuid: string,
-        nodeId: string
-    ): Observable<void>;
-
-    /** Remove an item from the recycle bin. */
-    public abstract deletePermanentlyRecycleBinItem(
-        projectId: string,
-        listGuid: string,
-        nodeId: string
-    ): Observable<void>;
-
     /** Upload a file. Emits progress (0-100). Returns the created FileNode. */
     public abstract upload(
         projectId: string,
@@ -113,4 +93,27 @@ export abstract class FileSystemApi {
         onProgress: (percent: number) => void,
         signal?: AbortSignal,
     ): Observable<FileNode>;
+
+    /**
+     * Get recycle bin items for a document list.
+     * Returns a DocumentListing with the deleted items (files and folders) in the recycle bin.
+     */
+    public abstract getRecycleBinItems(
+        projectId: string,
+        listGuid: string
+    ): Observable<DocumentListing>;
+
+    /** Restore a deleted item from the recycle bin to its original location. */
+    public abstract restoreRecycleBinItem(
+        projectId: string,
+        listGuid: string,
+        nodeId: string
+    ): Observable<void>;
+
+    /** Permanently delete a recycle bin item (moves to second-stage recycle bin). */
+    public abstract deletePermanentlyRecycleBinItem(
+        projectId: string,
+        listGuid: string,
+        nodeId: string
+    ): Observable<void>;
 }

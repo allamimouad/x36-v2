@@ -145,7 +145,6 @@ export class MockFileSystemApi extends FileSystemApi {
             const now = nowIso();
             const folder: FolderNode = {
                 kind: 'folder',
-                isRecycleBin: false,
                 listKey: parentNode.listKey,
                 id: crypto.randomUUID(),
                 path: joinPath(parentNode.path, canonicalName),
@@ -154,7 +153,8 @@ export class MockFileSystemApi extends FileSystemApi {
                 itemCount: 0,
                 createdAt: now,
                 modifiedAt: now,
-                modifiedBy: this.currentUser
+                modifiedBy: this.currentUser,
+                isRecycleBin: false
             };
             this.nodes.set(folder.id, folder);
             touchParentCounts(this.nodes, parentNode.id);

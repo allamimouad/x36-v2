@@ -1,13 +1,13 @@
 /* eslint-disable max-lines -- Store methods share the entity cache and request state. */
 import { inject, isDevMode } from '@angular/core';
-import { withDevToolsStub, withDevtools, withMapper } from '@angular-architects/ngrx-toolkit';
+import { withDevtools, withDevToolsStub, withMapper } from '@angular-architects/ngrx-toolkit';
 import {
+    type EmptyFeatureResult,
     patchState,
     signalStore,
+    type SignalStoreFeature,
     withMethods,
-    withState,
-    type EmptyFeatureResult,
-    type SignalStoreFeature
+    withState
 } from '@ngrx/signals';
 import {
     catchError,
@@ -15,10 +15,10 @@ import {
     firstValueFrom,
     forkJoin,
     map,
+    type Observable,
     of,
     pipe,
-    switchMap,
-    type Observable
+    switchMap
 } from 'rxjs';
 import { rxMethod } from '@ngrx/signals/rxjs-interop';
 import {
@@ -36,10 +36,10 @@ import type {
 import { DOCUMENT_LIST_KEYS, type DocumentListKey } from '../models/document-list.model';
 import { FileSystemError } from '../models/file-system-error.model';
 import {
-    isFolder,
     type FileNode,
     type FileSystemNode,
-    type FolderNode
+    type FolderNode,
+    isFolder
 } from '../models/file-system-node.model';
 import { FileSystemApi } from '../services/file-system/file-system-api';
 
@@ -125,7 +125,7 @@ export const FileSystemStore = signalStore(
             return projectId;
         };
 
-        const _loadRoot$ = (
+        const _loadRoots = (
             projectId: string,
             listKey: DocumentListKey
         ): Observable<RootLoadResult> =>
@@ -135,7 +135,7 @@ export const FileSystemStore = signalStore(
                         listKey,
                         listing,
                         root: { status: 'loaded', root: listing.currentFolder,
-                            isListReadonly: listing.isListReadonly ?? false }
+                            isListReadonly: listing.isListReadonly }
                     })
                 ),
                 catchError((e) => {
@@ -197,7 +197,7 @@ export const FileSystemStore = signalStore(
                 _beginInitialize(projectId);
 
                 return forkJoin(
-                    DOCUMENT_LIST_KEYS.map((listKey) => _loadRoot$(projectId, listKey))
+                    DOCUMENT_LIST_KEYS.map((listKey) => _loadRoots(projectId, listKey))
                 );
             }).pipe(map(_applyInitialize));
 
@@ -476,26 +476,34 @@ export const FileSystemStore = signalStore(
 
         const deleteRecycleBinNodes = async (ids: string | string[]): Promise<void> => {
             const id = onlySingleId(ids, 'delete');
-            const node = store.entityMap()[id];
-            if (!node?.parentId) {
-                throw new FileSystemError('not-found', 'Recycle bin item not found');
+            const subtree = _cachedSubtree(id);
+            const node = subtree.find((candidate) => candidate.id === id);
+            if (!node) {
+                throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
             }
-            await firstValueFrom(api.deletePermanentlyRecycleBinItem(
-                _requireProjectId(), node.parentId, node.id
-            ));
-            patchState(store, removeEntities(_cachedSubtreeIds(id)));
+            if (node.parentId === null) {
+                throw new FileSystemError('not-found', 'Recycle bin id not found');
+            }
+            await firstValueFrom(
+                api.deletePermanentlyRecycleBinItem(_requireProjectId(), node.parentId, node.id)
+            );
+            patchState(store, removeEntities(subtree.map((candidate) => candidate.id)));
         };
 
         const restoreRecycleBinNodes = async (ids: string | string[]): Promise<void> => {
-            const id = onlySingleId(ids, 'restore');
-            const node = store.entityMap()[id];
-            if (!node?.parentId) {
-                throw new FileSystemError('not-found', 'Recycle bin item not found');
+            const id = onlySingleId(ids, 'delete');
+            const subtree = _cachedSubtree(id);
+            const node = subtree.find((candidate) => candidate.id === id);
+            if (!node) {
+                throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
             }
-            await firstValueFrom(api.restoreRecycleBinItem(
-                _requireProjectId(), node.parentId, node.id
-            ));
-            patchState(store, removeEntities(_cachedSubtreeIds(id)));
+            if (node.parentId === null) {
+                throw new FileSystemError('not-found', 'Recycle bin id not found');
+            }
+            await firstValueFrom(
+                api.restoreRecycleBinItem(_requireProjectId(), node.parentId, node.id)
+            );
+            patchState(store, removeEntities(subtree.map((candidate) => candidate.id)));
         };
 
         // Clear loaded/loading markers for a removed subtree only (incl. its root, so a

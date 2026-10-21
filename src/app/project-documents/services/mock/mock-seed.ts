@@ -369,7 +369,6 @@ export function buildSeed(): SeedResult {
         const rootPath = `${ROOT_PATH}${listKey.toLowerCase()}`;
         const root: FolderNode = {
             kind: 'folder',
-            isRecycleBin: false,
             listKey,
             id: rootId,
             path: rootPath,
@@ -378,7 +377,8 @@ export function buildSeed(): SeedResult {
             itemCount: seed.length,
             createdAt: EARLIER,
             modifiedAt: NOW,
-            modifiedBy: EDITORS[0]
+            modifiedBy: EDITORS[0],
+            isRecycleBin: false
         };
         nodes.set(root.id, root);
         for (const spec of seed) {
@@ -401,7 +401,6 @@ function addFolder(
     const itemCount = (spec.folders?.length ?? 0) + (spec.files?.length ?? 0);
     const folder: FolderNode = {
         kind: 'folder',
-        isRecycleBin: false,
         listKey,
         id: crypto.randomUUID(),
         path,
@@ -410,7 +409,8 @@ function addFolder(
         itemCount,
         createdAt: EARLIER,
         modifiedAt: NOW,
-        modifiedBy: editorFor(spec.name)
+        modifiedBy: editorFor(spec.name),
+        isRecycleBin: false
     };
     nodes.set(folder.id, folder);
     for (const sub of spec.folders ?? []) {

@@ -83,6 +83,11 @@ All stores and services specific to the file manager are provided on `ProjectDoc
 ### 2.6 Portable, plan-free source
 The `src/app/project-documents/` folder will be copied verbatim to another machine and pushed to a different repository (with the SharePoint adapter swapped in for the mock). Therefore **no file under `src/app/project-documents/` may reference the internal planning workflow**: no "Phase N" in comments, tooltips, error messages, or identifiers, and no pointers to `SPEC.md` / `PHASES.md` / `PROGRESS.md`. **The same applies to the cross-repo copy workflow itself**: no comments about a "target repo", "the other laptop", files being "copied", "swapped", or "deleted later", or code being "dev-only" / a "stand-in" for that reason — the copied source must read as if it always lived in its destination. Migration instructions live only in `docs/` (PHASES Phase 6). Not-yet-built functionality is worded neutrally ("not available yet", "not implemented yet"). Phase references live only in `docs/`. `TODO` comments are allowed and mark every unimplemented feature, but must be short one-liners referencing the feature / user story that will implement it (e.g. `// TODO: implement with the upload US.`) — never a phase.
 
+When synchronizing the photographed PRs, preserve their variable names,
+declaration/property order, helper placement, and template structure wherever
+visible. Keep required local adaptations documented in `handoffs/pr-sync.md` so
+the common code remains easy to compare with the destination.
+
 ---
 
 ## 3. Feature Requirements
@@ -113,7 +118,7 @@ The `src/app/project-documents/` folder will be copied verbatim to another machi
 ### 3.3 Navigation
 
 - Initially open Execution when available, otherwise Marketing.
-- Optional URL query parameters `listKey` (case-insensitive) and `folderPath` (full backend path) resolve a folder after default initialization. Both must be non-empty. On success or failure, clear query parameters with `replaceUrl`; default navigation stays in history.
+- Optional URL query parameters `listKey` (case-insensitive) and `folderPath` (full backend path) resolve a folder after default initialization. Both must be non-empty and the list key must be recognized; otherwise ignore the link and retain the query parameters. Once a recognized link is attempted, clear all query parameters with `replaceUrl` on success or failure; default navigation stays in history.
 - **Double-click a folder on the right** → opens that folder
 - **Double-click a file on the right** → opens it in its online application
 - **Single-click a folder on the tree** → opens that folder
