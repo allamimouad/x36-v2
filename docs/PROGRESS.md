@@ -89,6 +89,16 @@ the existing bundle/style budget warnings. The scoped 13 component tests and
 lint cleanup, local support files, and docs; exclude `.vscode/launch.json`,
 `tmp-screenshots/`, and the temporary backend search investigation document.
 
+**Assertion-style correction (2026-10-22):** the earlier assertion cleanup
+misidentified the user's lint message and did not resolve these two errors.
+Reproduced the exact `@typescript-eslint/non-nullable-type-assertion-style`
+errors at spec lines 171 and 197. Replaced the two DOM `as` casts with typed
+`querySelector` calls and optional property access; the strict boolean
+expectations still fail if the element is missing. The spec passes that exact
+rule, both previously checked assertion rules, the spec TypeScript check, all
+13 component tests, and the whitespace check. No application code changed.
+The user requested a follow-up commit after `62ce0fa` and will push manually.
+
 ---
 
 ## Phase 1 — Foundation & Read-Only Browsing

@@ -168,8 +168,8 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         expect(disabled(items, 'Upload within folder')).toBeFalse();
         navigation.navigateTo(contracts.id);
         await render();
-        expect((host().querySelector('[data-testid="pd-btn-new-folder"]') as HTMLButtonElement)
-            .disabled).toBeFalse();
+        expect(host().querySelector<HTMLButtonElement>('[data-testid="pd-btn-new-folder"]')
+            ?.disabled).toBeFalse();
     });
 
     it('uses destination list access and disables bin actions in readonly lists',
@@ -194,8 +194,8 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
             const binMenu = menuFor(record);
             expect(binMenu.map((item) => item.label)).toEqual(['Restore', 'Delete']);
             expect(binMenu.every((item) => item.disabled)).toBeTrue();
-            expect((host().querySelector('[data-testid="pd-search"]') as HTMLInputElement)
-                .disabled).toBeTrue();
+            expect(host().querySelector<HTMLInputElement>('[data-testid="pd-search"]')
+                ?.disabled).toBeTrue();
         });
 
     it('shows escaped HTTP restore failures with their trace ID and retains the deleted record',
