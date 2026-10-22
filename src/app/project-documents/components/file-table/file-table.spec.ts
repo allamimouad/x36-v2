@@ -93,7 +93,10 @@ describe('FileTable', () => {
         fixture.componentRef.setInput('currentFolderIsRecycleBin', true);
         fixture.componentRef.setInput('projectName', 'Project');
         fixture.componentRef.setInput('currentFolderListKey', 'EXECUTION');
-        fixture.componentRef.setInput('documentRootPath', '/Documents');
+        fixture.componentRef.setInput('folders', [{ ...folder,
+            path: 'sites/archived/another-library/Reports' }]);
+        fixture.componentRef.setInput('files', [{ ...file,
+            path: 'sites/archived/another-library/report.docx' }]);
         const activated = jasmine.createSpy('activated');
         const emptyMenu = jasmine.createSpy('emptyMenu');
         fixture.componentInstance.itemDoubleClicked.subscribe(activated);

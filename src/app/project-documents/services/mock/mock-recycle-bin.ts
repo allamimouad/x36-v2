@@ -45,6 +45,7 @@ export class MockRecycleBin {
         const node: FileSystemNode = {
             ...clone(original),
             id: crypto.randomUUID(),
+            path: `sites/mock/${original.path.replace(/^\/+/, '')}`,
             parentId: bin.id,
             modifiedAt: nowIso(),
             modifiedBy: 'You'

@@ -9,6 +9,12 @@ Execution-first navigation, and initial folder URL parameters now extend the ori
 sequence. See [the synchronization handoff](handoffs/pr-sync.md). Existing
 mutation/upload/search work stays in place; this does not authorize internal drag work.
 
+**2026-10-22 constraint:** synchronization must preserve the supplied behavior and
+existing limitations. Roll back extra fixes, including the root-relative bin path
+formatter and the removal of the broad current-bin activation guard. Do not add a
+narrower guard or repair tree Open Folder behavior during this synchronization.
+Bug fixes are a separate future task requiring explicit authorization.
+
 ---
 
 ## Phase 1 — Foundation & Read-Only Browsing

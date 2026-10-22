@@ -39,7 +39,7 @@ describe('MockFileSystemApi recycle bin', () => {
         expect(deleted.folders.length).toBe(1);
         const record = deleted.folders[0];
         expect(record.parentId).toBe(bin.id);
-        expect(record.path).toBe(parent.path);
+        expect(record.path).toBe(`sites/mock${parent.path}`);
         expect(record.id).not.toBe(parent.id);
         await firstValueFrom(api.restoreRecycleBinItem(projectId, bin.id, record.id));
 

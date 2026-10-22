@@ -4,6 +4,11 @@ Applied on `sync/pr-changes` from the photographed diffs in
 `tmp-screenshots/pr1` through `pr4`. The user confirmed these were the complete set
 and chose the PR behavior, local mocks, local popup equivalents, and a Google SVG.
 
+**2026-10-22 scope:** preserve the supplied behavior, including existing bugs and
+limitations. No additional bug fixes are authorized during synchronization. The
+extra path normalization and guard removal have been rolled back as below;
+the proposed narrower activation guard has not been applied.
+
 | Screenshots | Work represented | Local implementation |
 | --- | --- | --- |
 | PR1 / #110 / CFO-11531 | Recycle bin | Node flag, API methods, mock deleted-subtree snapshots, store routing/writes, tree icon/leaf, deleted metadata table, Restore/Delete menus, confirmation and restore-error dialogs |
@@ -58,9 +63,11 @@ The remaining local adaptations are explicit:
 - Popup imports and calls now match PR1. Local implementations resolve through
   aliases outside `project-documents`; see the dependency mapping below. There is
   no feature-specific dialog component or dialog state to remove during transfer.
-- `documentRootPath` and `relativePathFromRoot` handle both short mock paths and
-  full SharePoint paths. `transformPath` retains that normalization instead of
-  assuming a fixed number of path segments.
+- `transformPath` now matches PR1's `path.split('/')` / `segments.slice(3)` logic
+  and its format comments. The extra `documentRootPath` input/binding and table
+  call to `relativePathFromRoot` are removed. Mock deleted records use
+  `sites/mock/{listKey}/remainingPath`; their private restoration snapshots retain
+  the live mock paths and ids. The shared table adds no path/root validation.
 - Existing functionality outside the photographed regions stays in place. Local
   lint requirements retain necessary line wrapping and scoped suppressions;
   this alignment does not apply a repository-wide formatter.
@@ -178,14 +185,20 @@ Both query parameters are required; the path uses the same full-path representat
 as the list root. Missing/empty parameters or an unrecognized `listKey` are ignored
 and leave the URL unchanged. A recognized list key is matched case-insensitively;
 after the navigation attempt, all query parameters are cleared on success or
-failure. This follows PR4, including its invalid-key behavior.
-Recycle-bin display paths use that root to support both the local
-`/execution` paths and the destination's longer SharePoint paths.
+failure. This follows PR4, including its invalid-key behavior. Bin path display
+uses PR1's fixed three-segment removal. Only mock bin records receive the
+`sites/mock/` prefix; live mock paths and initial links remain `/execution/...`
+or `/marketing/...`. Existing search and PR4 initial-link uses of
+`relativePathFromRoot` remain unchanged.
 
 ## Deliberately preserved follow-up items
 
 The user selected exact PR behavior instead of additional permission fixes:
 
+- `onItemDoubleClicked` returns immediately whenever the current folder is a bin.
+  This deliberately also prevents the tree's Open Folder context action from
+  opening ordinary folders while a bin is displayed. Do not replace the broad
+  guard with a narrower one during this synchronization.
 - Protected folder search results still use the readonly/locked branch rather than
   the normal protected-folder rename/delete rule.
 - Row/tree dragover rejects forbidden targets, while their actual drop handlers
@@ -198,18 +211,21 @@ The user selected exact PR behavior instead of additional permission fixes:
 These UI rules do not replace backend authorization. Internal drag-and-drop is a
 separate next task; its implementation has not been added during this sync.
 
-## Verification (2026-10-21)
+## Verification (2026-10-22)
 
-- Repeated after popup and `@api` dependency alignment. Integration checks cover the actual
-  local popup service: delete on confirm, no delete on cancel, HTTP error message
-  escaping and trace-id propagation, and generic non-HTTP restore failures. The
-  initial-link spec checks that an invalid list key leaves the default folder and
-  URL unchanged, matching PR4.
-- Headless Chrome 147 / Karma: **142 of 142 tests passed**, including the mock
+- Repeated after reverting the extra path formatter and guard removal. The table
+  fixture uses the PR's path representation without a document-root input. Added
+  workflow checks that the broad guard leaves tree Open Folder inactive while
+  viewing a bin and ignores a deleted-file activation emitted to the container.
+  Existing integration checks cover the actual local popup service: delete on
+  confirm, no delete on cancel, HTTP error message escaping and trace-id
+  propagation, and generic non-HTTP restore failures. The initial-link spec checks
+  that an invalid list key leaves the default folder and URL unchanged, matching PR4.
+- Headless Chrome 147 / Karma: **144 of 144 tests passed**, including the mock
   roundtrip/failure/list-isolation cases, store pessimism, tree drop affordances,
   destination-list menus, initial links, permanent-delete confirmation, and escaped
   restore-error text.
-- Development and production builds pass. Production reports the existing
+- Production build passes. It reports the existing
   warning thresholds: initial bundle 514.37 kB against 500 kB and container styles
   4.52 kB against 4 kB; neither reaches the error threshold.
 - App/spec TypeScript checks and `git diff --check` pass. Lint has no errors and

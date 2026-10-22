@@ -10,6 +10,8 @@ import { ContextMenu } from 'primeng/contextmenu';
 import { DialogService } from 'primeng/dynamicdialog';
 import { firstValueFrom, throwError } from 'rxjs';
 import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
+import { FileTable } from './components/file-table/file-table';
+import { FileLaunchService } from './services/interaction/file-launch.service';
 import { isFolder, type FolderNode } from './models/file-system-node.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
 import { MOCK_CONFIG } from './services/mock/mock-config.token';
@@ -263,5 +265,45 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         await render();
         expect(remove).not.toHaveBeenCalled();
         expect(store.entityMap()[record.id]).toBeDefined();
+    });
+
+    it('keeps the current bin when Open Folder is requested from the tree', async () => {
+        await render();
+        const bin = folder('/execution/Recycle Bin');
+        navigation.navigateTo(bin.id);
+        await render();
+        const label = [...host().querySelectorAll('.pd-tree-node')]
+            .find((element) => element.textContent?.trim() === 'Contracts');
+        expect(label).toBeDefined();
+        label?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+        const menu = fixture.debugElement.query(By.directive(ContextMenu))
+            .componentInstance as ContextMenu;
+        const item = menu.model?.find((candidate) => candidate.label === 'Open Folder');
+        expect(item).toBeDefined();
+        item?.command?.({ item });
+        await render();
+        expect(navigation.currentFolderId()).toBe(bin.id);
+    });
+
+    it('ignores a deleted file activation emitted while viewing its bin', async () => {
+        await render();
+        const contracts = folder('/execution/Contracts');
+        navigation.navigateTo(contracts.id);
+        await render();
+        const file = store.entities().find((node) =>
+            node.kind === 'file' && node.parentId === contracts.id)!;
+        await store.delete(file.id);
+        const bin = folder('/execution/Recycle Bin');
+        navigation.navigateTo(bin.id);
+        await render();
+        const record = store.entities().find((node) =>
+            node.kind === 'file' && node.parentId === bin.id)!;
+        const open = spyOn(fixture.debugElement.injector.get(FileLaunchService), 'openOnline');
+        const table = fixture.debugElement.query(By.directive(FileTable))
+            .componentInstance as FileTable;
+        table.itemDoubleClicked.emit(record);
+        await render();
+        expect(open).not.toHaveBeenCalled();
+        expect(navigation.currentFolderId()).toBe(bin.id);
     });
 });

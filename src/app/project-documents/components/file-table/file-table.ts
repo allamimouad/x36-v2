@@ -27,7 +27,6 @@ import type {
 import type { ExternalFolderDropRequest } from '../../models/external-drop-request.model';
 import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
 import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
-import { relativePathFromRoot } from '../../utils/path.utils';
 
 interface RowVm {
     id: string;
@@ -66,7 +65,6 @@ export class FileTable {
     public readonly currentFolderListKey = input<string | null>(null);
     public readonly currentFolderIsRecycleBin = input<boolean | null>(null);
     public readonly isCurrentFolderReadonly = input<boolean>(false);
-    public readonly documentRootPath = input<string>('');
 
     public readonly itemDoubleClicked = output<FileSystemNode>();
     public readonly itemFocused = output<string>();
@@ -282,10 +280,11 @@ export class FileTable {
         this.renameSubmitted.emit({ node: row.node, name: completeName });
     }
 
+    // Input format: sites/{siteName}/{listName}/remainingPath
+    // Output format: /{listKey}/remainingPath
     private transformPath(path: string): string {
-        const root = this.documentRootPath();
-        if (!root) { return path; }
-        const pathAfterRoot = relativePathFromRoot(root, path);
+        const segments = path.split('/');
+        const pathAfterRoot = segments.slice(3).join('/');
         const listKey = this.currentFolderListKey()
             ? `/${this.currentFolderListKey()?.toLowerCase()}`
             : '';

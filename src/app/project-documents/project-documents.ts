@@ -756,6 +756,7 @@ export class ProjectDocuments {
     }
 
     protected onItemDoubleClicked(node: FileSystemNode): void {
+        if (this.navigation.currentFolderIsRecycleBin()) { return; }
         if (!isFolder(node)) {
             this.openInOnlineApplication(node);
 

@@ -6,9 +6,11 @@
 
 ## Current Status
 
-**Active Work**: Four-PR synchronization, source alignment, and popup / `@api`
-dependency alignment completed (2026-10-21).
-Next: internal drag-and-drop as a separate task.
+**Active Work**: PR-only behavior restored (2026-10-22). Reverted the extra bin path
+normalization and restored the broad current-bin activation guard. The rollback
+is kept in a separate commit on `sync/pr-changes`.
+Next: review the synchronized PR behavior before starting internal drag-and-drop
+as a separate task. Do not fix existing bugs during synchronization.
 **Implementation Status**: Browsing, mutations, single-item copy/paste, uploads,
 recursive search, recycle bin, access flags, and initial folder links are implemented.
 Cut, multi-selection/bulk operations, and internal drag-and-drop remain deferred.
@@ -98,8 +100,14 @@ Cut, multi-selection/bulk operations, and internal drag-and-drop remain deferred
 
 ## Current Focus
 
-1. Review the synchronized behavior locally, then begin the separately authorized
-   internal drag-and-drop work. Mutations/actions already exist; do not rebuild them.
+1. Review PR-only behavior before starting internal drag-and-drop. The user
+   explicitly rejected additional bug fixes: keep the original `slice(3)` table
+   formatter and the broad current-bin guard, including tree Open Folder doing
+   nothing while a bin is displayed. Do not apply the proposed narrower guard.
+   Bug fixes require a separate explicit task after synchronization is reviewed.
+   The support message is deferred until supplied; the user handles the unused
+   mock import, generator settings, and user-specific configuration on the
+   destination. No actual-path sample is needed to justify extra normalization.
 2. Use [the four-PR handoff](handoffs/pr-sync.md) when transferring this
    feature. Keep the destination's generated services, working SharePoint adapter,
    document/error mappers, providers, and shared popup/reporting integrations.
@@ -117,8 +125,8 @@ Cut, multi-selection/bulk operations, and internal drag-and-drop remain deferred
    before hardening. No new role inference or mutation retries were added.
 4. Complete manual Edge/Chrome acceptance and real backend verification for uploads,
    search, and recycle-bin operations on the destination. The local browser suite
-   passed again after popup and `@api` alignment: 142 tests in headless Chrome. App/spec TypeScript
-   checks, development/production builds, lint, and whitespace checks pass; existing
+   passed again after the PR-only rollback: 144 tests in headless Chrome. App/spec TypeScript
+   checks, production build, lint, and whitespace checks pass; existing
    budget/accessibility warnings remain.
 
 Backend upload implementation handoff: use
@@ -132,6 +140,45 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 
 ## Decisions Log
 
+- **2026-10-22 — Roll back extra fixes; preserve PR behavior**: user reported
+  `Node path is outside its document-list root` when opening a bin and explicitly
+  ordered rollback of additional fixes. Restored PR1's `transformPath` format
+  comments and `path.split('/')` / `segments.slice(3)` implementation. Removed
+  the `documentRootPath` input/binding and table-only `relativePathFromRoot` call;
+  existing search and PR4 initial-link uses of the utility are unchanged. Restored
+  the original `onItemDoubleClicked` early return whenever the current folder is
+  a bin, including the known tree Open Folder limitation. No narrower guard or
+  permission fixes were introduced. Mock bin records now return
+  `sites/mock/{listKey}/remainingPath` for the PR formatter; private restoration
+  snapshots retain the live mock paths/ids. Updated the existing path fixture and
+  mock roundtrip assertion, and added workflow coverage for the broad guard's two
+  effects. All 144 browser tests, app/spec TypeScript, production build, lint, and
+  whitespace checks pass; existing budget / accessibility warnings remain. Docs
+  record that synchronization must not fix existing bugs. User handles destination
+  mock-import cleanup, generator / identity settings; exact support wording is
+  deferred. This instruction supersedes earlier proposals to validate/generalize
+  bin paths or narrow the activation guard. Rollback changes are grouped in their
+  own commit.
+- **2026-10-22 — Destination review screenshots checked**: read all three images
+  in `tmp-screenshots/llm-diff/` and compared their claims with local source and Git
+  history. Recent PR-sync commits did not change notification wording, container
+  SCSS, or `app.config.ts`; `openapitools.json` is absent here. The reported email,
+  border, generator version, and user-specific configuration differences therefore
+  need to be treated as separate destination differences, not attributed to this
+  sync. Asked for intended message wording, a real root / deleted-item path pair,
+  and whether border / generator changes were intentional. The local path formatter
+  remains a behavior adaptation: it requires paths under the supplied list root
+  and can throw for mismatched representations. Keep the destination's real
+  SharePoint provider and adapter; an unused mock import there can be removed
+  without changing that binding. Bin rows have no double-click event binding and
+  an existing spec covers that; direct calls to the container handler still differ
+  from an implementation with a guard. Restoring the broad current-folder guard
+  would also block normal tree-folder Open Folder actions while viewing a bin.
+  Execution-first display/default selection is explicitly in PR4. Mock/bin/access
+  helpers and their tests are deliberate local support. No application code was
+  changed during this review; the previous 142-test result covers local behavior,
+  not the destination's backend or its generator upgrade. Full destination source
+  equivalence cannot be established from an LLM summary alone.
 - **2026-10-21 — Generated API import paths preserved**: user requested the same
   outside-the-feature replacement approach for `@api` dependencies. Confirmed the
   exact `folderNodeResponse` / `fileNodeResponse` paths in PR2 and the navigation

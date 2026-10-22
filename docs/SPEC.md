@@ -8,6 +8,11 @@
 > **Before starting any work**: read `PROGRESS.md` to see which phase is active.
 > **Before ending your session**: update `PROGRESS.md` with what you completed, what you deferred, and what the next session should pick up.
 > **Authorized scope update (2026-10-21):** the four PRs are synchronized locally, including recycle bin, backend-supplied access rules, and initial folder links. This explicitly extends the original scope; internal drag-and-drop remains deferred. See `handoffs/pr-sync.md`.
+> **PR fidelity constraint (2026-10-22):** apply the supplied PR behavior without
+> additional bug fixes. Restore the original `slice(3)` bin path formatter and
+> broad current-bin activation guard. Preserve existing limitations, including
+> tree Open Folder doing nothing while a recycle bin is displayed. Any proposed
+> bug fixes require a separate, explicit task after synchronization is reviewed.
 >
 > **Never implement features from a future phase.** If you notice something needed later, note it in `PROGRESS.md` under "Deferred" and move on.
 > **Git publishing rule**: commit and push to `main` by default. Create or use another
@@ -282,6 +287,13 @@ All scenarios must work:
   Deleted By, and Size, initially newest deletion first. Empty text is
   "The recycle bin is empty." Search, create, upload, empty-area context menus,
   double-click navigation, and ordinary table editing/drop targets are unavailable.
+  Keep the PR's `transformPath`: split the path on `/`, remove the first three
+  segments with `slice(3)`, and prefix the lowercase list key. Its expected input
+  is `sites/{siteName}/{listName}/remainingPath`; do not add a root-path input or
+  validate the path against the loaded root in this table. Mock bin records use
+  `sites/mock/{listKey}/remainingPath` to exercise this same formatter.
+  Keep the broad `onItemDoubleClicked` early return whenever the current folder
+  is a recycle bin, including its effect on ordinary tree Open Folder actions.
 - Deleted-item context menus expose Restore and Delete. Restore reports success or
   an escaped error dialog. Permanent Delete requires a modal Cancel/Confirm step.
   Use `PopupService` and `TRACE_ID_HEADER` from `ibportal-web-ui-commons`, and
