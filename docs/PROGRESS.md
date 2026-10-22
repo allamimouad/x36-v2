@@ -9,11 +9,85 @@
 **Active Work**: PR-only behavior restored (2026-10-22). Reverted the extra bin path
 normalization and restored the broad current-bin activation guard. The rollback
 is kept in a separate commit on `sync/pr-changes`.
+Final synchronization adjustment: renamed the container's required project input
+from `projectId` to `id` to match the destination route parameter; updated its
+usages, local demo binding, existing integration fixture, and documentation.
+The user removed the `.pd-root` border during this session. The notification
+message remains unchanged and deferred. No additional bug fixes were applied.
+Restored Marketing-before-Execution availability checks in the HTML `@else`
+branch to match the PR source. The two splitter panels and default selection
+remain Execution-first.
+PR5 is now applied from both screenshots in `tmp-screenshots/pr5`:
+`projectLabel` is a writable signal initialized to `''`, updated by the exact
+`projectOverviewService.projectDTO()?.name ?? ''` effect immediately after
+`observeReadErrors()`. Its original service import and injected field are used.
+The local overview service at `src/services/project-overview.service.ts` and its
+demo provider live outside the copied feature. The destination keeps its own
+service/provider. The container no longer accepts a `projectLabel` input; child
+component label inputs remain unchanged.
 Next: review the synchronized PR behavior before starting internal drag-and-drop
 as a separate task. Do not fix existing bugs during synchronization.
 **Implementation Status**: Browsing, mutations, single-item copy/paste, uploads,
 recursive search, recycle bin, access flags, and initial folder links are implemented.
 Cut, multi-selection/bulk operations, and internal drag-and-drop remain deferred.
+
+**Latest verification (2026-10-22)**: production build, spec TypeScript check,
+lint of the changed TypeScript files, and whitespace checks pass. All 13
+container integration tests pass, including the PR5 project-details update test.
+The test covers metadata arriving after mount, changing the name, and clearing
+a missing name in the rendered labels. Existing build
+budget warnings and the test-server font 404 remain. Store/API `projectId`
+parameters and routing configuration are unchanged; the demo supplies `[id]`
+explicitly and the destination retains its existing router-to-input binding.
+The production build and whitespace checks passed again after restoring the
+HTML availability-check order; no new tests were added for this reorder.
+
+**Destination lint follow-up (2026-10-22):** replaced all 14 non-null assertions
+in `project-documents.spec.ts` with explicit missing-fixture checks. Application
+code and the repository lint configuration are unchanged. The spec passes lint
+with `@typescript-eslint/no-non-null-assertion` and
+`@typescript-eslint/no-unnecessary-type-assertion` explicitly enabled, the spec
+TypeScript check, and all 13 component tests. No new tests were added.
+
+**Mock API line-limit follow-up (2026-10-22):** moved the three recursive copy
+methods unchanged into `services/mock/mock-copy.ts` (`MockNodeCopier`).
+`mock-file-system-api.ts` delegates to it and is now 492 total lines, down from
+559. Both files pass a strict 500-line lint check counting blank/comment lines;
+the spec TypeScript check, whitespace check, and all 25 existing file-system
+store tests pass, including copy naming, cross-list copying, and child counts.
+The extracted method code matches the original, apart from the entry method's
+visibility. No lint limit, public filesystem API, or mock behavior was changed.
+
+**Mock recycle-bin shadowing follow-up (2026-10-22):** renamed the `find`
+callback parameter in `recycle` from `node` to `candidate`, retaining the outer
+deleted-record `node` and the exact predicate. Scoped lint passes with
+`@typescript-eslint/no-shadow` using `hoist: all`; the spec TypeScript check and
+whitespace check pass. This is a variable rename with no behavior change.
+
+**Store directive follow-up (2026-10-22):** removed the inline
+`max-lines-per-function` suppression above `withMethods`, reported as unused by
+the destination lint setup. The stricter local lint setup still flags that
+factory (459 counted lines against 40), so `eslint.config.mjs` now has a
+file-specific 500-line function limit for `file-system.store.ts`. This local
+configuration stays outside the copied feature; no store logic changed. Scoped
+lint with unused-disable reporting and the whitespace check pass. Tests were
+not repeated for this comment/configuration-only change.
+
+**Navigation directives follow-up (2026-10-22):** the user accepted continuing
+with the local lint-configuration approach. Removed the two inline
+`max-lines-per-function` directives at the former lines 82 and 204 in
+`navigation.store.ts`. Added that file to the existing local 500-line function
+limit for the store factories. Both stores pass scoped lint with unused-disable
+reporting, and the whitespace check passes. Only source comments and local lint
+configuration changed; tests were not repeated.
+
+**Commit review (2026-10-22):** the user requested a commit and will push it
+manually. Final production build and repository-wide lint pass; lint retains
+only the two existing path-bar accessibility warnings, and the build retains
+the existing bundle/style budget warnings. The scoped 13 component tests and
+25 store tests passed during the changes above. Commit the synchronization,
+lint cleanup, local support files, and docs; exclude `.vscode/launch.json`,
+`tmp-screenshots/`, and the temporary backend search investigation document.
 
 ---
 
@@ -108,7 +182,7 @@ Cut, multi-selection/bulk operations, and internal drag-and-drop remain deferred
    The support message is deferred until supplied; the user handles the unused
    mock import, generator settings, and user-specific configuration on the
    destination. No actual-path sample is needed to justify extra normalization.
-2. Use [the four-PR handoff](handoffs/pr-sync.md) when transferring this
+2. Use [the PR synchronization handoff](handoffs/pr-sync.md) when transferring this
    feature. Keep the destination's generated services, working SharePoint adapter,
    document/error mappers, providers, and shared popup/reporting integrations.
    Common names, declaration/property order, helpers, and templates now follow the

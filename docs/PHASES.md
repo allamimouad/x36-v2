@@ -15,6 +15,11 @@ formatter and the removal of the broad current-bin activation guard. Do not add 
 narrower guard or repair tree Open Folder behavior during this synchronization.
 Bug fixes are a separate future task requiring explicit authorization.
 
+**2026-10-22 additional PR:** match PR5's required `id` input and
+`projectLabel = signal<string>('')`. The constructor updates the label from
+`ProjectOverviewService.projectDTO()?.name ?? ''` in an effect immediately after
+`observeReadErrors()`. The local service/provider stay outside the copied feature.
+
 ---
 
 ## Phase 1 — Foundation & Read-Only Browsing
@@ -78,7 +83,7 @@ Bug fixes are a separate future task requiring explicit authorization.
 
 **Container**
 - `project-documents.ts`:
-  - Required `projectId` input supplied by its host
+  - Required `id` input, matching the destination route parameter; supplied explicitly by the local demo host
   - Provides all three stores + `MockFileSystemApi` as `FileSystemApi`
   - Provides default `MOCK_CONFIG` and `FILE_MANAGER_CONFIG`
   - Builds tree node structure from `FileSystemStore` entities (computed)

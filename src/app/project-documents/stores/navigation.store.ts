@@ -79,7 +79,6 @@ export const NAVIGATION_UNAVAILABLE = 'This folder is no longer available from t
 export const NavigationStore = signalStore(
     withState(initialState),
     navigationDevtoolsFeature(),
-    // eslint-disable-next-line max-lines-per-function -- Computed signals share the store context.
     withComputed((store) => {
         const fsReader = inject(FileSystemReader);
         const entityMap = fsReader.entityMap;
@@ -201,7 +200,6 @@ export const NavigationStore = signalStore(
             canGoUp
         };
     }),
-    // eslint-disable-next-line max-lines-per-function -- Methods share private navigation closures.
     withMethods((store) => {
         const fsReader = inject(FileSystemReader);
 

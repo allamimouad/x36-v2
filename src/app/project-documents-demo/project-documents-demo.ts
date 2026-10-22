@@ -1,15 +1,16 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogService } from 'primeng/dynamicdialog';
 import { PopupService } from 'ibportal-web-ui-commons';
 import { ProjectDocuments } from '../project-documents/project-documents';
+import { ProjectOverviewService } from '../../services/project-overview.service';
 
 @Component({
     selector: 'pr-project-documents-demo',
     standalone: true,
     changeDetection: ChangeDetectionStrategy.OnPush,
     imports: [ProjectDocuments],
-    providers: [DialogService, PopupService],
-    template: '<pr-project-documents [projectId]="projectId" [projectLabel]="projectLabel" />',
+    providers: [DialogService, PopupService, ProjectOverviewService],
+    template: '<pr-project-documents [id]="projectId" />',
     styles: `
     :host {
       display: block;
@@ -21,5 +22,8 @@ import { ProjectDocuments } from '../project-documents/project-documents';
 })
 export class ProjectDocumentsDemo {
     protected readonly projectId = 'demo-project';
-    protected readonly projectLabel = 'Demo Project';
+
+    constructor() {
+        inject(ProjectOverviewService).projectDTO.set({ name: 'Demo Project' });
+    }
 }

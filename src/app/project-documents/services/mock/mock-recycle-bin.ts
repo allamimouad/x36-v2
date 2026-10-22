@@ -38,8 +38,9 @@ export class MockRecycleBin {
 
     public recycle(original: FileSystemNode, subtree: FileSystemNode[]): void {
         const bin = [...this.nodes.values()].find(
-            (node): node is FolderNode =>
-                isFolder(node) && node.isRecycleBin && node.listKey === original.listKey
+            (candidate): candidate is FolderNode =>
+                isFolder(candidate) && candidate.isRecycleBin &&
+                candidate.listKey === original.listKey
         );
         if (!bin) { throw new FileSystemError('not-found', 'Recycle bin not found'); }
         const node: FileSystemNode = {

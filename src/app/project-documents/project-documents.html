@@ -242,16 +242,16 @@
             </ng-template>
           </p-splitter>
         } @else {
-          @if (executionRootAvailable()) {
-            <ng-container
-              [ngTemplateOutlet]="treeSection"
-              [ngTemplateOutletContext]="executionSectionContext()"
-            />
-          }
           @if (marketingRootAvailable()) {
             <ng-container
               [ngTemplateOutlet]="treeSection"
               [ngTemplateOutletContext]="marketingSectionContext()"
+            />
+          }
+          @if (executionRootAvailable()) {
+            <ng-container
+              [ngTemplateOutlet]="treeSection"
+              [ngTemplateOutletContext]="executionSectionContext()"
             />
           }
         }

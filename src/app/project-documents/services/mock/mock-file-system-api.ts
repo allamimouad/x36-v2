@@ -32,6 +32,7 @@ import { simulateMockUpload } from './mock-upload';
 import { searchMockNodes } from './mock-search';
 import { MockRecycleBin } from './mock-recycle-bin';
 import { applyMockAccess } from './mock-access';
+import { MockNodeCopier } from './mock-copy';
 
 const SEARCH_SCREENSHOT_DELAY_MS = 3_000;
 
@@ -48,6 +49,7 @@ export class MockFileSystemApi extends FileSystemApi {
     /** Stand-in for the signed-in user; stamped as `modifiedBy` on every mutation. */
     private readonly currentUser = 'You';
     private readonly recycleBin = new MockRecycleBin(this.nodes);
+    private readonly copier = new MockNodeCopier(this.nodes, this.currentUser);
 
     constructor() {
         super();
@@ -242,7 +244,7 @@ export class MockFileSystemApi extends FileSystemApi {
                 ? fileExplorerCopyName(source.name)
                 : source.name;
             const canonicalName = resolveNameCollision(requestedName, existingNames);
-            const copied = this.copyRecursive(
+            const copied = this.copier.copyRecursive(
                 source,
                 target.listKey,
                 target.id,
@@ -485,75 +487,6 @@ export class MockFileSystemApi extends FileSystemApi {
             const updated: FileSystemNode = { ...current, listKey: newListKey, path };
             this.nodes.set(nodeId, updated);
         }
-    }
-
-    private copyRecursive(
-        source: FileSystemNode,
-        targetListKey: DocumentListKey,
-        targetParentId: string,
-        targetParentPath: string,
-        name: string
-    ): FileSystemNode {
-        assertNameAvailable(this.nodes, targetParentId, name);
-        const targetPath = joinPath(targetParentPath, name);
-
-        return isFolder(source)
-            ? this.copyFolderNode(source, targetListKey, targetParentId, targetPath, name)
-            : this.copyFileNode(source, targetListKey, targetParentId, targetPath, name);
-    }
-
-    private copyFileNode(
-        source: FileNode,
-        targetListKey: DocumentListKey,
-        targetParentId: string,
-        targetPath: string,
-        name: string
-    ): FileNode {
-        const now = nowIso();
-        const file: FileNode = {
-            ...source,
-            listKey: targetListKey,
-            id: crypto.randomUUID(),
-            path: targetPath,
-            name,
-            parentId: targetParentId,
-            createdAt: now,
-            modifiedAt: now,
-            modifiedBy: this.currentUser
-        };
-        this.nodes.set(file.id, file);
-
-        return file;
-    }
-
-    private copyFolderNode(
-        source: FolderNode,
-        targetListKey: DocumentListKey,
-        targetParentId: string,
-        targetPath: string,
-        name: string
-    ): FolderNode {
-        const now = nowIso();
-        const children = Array.from(this.nodes.values())
-            .filter((node) => node.parentId === source.id);
-        const folder: FolderNode = {
-            ...source,
-            listKey: targetListKey,
-            id: crypto.randomUUID(),
-            path: targetPath,
-            name,
-            parentId: targetParentId,
-            createdAt: now,
-            modifiedAt: now,
-            modifiedBy: this.currentUser
-        };
-        this.nodes.set(folder.id, folder);
-        for (const child of children) {
-            this.copyRecursive(child, targetListKey, folder.id, folder.path, child.name);
-        }
-        touchParentCounts(this.nodes, folder.id);
-
-        return folder;
     }
 
 }

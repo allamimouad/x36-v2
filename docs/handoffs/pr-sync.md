@@ -1,8 +1,9 @@
 # PR synchronization
 
 Applied on `sync/pr-changes` from the photographed diffs in
-`tmp-screenshots/pr1` through `pr4`. The user confirmed these were the complete set
-and chose the PR behavior, local mocks, local popup equivalents, and a Google SVG.
+`tmp-screenshots/pr1` through `pr5`. PR5 was supplied on 2026-10-22 after the
+initial four-PR synchronization. The user chose the PR behavior, local mocks,
+local popup equivalents, and a Google SVG.
 
 **2026-10-22 scope:** preserve the supplied behavior, including existing bugs and
 limitations. No additional bug fixes are authorized during synchronization. The
@@ -15,11 +16,12 @@ the proposed narrower activation guard has not been applied.
 | PR2 / CFO-12015 | Default-folder access | Optional node access flags; protected/readonly menu rules, toolbar/paste and external-drop affordances |
 | PR3 / #152 / CFO-11535 + CFO-12146 | List access | Root `isListReadonly`, navigation map, target-list folder/tree rules, read-only bin actions and search disabled in bins |
 | PR4 / CFO-12253 | Initial navigation | Execution first in tree/default navigation; initial `listKey` + `folderPath` query resolution and query cleanup |
+| PR5 | Project context | Required `id` input; `projectLabel` signal updated from `ProjectOverviewService.projectDTO()?.name ?? ''` |
 
 ## Source alignment
 
 The follow-up alignment preserves the names, declaration and property order,
-helper placement, and template structure visible in the four PRs. This keeps the
+helper placement, and template structure visible in the supplied PRs. This keeps the
 common code easy to compare during transfer. It is based on photographed diff
 regions, not a complete checkout of the destination repository.
 
@@ -51,12 +53,24 @@ Useful screenshot anchors (paths relative to `tmp-screenshots/`):
 | Generated access-enum imports | `pr2/20261021_014214.jpg`, `20261021_014316.jpg`, `20261021_014330.jpg`, `20261021_014444.jpg`; `pr3/20261021_015824.jpg` |
 | Navigation computeds, container bindings and menus | `pr3/20261021_015824.jpg`, `20261021_015848.jpg`, `20261021_015912.jpg`, `20261021_015955.jpg` |
 | Initial-navigation fields and helpers | `pr4/20261021_020941.jpg`, `20261021_021019.jpg`, `20261021_021039.jpg` |
+| Project context, signal and effect | `pr5/20261022_170814.jpg`, `pr5/20261022_171631.jpg` |
 
 The remaining local adaptations are explicit:
 
 - `MockFileSystemApi` remains the provider, with complete mock bin behavior rather
-  than the photographed mock stubs. The container retains its `projectId` and
-  `projectLabel` inputs instead of destination project-overview dependencies.
+  than the photographed mock stubs. Its required project identifier input is
+  named `id`, matching the destination route parameter and PR5. The local demo
+  supplies `[id]` explicitly; the destination keeps its existing router-to-input
+  binding configuration. Store/API project parameters remain named `projectId`.
+- `projectLabel` is a writable signal, initially `''`, as in PR5. The exact
+  effect body is in the constructor immediately after `observeReadErrors()`, as
+  requested. The import is `../../services/project-overview.service` and the
+  injected field is `projectOverviewService`. Locally this resolves to
+  `src/services/project-overview.service.ts`, outside the copied feature, with
+  only the `projectDTO` signal needed here. The demo provides and seeds that
+  service with `Demo Project`; there is no `[projectLabel]` container binding.
+  Keep the destination's existing `ProjectOverviewService` and provider; do not
+  replace them with this local service.
 - Access-enum imports now use the PR's `@api/model/folderNodeResponse` and
   `@api/model/fileNodeResponse` paths. Local definitions resolve through an alias
   outside `project-documents`; the destination uses its generated models directly.
@@ -213,6 +227,12 @@ separate next task; its implementation has not been added during this sync.
 
 ## Verification (2026-10-22)
 
+- PR5: production build, spec TypeScript check, lint of the changed TypeScript
+  files, and whitespace checks pass. All 13 container integration tests pass,
+  including project details arriving after mount, a changed project name, and
+  missing-name clearing in the breadcrumb/tree labels. The demo and tests use
+  the local overview service; the destination retains its actual implementation.
+  The full 144-test run below predates PR5 and was not repeated for this change.
 - Repeated after reverting the extra path formatter and guard removal. The table
   fixture uses the PR's path representation without a document-root input. Added
   workflow checks that the broad guard leaves tree Open Folder inactive while

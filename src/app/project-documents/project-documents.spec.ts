@@ -18,6 +18,7 @@ import { MOCK_CONFIG } from './services/mock/mock-config.token';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore } from './stores/navigation.store';
 import { ProjectDocuments } from './project-documents';
+import { ProjectOverviewService } from '../../services/project-overview.service';
 
 describe('ProjectDocuments access and recycle-bin integration', () => {
     let fixture: ComponentFixture<ProjectDocuments>;
@@ -30,6 +31,7 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
             providers: [provideRouter([]), provideNoopAnimations(), DialogService,
+                ProjectOverviewService,
                 { provide: ActivatedRoute, useValue: { snapshot: {
                     get queryParamMap(): ParamMap { return convertToParamMap(queryParams); }
                 } } },
@@ -40,9 +42,9 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
                 } }
             ]
         }).compileComponents();
+        TestBed.inject(ProjectOverviewService).projectDTO.set({ name: 'Project' });
         fixture = TestBed.createComponent(ProjectDocuments);
-        fixture.componentRef.setInput('projectId', 'project-123');
-        fixture.componentRef.setInput('projectLabel', 'Project');
+        fixture.componentRef.setInput('id', 'project-123');
         store = fixture.debugElement.injector.get(FileSystemStore);
         navigation = fixture.debugElement.injector.get(NavigationStore);
     });
@@ -91,9 +93,35 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         const bin = folder('/execution/Recycle Bin');
         expect(host().querySelector(`[data-testid="pd-row-${bin.id}"]`)).toBeNull();
         const tree = host().querySelector('pr-folder-tree');
-        const names = [...tree!.querySelectorAll('.pd-tree-label')]
+        if (!tree) { throw new Error('Expected folder tree'); }
+        const names = [...tree.querySelectorAll('.pd-tree-label')]
             .map((element) => element.textContent?.trim());
         expect(names[names.length - 1]).toBe('Recycle Bin');
+    });
+
+    it('updates the breadcrumb and tree labels when project details load and change', async () => {
+        const overview = TestBed.inject(ProjectOverviewService);
+        overview.projectDTO.set(null);
+        await render();
+        expect(host().querySelector('.pd-project-name')?.textContent?.trim()).toBe('');
+
+        overview.projectDTO.set({ name: 'Loaded project' });
+        await render();
+        expect(host().querySelector('.pd-project-name')?.textContent?.trim())
+            .toBe('Loaded project');
+        expect([...host().querySelectorAll('.pd-tree-section-title')]
+            .map((element) => element.textContent?.trim())).toEqual([
+            'Loaded project - Execution Documents', 'Loaded project - Marketing Documents'
+        ]);
+
+        overview.projectDTO.set({ name: 'Renamed project' });
+        await render();
+        expect(host().querySelector('.pd-project-name')?.textContent?.trim())
+            .toBe('Renamed project');
+
+        overview.projectDTO.set({});
+        await render();
+        expect(host().querySelector('.pd-project-name')?.textContent?.trim()).toBe('');
     });
 
     it('resolves a case-insensitive list deep link after default initialization and clears the URL',
@@ -148,7 +176,8 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         async () => {
             await render();
             const press = folder('/marketing/Press');
-            navigation.navigateTo(press.parentId!);
+            if (!press.parentId) { throw new Error('Expected Press parent folder'); }
+            navigation.navigateTo(press.parentId);
             await render();
             const items = menuFor(press);
             expect(disabled(items, 'Rename Folder')).toBeTrue();
@@ -160,7 +189,8 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
             navigation.navigateTo(bin.id);
             await render();
             const record = store.entities().find((node): node is FolderNode =>
-                isFolder(node) && node.parentId === bin.id)!;
+                isFolder(node) && node.parentId === bin.id);
+            if (!record) { throw new Error('Expected deleted folder in recycle bin'); }
             const binMenu = menuFor(record);
             expect(binMenu.map((item) => item.label)).toEqual(['Restore', 'Delete']);
             expect(binMenu.every((item) => item.disabled)).toBeTrue();
@@ -175,7 +205,8 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
             navigation.navigateTo(folder('/execution/Recycle Bin').id);
             await render();
             const record = store.entities().find((node): node is FolderNode =>
-                isFolder(node) && node.parentId === navigation.currentFolderId())!;
+                isFolder(node) && node.parentId === navigation.currentFolderId());
+            if (!record) { throw new Error('Expected deleted folder in recycle bin'); }
             const api = fixture.debugElement.injector.get(FileSystemApi);
             spyOn(api, 'restoreRecycleBinItem').and.returnValue(throwError(() =>
                 new HttpErrorResponse({
@@ -185,7 +216,8 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
                 })));
             const showError = spyOn(TestBed.inject(PopupService), 'showErrorPopupWithReportAction')
                 .and.callThrough();
-            const item = menuFor(record).find((candidate) => candidate.label === 'Restore')!;
+            const item = menuFor(record).find((candidate) => candidate.label === 'Restore');
+            if (!item) { throw new Error('Expected Restore menu action'); }
             item.command?.({ item });
             await render();
             const dialogs = [...document.querySelectorAll('.p-dialog')];
@@ -209,10 +241,12 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         navigation.navigateTo(folder('/execution/Recycle Bin').id);
         await render();
         const record = store.entities().find((node): node is FolderNode =>
-            isFolder(node) && node.parentId === navigation.currentFolderId())!;
+            isFolder(node) && node.parentId === navigation.currentFolderId());
+        if (!record) { throw new Error('Expected deleted folder in recycle bin'); }
         const api = fixture.debugElement.injector.get(FileSystemApi);
         spyOn(api, 'restoreRecycleBinItem').and.returnValue(throwError(() => new Error('Failed')));
-        const item = menuFor(record).find((candidate) => candidate.label === 'Restore')!;
+        const item = menuFor(record).find((candidate) => candidate.label === 'Restore');
+        if (!item) { throw new Error('Expected Restore menu action'); }
         item.command?.({ item });
         await render();
         const error = document.querySelector('pr-error-popup');
@@ -228,11 +262,14 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         navigation.navigateTo(folder('/execution/Recycle Bin').id);
         await render();
         const binId = navigation.currentFolderId();
+        if (!binId) { throw new Error('Expected current recycle bin'); }
         const record = store.entities().find((node): node is FolderNode =>
-            isFolder(node) && node.parentId === binId)!;
+            isFolder(node) && node.parentId === binId);
+        if (!record) { throw new Error('Expected deleted folder in recycle bin'); }
         const api = fixture.debugElement.injector.get(FileSystemApi);
         const remove = spyOn(api, 'deletePermanentlyRecycleBinItem').and.callThrough();
-        const item = menuFor(record).find((candidate) => candidate.label === 'Delete')!;
+        const item = menuFor(record).find((candidate) => candidate.label === 'Delete');
+        if (!item) { throw new Error('Expected Delete menu action'); }
         item.command?.({ item });
         await render();
         expect(remove).not.toHaveBeenCalled();
@@ -241,7 +278,7 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         expect(confirm).not.toBeNull();
         confirm?.click();
         await render();
-        expect(remove).toHaveBeenCalledOnceWith('project-123', binId!, record.id);
+        expect(remove).toHaveBeenCalledOnceWith('project-123', binId, record.id);
         expect(store.entityMap()[record.id]).toBeUndefined();
         expect(host().textContent).toContain('The recycle bin is empty.');
     });
@@ -252,10 +289,12 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         navigation.navigateTo(folder('/execution/Recycle Bin').id);
         await render();
         const record = store.entities().find((node): node is FolderNode =>
-            isFolder(node) && node.parentId === navigation.currentFolderId())!;
+            isFolder(node) && node.parentId === navigation.currentFolderId());
+        if (!record) { throw new Error('Expected deleted folder in recycle bin'); }
         const api = fixture.debugElement.injector.get(FileSystemApi);
         const remove = spyOn(api, 'deletePermanentlyRecycleBinItem').and.callThrough();
-        const item = menuFor(record).find((candidate) => candidate.label === 'Delete')!;
+        const item = menuFor(record).find((candidate) => candidate.label === 'Delete');
+        if (!item) { throw new Error('Expected Delete menu action'); }
         item.command?.({ item });
         await render();
         const cancel = document.querySelector<HTMLButtonElement>(
@@ -291,13 +330,15 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         navigation.navigateTo(contracts.id);
         await render();
         const file = store.entities().find((node) =>
-            node.kind === 'file' && node.parentId === contracts.id)!;
+            node.kind === 'file' && node.parentId === contracts.id);
+        if (!file) { throw new Error('Expected file in Contracts folder'); }
         await store.delete(file.id);
         const bin = folder('/execution/Recycle Bin');
         navigation.navigateTo(bin.id);
         await render();
         const record = store.entities().find((node) =>
-            node.kind === 'file' && node.parentId === bin.id)!;
+            node.kind === 'file' && node.parentId === bin.id);
+        if (!record) { throw new Error('Expected deleted file in recycle bin'); }
         const open = spyOn(fixture.debugElement.injector.get(FileLaunchService), 'openOnline');
         const table = fixture.debugElement.query(By.directive(FileTable))
             .componentInstance as FileTable;

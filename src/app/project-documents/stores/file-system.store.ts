@@ -80,7 +80,6 @@ export const FileSystemStore = signalStore(
     withEntities<FileSystemNode>(),
     withState(initialState),
     fileSystemDevtoolsFeature(),
-    // eslint-disable-next-line max-lines-per-function -- Methods share private cache helpers.
     withMethods((store, api = inject(FileSystemApi)) => {
     // The `_`-prefixed functions below are private local closures (internal helpers),
     // NOT NgRx private store members — they are not returned from `withMethods`.

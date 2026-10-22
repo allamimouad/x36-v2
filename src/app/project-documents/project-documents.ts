@@ -68,6 +68,7 @@ import type {
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
 import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
+import { ProjectOverviewService } from '../../services/project-overview.service';
 import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
 import {
     ConfirmationPopup,
@@ -131,8 +132,8 @@ interface PendingDelete {
     styleUrl: './project-documents.scss'
 })
 export class ProjectDocuments {
-    public readonly projectId = input.required<string>();
-    public readonly projectLabel = input.required<string>();
+    public readonly id = input.required<string>();
+    public readonly projectLabel = signal<string>('');
 
     protected readonly fileSystem = inject(FileSystemStore);
     protected readonly navigation = inject(NavigationStore);
@@ -143,6 +144,7 @@ export class ProjectDocuments {
     protected readonly uploads = inject(UploadService);
     protected readonly search = inject(DocumentSearchService);
     protected readonly config = inject(FILE_MANAGER_CONFIG);
+    protected readonly projectOverviewService = inject(ProjectOverviewService);
     protected readonly notificationKey = PROJECT_DOCUMENTS_TOAST_KEY;
     protected readonly contextMenu = viewChild<ContextMenu>('contextMenu');
     protected readonly uploadMenu = viewChild<Menu>('uploadMenu');
@@ -351,11 +353,14 @@ export class ProjectDocuments {
 
     constructor() {
         // Reactive project connection: the store re-initializes (cancelling any in-flight
-        // load via switchMap) whenever the host rebinds `projectId`.
-        this.fileSystem.connectProject(this.projectId);
+        // load via switchMap) whenever the host rebinds `id`.
+        this.fileSystem.connectProject(this.id);
         this.observeProjectChanges();
         this.observeInitializedRoots();
         this.observeReadErrors();
+        effect(() => {
+            this.projectLabel.set(this.projectOverviewService.projectDTO()?.name ?? '');
+        });
         this.observeSearchHistory();
         this.observeInitialFolderPath();
     }
@@ -899,14 +904,14 @@ export class ProjectDocuments {
         // project connection. rxMethod accepts an imperative value, so this re-runs
         // even for the same project id.
         if (this.bootstrapError() || !this.navigation.currentFolder()) {
-            this.fileSystem.connectProject(this.projectId());
+            this.fileSystem.connectProject(this.id());
 
             return;
         }
         const currentEntry = this.navigation.currentHistoryEntry();
         if (currentEntry?.kind === 'search') {
             const scope = this.navigation.currentFolder();
-            if (scope) { this.search.search(this.projectId(), scope, currentEntry.query); }
+            if (scope) { this.search.search(this.id(), scope, currentEntry.query); }
 
             return;
         }
@@ -938,7 +943,7 @@ export class ProjectDocuments {
     private observeProjectChanges(): void {
         let uploadProjectId: string | undefined;
         effect(() => {
-            const currentProjectId = this.projectId();
+            const currentProjectId = this.id();
             untracked(() => {
                 if (uploadProjectId !== undefined && uploadProjectId !== currentProjectId) {
                     this.pendingFileTarget = null;
@@ -996,7 +1001,7 @@ export class ProjectDocuments {
 
     private observeSearchHistory(): void {
         effect(() => {
-            const projectId = this.projectId();
+            const projectId = this.id();
             const entry = this.navigation.currentHistoryEntry();
             const currentFolder = this.navigation.currentFolder();
             untracked(() => {
@@ -1371,7 +1376,7 @@ export class ProjectDocuments {
         const entry = this.navigation.currentHistoryEntry();
         const scope = this.navigation.currentFolder();
         if (entry?.kind === 'search' && scope) {
-            this.search.search(this.projectId(), scope, entry.query);
+            this.search.search(this.id(), scope, entry.query);
         }
     }
 

@@ -8,6 +8,12 @@
 > **Before starting any work**: read `PROGRESS.md` to see which phase is active.
 > **Before ending your session**: update `PROGRESS.md` with what you completed, what you deferred, and what the next session should pick up.
 > **Authorized scope update (2026-10-21):** the four PRs are synchronized locally, including recycle bin, backend-supplied access rules, and initial folder links. This explicitly extends the original scope; internal drag-and-drop remains deferred. See `handoffs/pr-sync.md`.
+> **Additional PR (2026-10-22):** PR5 names the routed project input `id` and
+> replaces the container's `projectLabel` input with a writable signal initialized
+> to `''`. Immediately after `observeReadErrors()`, the constructor effect sets it
+> from `projectOverviewService.projectDTO()?.name ?? ''`. The local overview service
+> and its demo provider live outside the copied feature; the destination keeps
+> its existing service and provider.
 > **PR fidelity constraint (2026-10-22):** apply the supplied PR behavior without
 > additional bug fixes. Restore the original `slice(3)` bin path formatter and
 > broad current-bin activation guard. Preserve existing limitations, including
@@ -588,7 +594,7 @@ complete; the remaining operations retain implementation-pending Observable erro
 **`FileSystemStore`** (entity cache, keyed by `id`):
 - Entities: `FileSystemNode`
 - State: `projectId: string | null`, `folderIdsWithLoadingChildren: string[]`, `errorByParentId: Record<string, FileSystemError | undefined>`, `folderIdsWithLoadedChildren: string[]`, `isInitializing: boolean`, `initializedRoots: DocumentListRoots | null`
-- Methods: `connectProject(projectId)` (reactive `rxMethod`: the container passes its `projectId` input signal once; every change resets project state and re-initializes, with `switchMap` cancelling any in-flight load; imperative calls with a plain id retry the same project), `initialize(projectId)` (promise facade over one initialization — returns `DocumentListRoots` with each list marked `loaded`, `not-found`, or `error`; used by unit tests), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(nodeOrId, newName)`, `delete(nodeOrId)`, `deleteRecycleBinNodes(ids)`, `restoreRecycleBinNodes(ids)`, `move(ids, targetParentId)`, `copy(nodeOrId, targetNodeOrId)`, `invalidate(parentId)`, `upload(parentId, file, onProgress, signal)`
+- Methods: `connectProject(projectId)` (reactive `rxMethod`: the container passes its required `id` input signal once, named to match the destination route parameter; every change resets project state and re-initializes, with `switchMap` cancelling any in-flight load; imperative calls with a plain id retry the same project), `initialize(projectId)` (promise facade over one initialization — returns `DocumentListRoots` with each list marked `loaded`, `not-found`, or `error`; used by unit tests), `loadChildren(parentId)`, `createFolder(parentId, name)`, `rename(nodeOrId, newName)`, `delete(nodeOrId)`, `deleteRecycleBinNodes(ids)`, `restoreRecycleBinNodes(ids)`, `move(ids, targetParentId)`, `copy(nodeOrId, targetNodeOrId)`, `invalidate(parentId)`, `upload(parentId, file, onProgress, signal)`
 - Depends on `FileSystemApi` (injected), not on a concrete class
 
 **`NavigationStore`**:
