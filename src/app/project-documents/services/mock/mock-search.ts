@@ -12,6 +12,7 @@ export function searchMockNodes(
     }
     const results: FileSystemNode[] = [];
     for (const node of nodes.values()) {
+        if (node.kind === 'folder' && node.isRecycleBin) { continue; }
         if (node.listKey !== scope.listKey || node.id === scope.id) { continue; }
         if (!node.path.startsWith(`${scope.path}/`)) { continue; }
         if (!node.name.toLocaleLowerCase().includes(normalizedQuery)) { continue; }

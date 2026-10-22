@@ -93,4 +93,27 @@ export abstract class FileSystemApi {
         onProgress: (percent: number) => void,
         signal?: AbortSignal,
     ): Observable<FileNode>;
+
+    /**
+     * Get recycle bin items for a document list.
+     * Returns a DocumentListing with the deleted items (files and folders) in the recycle bin.
+     */
+    public abstract getRecycleBinItems(
+        projectId: string,
+        listGuid: string
+    ): Observable<DocumentListing>;
+
+    /** Restore a deleted item from the recycle bin to its original location. */
+    public abstract restoreRecycleBinItem(
+        projectId: string,
+        listGuid: string,
+        nodeId: string
+    ): Observable<void>;
+
+    /** Permanently delete a recycle bin item (moves to second-stage recycle bin). */
+    public abstract deletePermanentlyRecycleBinItem(
+        projectId: string,
+        listGuid: string,
+        nodeId: string
+    ): Observable<void>;
 }

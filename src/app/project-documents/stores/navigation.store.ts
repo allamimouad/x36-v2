@@ -1,22 +1,24 @@
 import { computed, inject, isDevMode } from '@angular/core';
-import { withDevToolsStub, withDevtools, withMapper } from '@angular-architects/ngrx-toolkit';
+import { withDevtools, withDevToolsStub, withMapper } from '@angular-architects/ngrx-toolkit';
 import {
+    type EmptyFeatureResult,
     patchState,
     signalStore,
+    type SignalStoreFeature,
     withComputed,
     withMethods,
-    withState,
-    type EmptyFeatureResult,
-    type SignalStoreFeature
+    withState
 } from '@ngrx/signals';
-import type { DocumentListKey } from '../models/document-list.model';
+import type { DocumentListKey, DocumentListRootStatus } from '../models/document-list.model';
+import { DOCUMENT_LIST_KEYS } from '../models/document-list.model';
 import {
-    isFolder,
     type FileNode,
     type FileSystemNode,
-    type FolderNode
+    type FolderNode,
+    isFolder
 } from '../models/file-system-node.model';
 import { FileSystemReader } from './file-system-reader';
+import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 
 /**
  * A breadcrumb segment. Either id-based (cached navigation) or path-based (a folder
@@ -81,6 +83,7 @@ export const NavigationStore = signalStore(
         const fsReader = inject(FileSystemReader);
         const entityMap = fsReader.entityMap;
         const entities = fsReader.entities;
+        const initializedRoots = fsReader.initializedRoots;
 
         const currentFolder = computed<FolderNode | null>(() => {
             const id = store.currentFolderId();
@@ -88,6 +91,47 @@ export const NavigationStore = signalStore(
             const node: FileSystemNode | undefined = entityMap()[id];
 
             return node && isFolder(node) ? node : null;
+        });
+
+        const currentFolderIsRecycleBin = computed<boolean | null>(
+            () => currentFolder()?.isRecycleBin ?? null
+        );
+        const isCurrentFolderReadonly = computed<boolean>(
+            () => currentFolder()?.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly
+                || isListReadonly()
+        );
+
+        const isListReadonly = computed<boolean>(() => {
+            const folder = currentFolder();
+            if (!folder) {
+                return false;
+            }
+            const roots = initializedRoots();
+            if (roots) {
+                const rootStatus = roots[folder.listKey];
+                if (rootStatus.status === 'loaded' && rootStatus.isListReadonly) {
+                    return true;
+                }
+            }
+
+            return false;
+        });
+
+        const readonlyAccessByListKey = computed<ReadonlyMap<DocumentListKey, boolean>>(() => {
+            const roots = initializedRoots();
+            const result = new Map<DocumentListKey, boolean>();
+            if (!roots) { return result; }
+
+            for (const key of DOCUMENT_LIST_KEYS) {
+                const rootStatus: DocumentListRootStatus = roots[key];
+                if (rootStatus.status === 'loaded') {
+                    result.set(key, rootStatus.isListReadonly ?? false);
+                } else {
+                    result.set(key, false);
+                }
+            }
+
+            return result;
         });
 
         const parentId = computed<string | null>(() => currentFolder()?.parentId ?? null);
@@ -142,6 +186,10 @@ export const NavigationStore = signalStore(
 
         return {
             currentFolder,
+            currentFolderIsRecycleBin,
+            isCurrentFolderReadonly,
+            isListReadonly,
+            readonlyAccessByListKey,
             parentId,
             currentHistoryEntry,
             currentBreadcrumb,

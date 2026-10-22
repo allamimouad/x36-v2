@@ -18,9 +18,9 @@ import type {
     NodeContextMenuRequest
 } from '../../models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from '../../models/external-drop-request.model';
-import {
-    FileSystemIcon
-} from '../../shared/file-system-icon/file-system-icon';
+import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
+import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
+import type { DocumentListKey } from '../../models/document-list.model';
 
 @Component({
     selector: 'pr-folder-tree',
@@ -39,6 +39,8 @@ export class FolderTree {
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);
     public readonly deleteConfirmationId = input<string | null>(null);
+    public readonly readonlyAccessByListKey =
+        input<ReadonlyMap<DocumentListKey, boolean>>(new Map());
 
     public readonly nodeSelected = output<string>();
     public readonly nodeExpanded = output<string>();
@@ -150,6 +152,11 @@ export class FolderTree {
         event: DragEvent,
         node: TreeNode<FolderNode>
     ): void {
+        if (!this.isNodeDroppable(node)) {
+            event.preventDefault();
+
+            return;
+        }
         if (node.data) {
             this.externalFolderDragOver.emit({ event, target: node.data });
         }
@@ -167,6 +174,22 @@ export class FolderTree {
     private submitInlineRename(node: TreeNode<FolderNode>): void {
         if (!node.data) { return; }
         this.renameSubmitted.emit({ node: node.data, name: this.inlineRenameValue() });
+    }
+
+    private isNodeDroppable(node: TreeNode<FolderNode>): boolean {
+        if (node.data?.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly ||
+            node.data?.isRecycleBin
+        ) {
+            return false;
+        }
+        const listKey = node.data?.listKey;
+        if (listKey) {
+            const isListReadonly = this.readonlyAccessByListKey().get(listKey);
+
+            return !isListReadonly;
+        }
+
+        return false;
     }
 }
 

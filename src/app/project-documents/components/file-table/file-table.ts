@@ -15,23 +15,23 @@ import { TableModule } from 'primeng/table';
 import { ProgressSpinner } from 'primeng/progressspinner';
 import { Tooltip } from 'primeng/tooltip';
 import {
-    isFolder,
     type FileNode,
     type FileSystemNode,
-    type FolderNode
+    type FolderNode,
+    isFolder
 } from '../../models/file-system-node.model';
 import type {
     ItemRenameRequest,
     NodeContextMenuRequest
 } from '../../models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from '../../models/external-drop-request.model';
-import {
-    FileSystemIcon
-} from '../../shared/file-system-icon/file-system-icon';
+import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
+import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 
 interface RowVm {
     id: string;
     name: string;
+    path?: string;
     kind: 'folder' | 'file';
     typeLabel: string;
     sizeLabel: string;
@@ -60,7 +60,11 @@ export class FileTable {
     public readonly deleteConfirmationId = input<string | null>(null);
     public readonly externalDropTargetId = input<string | null>(null);
     public readonly externalDragActive = input<boolean>(false);
+    public readonly projectName = input<string>('');
     public readonly currentFolderName = input<string>('');
+    public readonly currentFolderListKey = input<string | null>(null);
+    public readonly currentFolderIsRecycleBin = input<boolean | null>(null);
+    public readonly isCurrentFolderReadonly = input<boolean>(false);
 
     public readonly itemDoubleClicked = output<FileSystemNode>();
     public readonly itemFocused = output<string>();
@@ -79,9 +83,13 @@ export class FileTable {
     protected readonly rows = computed<RowVm[]>(() => {
         const out: RowVm[] = [];
         for (const f of this.folders()) {
+            if (f.isRecycleBin) {
+                continue;
+            }
             out.push({
                 id: f.id,
                 name: f.name,
+                path: f.path ? this.transformPath(f.path) : undefined,
                 kind: 'folder',
                 typeLabel: 'Folder',
                 sizeLabel: '',
@@ -96,6 +104,7 @@ export class FileTable {
             out.push({
                 id: f.id,
                 name: base,
+                path: f.path ? this.transformPath(f.path) : undefined,
                 kind: 'file',
                 typeLabel: ext ? ext.toUpperCase() : 'FILE',
                 sizeLabel: formatSize(f.sizeBytes),
@@ -169,8 +178,13 @@ export class FileTable {
 
     protected onEmptyContextMenu(event: MouseEvent): void {
         event.preventDefault();
-        if ((event.target as HTMLElement).closest('thead')) { return; }
-        if (!this.loading()) { this.emptyContextMenuRequested.emit(event); }
+        if ((event.target as HTMLElement).closest('thead') ||
+            this.currentFolderIsRecycleBin()) {
+            return;
+        }
+        if (!this.loading()) {
+            this.emptyContextMenuRequested.emit(event);
+        }
     }
 
     protected onInlineRenameInput(event: Event): void {
@@ -216,6 +230,12 @@ export class FileTable {
     }
 
     protected onExternalFolderDragOver(event: DragEvent, row: RowVm): void {
+        if (this.isDropInFolderDisabled(row)) {
+            if (event.dataTransfer) { event.dataTransfer.dropEffect = 'none'; }
+            event.preventDefault();
+
+            return;
+        }
         if (isFolder(row.node)) {
             this.externalFolderDragOver.emit({ event, target: row.node });
         }
@@ -225,6 +245,25 @@ export class FileTable {
         if (isFolder(row.node)) {
             this.externalFolderDropped.emit({ event, target: row.node });
         }
+    }
+
+    protected onCurrentFolderDragOver(event: DragEvent): void {
+        if (this.isCurrentFolderReadonly()) {
+            if (event.dataTransfer) { event.dataTransfer.dropEffect = 'none'; }
+            event.preventDefault();
+
+            return;
+        }
+        this.currentFolderDragOver.emit(event);
+    }
+
+    protected onCurrentFolderDrop(event: DragEvent): void {
+        if (this.isCurrentFolderReadonly()) {
+            event.preventDefault();
+
+            return;
+        }
+        this.currentFolderDropped.emit(event);
     }
 
     private submitInlineRename(row: RowVm): void {
@@ -239,6 +278,24 @@ export class FileTable {
         const trimmedBase = editedName.trim();
         const completeName = ext && trimmedBase ? `${trimmedBase}.${ext}` : editedName;
         this.renameSubmitted.emit({ node: row.node, name: completeName });
+    }
+
+    // Input format: sites/{siteName}/{listName}/remainingPath
+    // Output format: /{listKey}/remainingPath
+    private transformPath(path: string): string {
+        const segments = path.split('/');
+        const pathAfterRoot = segments.slice(3).join('/');
+        const listKey = this.currentFolderListKey()
+            ? `/${this.currentFolderListKey()?.toLowerCase()}`
+            : '';
+
+        return pathAfterRoot ? `${listKey}/${pathAfterRoot}` : listKey;
+    }
+
+    private isDropInFolderDisabled(row: RowVm): boolean {
+        return isFolder(row.node) &&
+            (row.node.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly
+                || this.isCurrentFolderReadonly());
     }
 }
 

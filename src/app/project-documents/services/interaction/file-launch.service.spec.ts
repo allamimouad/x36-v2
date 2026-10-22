@@ -91,6 +91,7 @@ function node(overrides: Partial<FileNode>): FileNode {
 function folder(overrides: Partial<FolderNode>): FolderNode {
     return {
         kind: 'folder',
+        isRecycleBin: false,
         listKey: 'EXECUTION',
         id: 'folder-1',
         path: '/Documents',

@@ -6,8 +6,98 @@
 
 ## Current Status
 
-**Active Phase**: Phase 2 — Mutations
-**Overall Progress**: 1 / 5 phases complete
+**Active Work**: PR-only behavior restored (2026-10-22). Reverted the extra bin path
+normalization and restored the broad current-bin activation guard. The rollback
+is kept in a separate commit on `sync/pr-changes`.
+Final synchronization adjustment: renamed the container's required project input
+from `projectId` to `id` to match the destination route parameter; updated its
+usages, local demo binding, existing integration fixture, and documentation.
+The user removed the `.pd-root` border during this session. The notification
+message remains unchanged and deferred. No additional bug fixes were applied.
+Restored Marketing-before-Execution availability checks in the HTML `@else`
+branch to match the PR source. The two splitter panels and default selection
+remain Execution-first.
+PR5 is now applied from both screenshots in `tmp-screenshots/pr5`:
+`projectLabel` is a writable signal initialized to `''`, updated by the exact
+`projectOverviewService.projectDTO()?.name ?? ''` effect immediately after
+`observeReadErrors()`. Its original service import and injected field are used.
+The local overview service at `src/services/project-overview.service.ts` and its
+demo provider live outside the copied feature. The destination keeps its own
+service/provider. The container no longer accepts a `projectLabel` input; child
+component label inputs remain unchanged.
+Next: review the synchronized PR behavior before starting internal drag-and-drop
+as a separate task. Do not fix existing bugs during synchronization.
+**Implementation Status**: Browsing, mutations, single-item copy/paste, uploads,
+recursive search, recycle bin, access flags, and initial folder links are implemented.
+Cut, multi-selection/bulk operations, and internal drag-and-drop remain deferred.
+
+**Latest verification (2026-10-22)**: production build, spec TypeScript check,
+lint of the changed TypeScript files, and whitespace checks pass. All 13
+container integration tests pass, including the PR5 project-details update test.
+The test covers metadata arriving after mount, changing the name, and clearing
+a missing name in the rendered labels. Existing build
+budget warnings and the test-server font 404 remain. Store/API `projectId`
+parameters and routing configuration are unchanged; the demo supplies `[id]`
+explicitly and the destination retains its existing router-to-input binding.
+The production build and whitespace checks passed again after restoring the
+HTML availability-check order; no new tests were added for this reorder.
+
+**Destination lint follow-up (2026-10-22):** replaced all 14 non-null assertions
+in `project-documents.spec.ts` with explicit missing-fixture checks. Application
+code and the repository lint configuration are unchanged. The spec passes lint
+with `@typescript-eslint/no-non-null-assertion` and
+`@typescript-eslint/no-unnecessary-type-assertion` explicitly enabled, the spec
+TypeScript check, and all 13 component tests. No new tests were added.
+
+**Mock API line-limit follow-up (2026-10-22):** moved the three recursive copy
+methods unchanged into `services/mock/mock-copy.ts` (`MockNodeCopier`).
+`mock-file-system-api.ts` delegates to it and is now 492 total lines, down from
+559. Both files pass a strict 500-line lint check counting blank/comment lines;
+the spec TypeScript check, whitespace check, and all 25 existing file-system
+store tests pass, including copy naming, cross-list copying, and child counts.
+The extracted method code matches the original, apart from the entry method's
+visibility. No lint limit, public filesystem API, or mock behavior was changed.
+
+**Mock recycle-bin shadowing follow-up (2026-10-22):** renamed the `find`
+callback parameter in `recycle` from `node` to `candidate`, retaining the outer
+deleted-record `node` and the exact predicate. Scoped lint passes with
+`@typescript-eslint/no-shadow` using `hoist: all`; the spec TypeScript check and
+whitespace check pass. This is a variable rename with no behavior change.
+
+**Store directive follow-up (2026-10-22):** removed the inline
+`max-lines-per-function` suppression above `withMethods`, reported as unused by
+the destination lint setup. The stricter local lint setup still flags that
+factory (459 counted lines against 40), so `eslint.config.mjs` now has a
+file-specific 500-line function limit for `file-system.store.ts`. This local
+configuration stays outside the copied feature; no store logic changed. Scoped
+lint with unused-disable reporting and the whitespace check pass. Tests were
+not repeated for this comment/configuration-only change.
+
+**Navigation directives follow-up (2026-10-22):** the user accepted continuing
+with the local lint-configuration approach. Removed the two inline
+`max-lines-per-function` directives at the former lines 82 and 204 in
+`navigation.store.ts`. Added that file to the existing local 500-line function
+limit for the store factories. Both stores pass scoped lint with unused-disable
+reporting, and the whitespace check passes. Only source comments and local lint
+configuration changed; tests were not repeated.
+
+**Commit review (2026-10-22):** the user requested a commit and will push it
+manually. Final production build and repository-wide lint pass; lint retains
+only the two existing path-bar accessibility warnings, and the build retains
+the existing bundle/style budget warnings. The scoped 13 component tests and
+25 store tests passed during the changes above. Commit the synchronization,
+lint cleanup, local support files, and docs; exclude `.vscode/launch.json`,
+`tmp-screenshots/`, and the temporary backend search investigation document.
+
+**Assertion-style correction (2026-10-22):** the earlier assertion cleanup
+misidentified the user's lint message and did not resolve these two errors.
+Reproduced the exact `@typescript-eslint/non-nullable-type-assertion-style`
+errors at spec lines 171 and 197. Replaced the two DOM `as` casts with typed
+`querySelector` calls and optional property access; the strict boolean
+expectations still fail if the element is missing. The spec passes that exact
+rule, both previously checked assertion rules, the spec TypeScript check, all
+13 component tests, and the whitespace check. No application code changed.
+The user requested a follow-up commit after `62ce0fa` and will push manually.
 
 ---
 
@@ -94,23 +184,34 @@
 
 ## Current Focus
 
-_What should the next session work on?_
-
-1. Browser-check local search from both a list root and a nested folder: non-empty
-   validation, one-character names, mixed file/folder matches, empty results,
-   Clear/Escape, and result navigation to a folder or a file's containing folder.
-2. Write the backend implementation handoff against the now-stable
-   `searchDocuments(projectId, scope, query)` response contract. The backend should use
-   the verified root `GET .../items` continuation scan, then filter list/path/name in
-   Java; do not revive threshold-blocked nested recursive CAML or folder traversal.
-3. Browser-check Folder / File selection, the upload panel, cancellation, and a local
-   tree containing nested empty folders in Edge/Chrome.
-4. Browser-check the three context-menu variants, hover submenus, inline delete
-   confirmation, and forced write errors.
-5. Run the Phase 2 acceptance checks for create, inline rename, delete confirmation,
-   and tree/table synchronization.
-6. Run Karma locally with Chrome/Edge installed (the agent environment can build the
-   suite but has no browser binary).
+1. Review PR-only behavior before starting internal drag-and-drop. The user
+   explicitly rejected additional bug fixes: keep the original `slice(3)` table
+   formatter and the broad current-bin guard, including tree Open Folder doing
+   nothing while a bin is displayed. Do not apply the proposed narrower guard.
+   Bug fixes require a separate explicit task after synchronization is reviewed.
+   The support message is deferred until supplied; the user handles the unused
+   mock import, generator settings, and user-specific configuration on the
+   destination. No actual-path sample is needed to justify extra normalization.
+2. Use [the PR synchronization handoff](handoffs/pr-sync.md) when transferring this
+   feature. Keep the destination's generated services, working SharePoint adapter,
+   document/error mappers, providers, and shared popup/reporting integrations.
+   Common names, declaration/property order, helpers, and templates now follow the
+   screenshots. The handoff lists the remaining local adaptations and screenshot
+   anchors; the alignment is kept as a separate commit on `sync/pr-changes`.
+   Popup imports and calls now match PR1. Their local implementations, aliases,
+   and demo providers live outside the copied feature directory; the destination
+   keeps its existing package, shared confirmation component, and reporting flow.
+   Access enums also use the original `@api/model/folderNodeResponse` and
+   `@api/model/fileNodeResponse` imports. Local equivalents live in `src/local/api/`;
+   keep the destination's generated models and `@api` alias when copying the feature.
+3. Permission gaps deliberately preserved from the PRs (protected search results,
+   actual row/tree drops, cross-list paste target access) need a separate decision
+   before hardening. No new role inference or mutation retries were added.
+4. Complete manual Edge/Chrome acceptance and real backend verification for uploads,
+   search, and recycle-bin operations on the destination. The local browser suite
+   passed again after the PR-only rollback: 144 tests in headless Chrome. App/spec TypeScript
+   checks, production build, lint, and whitespace checks pass; existing
+   budget/accessibility warnings remain.
 
 Backend upload implementation handoff: use
 `docs/backend-operations/upload-file-feign-buffered.md` for the first bounded
@@ -122,6 +223,92 @@ frontend now targets that stable raw-file endpoint through `FileSystemApi.upload
 ---
 
 ## Decisions Log
+
+- **2026-10-22 — Roll back extra fixes; preserve PR behavior**: user reported
+  `Node path is outside its document-list root` when opening a bin and explicitly
+  ordered rollback of additional fixes. Restored PR1's `transformPath` format
+  comments and `path.split('/')` / `segments.slice(3)` implementation. Removed
+  the `documentRootPath` input/binding and table-only `relativePathFromRoot` call;
+  existing search and PR4 initial-link uses of the utility are unchanged. Restored
+  the original `onItemDoubleClicked` early return whenever the current folder is
+  a bin, including the known tree Open Folder limitation. No narrower guard or
+  permission fixes were introduced. Mock bin records now return
+  `sites/mock/{listKey}/remainingPath` for the PR formatter; private restoration
+  snapshots retain the live mock paths/ids. Updated the existing path fixture and
+  mock roundtrip assertion, and added workflow coverage for the broad guard's two
+  effects. All 144 browser tests, app/spec TypeScript, production build, lint, and
+  whitespace checks pass; existing budget / accessibility warnings remain. Docs
+  record that synchronization must not fix existing bugs. User handles destination
+  mock-import cleanup, generator / identity settings; exact support wording is
+  deferred. This instruction supersedes earlier proposals to validate/generalize
+  bin paths or narrow the activation guard. Rollback changes are grouped in their
+  own commit.
+- **2026-10-22 — Destination review screenshots checked**: read all three images
+  in `tmp-screenshots/llm-diff/` and compared their claims with local source and Git
+  history. Recent PR-sync commits did not change notification wording, container
+  SCSS, or `app.config.ts`; `openapitools.json` is absent here. The reported email,
+  border, generator version, and user-specific configuration differences therefore
+  need to be treated as separate destination differences, not attributed to this
+  sync. Asked for intended message wording, a real root / deleted-item path pair,
+  and whether border / generator changes were intentional. The local path formatter
+  remains a behavior adaptation: it requires paths under the supplied list root
+  and can throw for mismatched representations. Keep the destination's real
+  SharePoint provider and adapter; an unused mock import there can be removed
+  without changing that binding. Bin rows have no double-click event binding and
+  an existing spec covers that; direct calls to the container handler still differ
+  from an implementation with a guard. Restoring the broad current-folder guard
+  would also block normal tree-folder Open Folder actions while viewing a bin.
+  Execution-first display/default selection is explicitly in PR4. Mock/bin/access
+  helpers and their tests are deliberate local support. No application code was
+  changed during this review; the previous 142-test result covers local behavior,
+  not the destination's backend or its generator upgrade. Full destination source
+  equivalence cannot be established from an LLM summary alone.
+- **2026-10-21 — Generated API import paths preserved**: user requested the same
+  outside-the-feature replacement approach for `@api` dependencies. Confirmed the
+  exact `folderNodeResponse` / `fileNodeResponse` paths in PR2 and the navigation
+  import in PR3. Node models, container, table, tree, navigation store, and the
+  mock access helper now import their access enums from those original paths.
+  Moved the existing constant/type definitions to `src/local/api/model/`, added
+  the local `@api/*` alias, and removed `models/document-access.model.ts` from the
+  feature. Names, values, declaration order, and permission behavior are preserved.
+  Destination generated clients/models and working SharePoint adapter/mappers
+  remain owned by that application. All 142 browser tests, app/spec TypeScript
+  checks, production build, lint, and whitespace checks pass. Existing budget and
+  path-bar accessibility warnings remain. No new tests or permission behavior
+  were added for this import-only refactor; internal drag-and-drop stays deferred.
+- **2026-10-21 — Popup dependencies match the destination imports**: user copies
+  the entire `project-documents/` directory and requested the original service API
+  instead of a feature-specific dialog replacement. The container now imports
+  `PopupService` / `TRACE_ID_HEADER` from `ibportal-web-ui-commons` and
+  `ConfirmationPopup` / its default config from the original `@shared` path.
+  Restored the photographed service injection, confirmation callback, HTTP error
+  message/trace extraction, and generic restore-error fallback. Removed
+  `RecycleBinDialogs`, its two signals, and the template wrapper. Local equivalents
+  live in `src/local/ibportal-web-ui-commons/` and `src/app/shared/`, mapped by
+  `tsconfig.json`; the lazy demo host supplies local popup providers. Local report
+  actions copy message/trace details, while the destination retains its existing
+  reporting integration. All 142 tests pass, including real dialog confirmation,
+  cancellation, escaped HTTP messages/trace IDs, and non-HTTP fallback behavior.
+  Dialog teardown is clean. Development/production builds, app/spec TypeScript,
+  lint, and whitespace checks pass. Production warns at 514.37 kB initial JS
+  (500 kB budget) and 4.52 kB container styles (4 kB); lint retains the two existing
+  path-bar accessibility warnings. Internal drag-and-drop remains deferred.
+- **2026-10-21 — Source alignment**: user requested minimal transfer differences,
+  including variable names and declaration order. Restored the photographed
+  toolbar/menu/navigation/store locals, helper sequence, bin table markup, and
+  template bindings. Local mocks, host inputs, enums, dialogs, path normalization,
+  and lint requirements remain documented adaptations. Initial links with missing
+  parameters or unknown list keys are ignored without URL cleanup, matching PR4;
+  recognized links clear all query parameters after the navigation attempt. No
+  additional permission rules or internal drag-and-drop work was introduced.
+  The popup-dependency alignment above supersedes the feature-local dialog adaptation.
+- **2026-10-21 — PR synchronization**: user authorized all four screenshot
+  PRs on `sync/pr-changes`, chose exact PR permission behavior, local mocks and
+  popup equivalents, and a Google Material SVG. Recycle bin is now in scope.
+  Execution is displayed/opened first; valid initial URL parameters are resolved
+  after normal initialization and then cleared. Backend-generated dependencies and
+  target-only application integrations are retained on the destination. See the
+  handoff for file boundaries and deliberately preserved gaps.
 
 _Keep a running record of non-obvious choices. Update as you go. Future you will thank present you._
 
@@ -402,6 +589,17 @@ _Things noticed during implementation but not fixed in the current phase. Review
 ---
 
 ## Session Notes
+
+- **2026-10-21 — four PRs applied**: implemented recycle-bin data/UI and nested mock
+  restore, backend-supplied folder/file/list access, and Execution-first/URL initial
+  navigation. Added local modal confirmation/error components and Google bin SVG.
+  Required model flags were added to fixtures; stale seed-count/file-location
+  expectations were corrected. App/spec TypeScript, development/production builds,
+  and diff check pass. Karma: **140/140 pass** in headless Chrome 147. Lint: no
+  errors, only the existing two path-bar accessibility warnings. Production retains
+  initial-bundle/container-style budget warnings. No dependency or system package
+  changes; browser runtime dependencies were extracted into `/tmp` for testing.
+  Unrelated launch configuration and investigation document were left untouched.
 
 _One line per session, newest at top. Include date, phase, what was completed, and any blockers._
 

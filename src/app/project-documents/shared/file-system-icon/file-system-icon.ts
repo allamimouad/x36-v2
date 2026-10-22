@@ -6,11 +6,12 @@ export type FileSystemIconName =
     | 'pdf'
     | 'photo'
     | 'pptx'
+    | 'recyclebin'
     | 'txt'
     | 'video'
     | 'xlsx';
 
-type FileExtensionIconName = Exclude<FileSystemIconName, 'folder'>;
+type FileExtensionIconName = Exclude<FileSystemIconName, 'folder' | 'recyclebin'>;
 
 const DEFAULT_FILE_ICON: FileExtensionIconName = 'txt';
 

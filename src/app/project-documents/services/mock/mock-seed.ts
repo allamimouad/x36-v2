@@ -377,7 +377,8 @@ export function buildSeed(): SeedResult {
             itemCount: seed.length,
             createdAt: EARLIER,
             modifiedAt: NOW,
-            modifiedBy: EDITORS[0]
+            modifiedBy: EDITORS[0],
+            isRecycleBin: false
         };
         nodes.set(root.id, root);
         for (const spec of seed) {
@@ -408,7 +409,8 @@ function addFolder(
         itemCount,
         createdAt: EARLIER,
         modifiedAt: NOW,
-        modifiedBy: editorFor(spec.name)
+        modifiedBy: editorFor(spec.name),
+        isRecycleBin: false
     };
     nodes.set(folder.id, folder);
     for (const sub of spec.folders ?? []) {

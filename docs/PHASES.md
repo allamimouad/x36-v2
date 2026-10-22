@@ -2,6 +2,24 @@
 
 > **For the LLM**: Read `PROGRESS.md` to know which phase is active. Do NOT implement ahead of the current phase. When the current phase is marked complete in `PROGRESS.md`, only then proceed to the next. Each phase must end in a runnable, demoable state.
 
+
+**2026-10-21 scope update:** the user explicitly authorized synchronizing four
+PRs before internal drag-and-drop. Recycle bin, default-folder/list access flags,
+Execution-first navigation, and initial folder URL parameters now extend the original
+sequence. See [the synchronization handoff](handoffs/pr-sync.md). Existing
+mutation/upload/search work stays in place; this does not authorize internal drag work.
+
+**2026-10-22 constraint:** synchronization must preserve the supplied behavior and
+existing limitations. Roll back extra fixes, including the root-relative bin path
+formatter and the removal of the broad current-bin activation guard. Do not add a
+narrower guard or repair tree Open Folder behavior during this synchronization.
+Bug fixes are a separate future task requiring explicit authorization.
+
+**2026-10-22 additional PR:** match PR5's required `id` input and
+`projectLabel = signal<string>('')`. The constructor updates the label from
+`ProjectOverviewService.projectDTO()?.name ?? ''` in an effect immediately after
+`observeReadErrors()`. The local service/provider stay outside the copied feature.
+
 ---
 
 ## Phase 1 — Foundation & Read-Only Browsing
@@ -65,7 +83,7 @@
 
 **Container**
 - `project-documents.ts`:
-  - Required `projectId` input supplied by its host
+  - Required `id` input, matching the destination route parameter; supplied explicitly by the local demo host
   - Provides all three stores + `MockFileSystemApi` as `FileSystemApi`
   - Provides default `MOCK_CONFIG` and `FILE_MANAGER_CONFIG`
   - Builds tree node structure from `FileSystemStore` entities (computed)
@@ -360,6 +378,14 @@ pickers or external OS drag-and-drop, with progress.
   compatible with a future single-request streaming transport
 - In `project-documents.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
 - Only after that swap, optionally delete `services/mock/` (mock backend + seed + mock config token) and the two `stores/*.spec.ts` if unit tests aren't kept in that repo
+- Popup imports/calls already match the photographed PRs. Keep the destination's
+  `ibportal-web-ui-commons` package and
+  `@shared/components/confirmation-popup/confirmation-popup`. Local equivalents
+  and their `tsconfig.json` aliases are outside `project-documents/`; leave them
+  here along with the demo host's popup providers. See `handoffs/pr-sync.md`.
+- Access-enum imports already use the PR's `@api/model/folderNodeResponse` and
+  `@api/model/fileNodeResponse` paths. Keep the destination's generated models and
+  `@api` alias. Their local equivalents live outside the feature in `src/local/api/`.
 - Icons: no component swap needed — `FileSystemIcon` is the only file-type icon component (the Material Symbols stand-in was deleted 2026-07-08). Copy `src/assets/icons/sharepoint-file-type-icons/` (the 8 SVGs) to the target app along with the feature folder, or replace them with the target's own set — the component only needs `<name>.svg` to exist for the 8 `FileSystemIconName` values
 - Fonts: the copied source uses Material Symbols (Outlined) ligature spans for UI chrome (nav-toolbar, container, path-bar). Ensure the target repo installs the `material-symbols` npm package and loads `material-symbols/outlined.css` (self-hosted — no CDN dependency)
 - Colors: nothing to do — `project-documents-theme.scss` already maps every `--pd-*` token to the shared palette via `@use '../../assets/styles/utils/colors'`, the exact path of the target repo's `_colors.scss` (which `@forward`s `ibportal-web-ui-commons`). Do **NOT** copy this repo's `src/assets/styles/utils/_colors.scss` — it is a local stand-in with the lib palette inlined; the target already has the real file. To adjust a color: change the mapping in `project-documents-theme.scss`, or add a variable to the target's `_colors.scss` and reference it. PrimeNG component internals (buttons, tree rows, table hover) are themed separately via the PrimeNG preset; file-type icon colors live in the SVGs

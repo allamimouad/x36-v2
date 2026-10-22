@@ -63,6 +63,7 @@ function response(query: string): FileSystemNode[] {
 
 const scope: FolderNode = {
     kind: 'folder',
+    isRecycleBin: false,
     listKey: 'EXECUTION',
     id: 'root',
     path: '/execution',

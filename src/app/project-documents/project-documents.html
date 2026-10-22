@@ -99,7 +99,7 @@
         type="text"
         placeholder="Search this folder"
         [value]="searchText()"
-        [disabled]="!navigation.currentFolder() || fileSystem.isInitializing()"
+        [disabled]="!navigation.currentFolder() || fileSystem.isInitializing() || navigation.currentFolderIsRecycleBin()"
         [attr.aria-invalid]="searchValidationError() ? 'true' : null"
         aria-label="Search files and folders"
         data-testid="pd-search"
@@ -123,7 +123,7 @@
       <button
         pButton
         type="button"
-        [disabled]="createFolderButtonDisabled()"
+        [disabled]="isCreateFolderButtonDisabled()"
         [loading]="creatingFolder()"
         pTooltip="Create a folder"
         tooltipPosition="bottom"
@@ -138,7 +138,7 @@
       <button
         pButton
         type="button"
-        [disabled]="!navigation.currentFolder() || searchActive()"
+        [disabled]="isUploadButtonDisabled()"
         pTooltip="Upload files or a folder"
         tooltipPosition="bottom"
         severity="secondary"
@@ -204,6 +204,7 @@
               [renamingId]="inlineRenameSurface() === 'tree' ? navigation.renamingId() : null"
               [renameError]="inlineRenameError()"
               [deleteConfirmationId]="treeDeleteConfirmationId()"
+              [readonlyAccessByListKey]="navigation.readonlyAccessByListKey()"
               (nodeSelected)="onTreeNodeSelected($event)"
               (nodeExpanded)="onTreeNodeExpanded($event)"
               (nodeCollapsed)="onTreeNodeCollapsed($event)"
@@ -230,13 +231,13 @@
             <ng-template #panel>
               <ng-container
                 [ngTemplateOutlet]="treeSection"
-                [ngTemplateOutletContext]="marketingSectionContext()"
+                [ngTemplateOutletContext]="executionSectionContext()"
               />
             </ng-template>
             <ng-template #panel>
               <ng-container
                 [ngTemplateOutlet]="treeSection"
-                [ngTemplateOutletContext]="executionSectionContext()"
+                [ngTemplateOutletContext]="marketingSectionContext()"
               />
             </ng-template>
           </p-splitter>
@@ -304,7 +305,11 @@
               externalDropSurface() === 'table' ? externalDropTargetId() : null
             "
             [externalDragActive]="currentFolderDropActive()"
+            [projectName]="projectLabel()"
             [currentFolderName]="navigation.currentFolder()?.name ?? ''"
+            [currentFolderListKey]="navigation.currentFolder()?.listKey || null"
+            [currentFolderIsRecycleBin]="navigation.currentFolderIsRecycleBin()"
+            [isCurrentFolderReadonly]="navigation.isCurrentFolderReadonly()"
             (itemDoubleClicked)="onItemDoubleClicked($event)"
             (itemFocused)="onItemFocused($event)"
             (itemContextMenuRequested)="onNodeContextMenu($event)"
@@ -346,5 +351,4 @@
       (completedCleared)="uploads.clearCompleted()"
     />
   }
-
 </div>

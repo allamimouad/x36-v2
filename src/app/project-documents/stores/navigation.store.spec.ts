@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import type { DocumentListRoots } from '../models/document-list.model';
 import { TestBed } from '@angular/core/testing';
 import type { FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { FileSystemApi } from '../services/file-system/file-system-api';
@@ -208,9 +209,11 @@ describe('NavigationStore', () => {
     it('exposes currentFolderChildren split into folders and files', () => {
         nav.navigateTo(rootId);
         const { folders, files } = nav.currentFolderChildren();
-        expect(folders.length).toBe(3);
+        expect(folders.length).toBe(5);
         expect(files.length).toBe(0);
-        expect(folders.map((f) => f.name)).toEqual(['Contracts', 'Schedules', 'Site Reports']);
+        expect(folders.map((f) => f.name)).toEqual([
+            'Contracts', 'Recycle Bin', 'Schedules', 'Site Reports', 'Unavailable on open'
+        ]);
     });
 });
 
@@ -223,6 +226,7 @@ function folderHistory(folderId: string): {
 
 const fakeRoot: FolderNode = {
     kind: 'folder',
+    isRecycleBin: false,
     listKey: 'EXECUTION',
     id: 'root',
     path: '/',
@@ -235,6 +239,7 @@ const fakeRoot: FolderNode = {
 
 const fakeDocs: FolderNode = {
     kind: 'folder',
+    isRecycleBin: false,
     listKey: 'EXECUTION',
     id: 'docs',
     path: '/Documents',
@@ -247,6 +252,7 @@ const fakeDocs: FolderNode = {
 
 const fakeShared: FolderNode = {
     kind: 'folder',
+    isRecycleBin: false,
     listKey: 'EXECUTION',
     id: 'shared',
     path: '/Shared',
@@ -258,6 +264,7 @@ const fakeShared: FolderNode = {
 };
 
 class FakeFileSystemReader extends FileSystemReader {
+    public readonly initializedRoots = signal<DocumentListRoots | null>(null);
     public readonly nodes: FileSystemNode[] = [fakeRoot, fakeDocs, fakeShared];
     public readonly entityMap = signal<Record<string, FileSystemNode>>({
         [fakeRoot.id]: fakeRoot,
@@ -294,6 +301,32 @@ describe('NavigationStore load triggering', () => {
         });
         reader = TestBed.inject(FileSystemReader) as FakeFileSystemReader;
         nav = TestBed.inject(NavigationStore);
+    });
+
+    it('derives list access from the current folder and defaults missing flags to writable', () => {
+        reader.initializedRoots.set({
+            EXECUTION: { status: 'loaded', root: fakeRoot, isListReadonly: true },
+            MARKETING: { status: 'not-found' }
+        });
+        nav.navigateTo(fakeDocs.id);
+        expect(nav.isListReadonly()).toBeTrue();
+        expect(nav.isCurrentFolderReadonly()).toBeTrue();
+        expect(nav.readonlyAccessByListKey().get('MARKETING')).toBeFalse();
+
+        reader.initializedRoots.set({
+            EXECUTION: { status: 'loaded', root: fakeRoot }, MARKETING: { status: 'not-found' }
+        });
+        expect(nav.isCurrentFolderReadonly()).toBeFalse();
+    });
+
+    it('combines folder access with list access and identifies the recycle bin', () => {
+        reader.entityMap.update((nodes) => ({ ...nodes,
+            [fakeDocs.id]: { ...fakeDocs, accessLevel: 'READONLY', isRecycleBin: true }
+        }));
+        nav.navigateTo(fakeDocs.id);
+        expect(nav.isListReadonly()).toBeFalse();
+        expect(nav.isCurrentFolderReadonly()).toBeTrue();
+        expect(nav.currentFolderIsRecycleBin()).toBeTrue();
     });
 
     it('navigateTo triggers a load for an unloaded folder', () => {

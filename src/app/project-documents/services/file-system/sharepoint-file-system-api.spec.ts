@@ -19,6 +19,7 @@ import { SharePointFileSystemApi } from './sharepoint-file-system-api';
 describe('SharePointFileSystemApi', () => {
     const parent: FolderNode = {
         kind: 'folder',
+        isRecycleBin: false,
         listKey: 'EXECUTION',
         id: 'parent-id',
         path: '/sites/project/Documents',
@@ -41,6 +42,7 @@ describe('SharePointFileSystemApi', () => {
     };
     const target: FolderNode = {
         kind: 'folder',
+        isRecycleBin: false,
         listKey: 'EXECUTION',
         id: 'target-id',
         path: '/sites/project/Documents/Target',

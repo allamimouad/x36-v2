@@ -54,7 +54,7 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(store.folderIdsWithLoadedChildren()).toContain(marketingRoot.id);
         expect(
             store.entities().filter((node) => node.parentId === executionRoot.id).length
-        ).toBe(4);
+        ).toBe(5);
         expect(
             store.entities()
                 .filter((node) => node.parentId === executionRoot.id)
@@ -143,6 +143,51 @@ describe('FileSystemStore project-scoped API contract', () => {
             expect(store.entities()).toEqual([]);
         }
     );
+
+    it('routes bin loads separately and removes records only after successful writes', async () => {
+        await store.initialize('project-123');
+        const bin = store.entities().find((node): node is FolderNode =>
+            isFolder(node) && node.isRecycleBin && node.listKey === 'EXECUTION');
+        const contracts = store.entities().find((node) => node.path === '/execution/Contracts');
+        if (!bin || !contracts) { throw new Error('Expected seed folders'); }
+        await store.delete(contracts.id);
+        const getItems = spyOn(api, 'getRecycleBinItems').and.callThrough();
+        await store.loadChildren(bin.id);
+        expect(getItems).toHaveBeenCalledOnceWith('project-123', bin.id);
+        const record = store.entities().find((node) => node.parentId === bin.id);
+        if (!record) { throw new Error('Expected deleted record'); }
+        const restore = spyOn(api, 'restoreRecycleBinItem').and.returnValue(
+            throwError(() => new FileSystemError('network', 'Failure'))
+        );
+        await expectAsync(store.restoreRecycleBinNodes(record.id)).toBeRejected();
+        expect(store.entityMap()[record.id]).toBe(record);
+        restore.and.callThrough();
+        await store.restoreRecycleBinNodes(record.id);
+        expect(restore).toHaveBeenCalledWith('project-123', bin.id, record.id);
+        expect(store.entityMap()[record.id]).toBeUndefined();
+        await store.loadChildren(contracts.parentId!);
+        expect(store.entityMap()[contracts.id]).toBeDefined();
+    });
+
+    it('keeps cached bin records on failed permanent deletion', async () => {
+        await store.initialize('project-123');
+        const bin = store.entities().find((node): node is FolderNode =>
+            isFolder(node) && node.isRecycleBin && node.listKey === 'EXECUTION');
+        const contracts = store.entities().find((node) => node.path === '/execution/Contracts');
+        if (!bin || !contracts) { throw new Error('Expected seed folders'); }
+        await store.delete(contracts.id);
+        await store.loadChildren(bin.id);
+        const record = store.entities().find((node) => node.parentId === bin.id)!;
+        const remove = spyOn(api, 'deletePermanentlyRecycleBinItem').and.returnValue(
+            throwError(() => new FileSystemError('network', 'Failure'))
+        );
+        await expectAsync(store.deleteRecycleBinNodes(record.id)).toBeRejected();
+        expect(store.entityMap()[record.id]).toBe(record);
+        remove.and.callThrough();
+        await store.deleteRecycleBinNodes(record.id);
+        expect(remove).toHaveBeenCalledWith('project-123', bin.id, record.id);
+        expect(store.entityMap()[record.id]).toBeUndefined();
+    });
 
     it('loads nested content using project, list, and parent identity', async () => {
         await store.initialize('project-123');
@@ -402,18 +447,18 @@ describe('FileSystemStore project-scoped API contract', () => {
     });
 
     it('keeps repeated same-folder copies with File Explorer names', async () => {
-        const roots = await store.initialize('project-123');
-        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
+        await store.initialize('project-123');
+        const { folder: parent } = await store.loadPathListing('EXECUTION', 'Contracts');
         const source = store.entities().find(
-            (node) => !isFolder(node) && node.parentId === executionRoot.id
+            (node) => !isFolder(node) && node.parentId === parent.id
         );
         if (!source) { throw new Error('Expected execution source file'); }
 
-        await store.copy(source.id, executionRoot.id);
-        await store.copy(source.id, executionRoot.id);
+        await store.copy(source.id, parent.id);
+        await store.copy(source.id, parent.id);
 
         const copiedNames = store.entities()
-            .filter((node) => node.id !== source.id && node.parentId === executionRoot.id)
+            .filter((node) => node.id !== source.id && node.parentId === parent.id)
             .map((node) => node.name);
         const extensionIndex = source.name.lastIndexOf('.');
         const stem = extensionIndex > 0
@@ -424,7 +469,7 @@ describe('FileSystemStore project-scoped API contract', () => {
             : '';
         expect(copiedNames).toContain(`${stem} - Copy${extension}`);
         expect(copiedNames).toContain(`${stem} - Copy (2)${extension}`);
-        expect(store.folderIdsWithLoadedChildren()).toContain(executionRoot.id);
+        expect(store.folderIdsWithLoadedChildren()).toContain(parent.id);
     });
 
     it('returns a copied folder with its real child count', async () => {

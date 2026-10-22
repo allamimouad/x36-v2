@@ -1,4 +1,6 @@
 import type { DocumentListKey } from './document-list.model';
+import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
+import { FileNodeResponseAccessLevelEnum } from '@api/model/fileNodeResponse';
 
 export type FileSystemNode = FolderNode | FileNode;
 
@@ -10,10 +12,12 @@ export interface FolderNode {
     name: string;
     parentId: string | null;
     itemCount?: number;
-    createdAt: string;
+    createdAt?: string;
     modifiedAt: string;
     modifiedBy?: string;
     webUrl?: string;
+    isRecycleBin: boolean;
+    accessLevel?: FolderNodeResponseAccessLevelEnum;
 }
 
 export interface FileNode {
@@ -24,13 +28,14 @@ export interface FileNode {
     name: string;
     parentId: string;
     sizeBytes?: number;
-    createdAt: string;
+    createdAt?: string;
     modifiedAt: string;
     modifiedBy?: string;
     contentType?: string;
     onlineUrl?: string;
     desktopUrl?: string;
     downloadUrl?: string;
+    accessLevel?: FileNodeResponseAccessLevelEnum;
 }
 
 export function isFolder(n: FileSystemNode): n is FolderNode {

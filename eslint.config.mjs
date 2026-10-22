@@ -145,6 +145,21 @@ export default tseslint.config(
     },
   },
   {
+    files: [
+      'src/app/project-documents/stores/file-system.store.ts',
+      'src/app/project-documents/stores/navigation.store.ts',
+    ],
+    rules: {
+      // The NgRx factories contain each store's collection of nested methods and signals.
+      'max-lines-per-function': ['error', {
+        max: 500,
+        skipBlankLines: true,
+        skipComments: true,
+        IIFEs: true,
+      }],
+    },
+  },
+  {
     files: ['**/*.html'],
     extends: [...angular.configs.templateRecommended, ...angular.configs.templateAccessibility],
     rules: {
