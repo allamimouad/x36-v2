@@ -12,12 +12,15 @@ import {
 import { PrimeTemplate, type TreeNode } from 'primeng/api';
 import { InputText } from 'primeng/inputtext';
 import { Tree, type TreeNodeExpandEvent, type TreeNodeSelectEvent } from 'primeng/tree';
-import type { FolderNode } from '../../models/file-system-node.model';
+import type { FileSystemNode, FolderNode } from '../../models/file-system-node.model';
 import type {
     ItemRenameRequest,
     NodeContextMenuRequest
 } from '../../models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from '../../models/external-drop-request.model';
+import {
+    hasInternalDragType, type ItemDragRequest, type ItemDropRequest
+} from '../../models/drag-state.model';
 import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
 import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 import type { DocumentListKey } from '../../models/document-list.model';
@@ -36,6 +39,10 @@ export class FolderTree {
     public readonly folderIdsWithLoadingChildren = input<string[]>([]);
     public readonly writingIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly externalDropTargetId = input<string | null>(null);
+    public readonly draggableIds = input<ReadonlySet<string>>(new Set());
+    public readonly internalDragActive = input(false);
+    public readonly internalSourceId = input<string | null>(null);
+    public readonly internalDropTargetId = input<string | null>(null);
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);
     public readonly deleteConfirmationId = input<string | null>(null);
@@ -53,6 +60,11 @@ export class FolderTree {
     public readonly deleteCancelled = output();
     public readonly externalFolderDragOver = output<ExternalFolderDropRequest>();
     public readonly externalFolderDropped = output<ExternalFolderDropRequest>();
+    public readonly dragStarted = output<ItemDragRequest>();
+    public readonly dragEnded = output();
+    public readonly internalDragOver = output<ItemDropRequest>();
+    public readonly internalDropped = output<ItemDropRequest>();
+    public readonly internalDragLeft = output<DragEvent>();
 
     protected readonly selectedTreeNode = computed<TreeNode<FolderNode> | null>(() => {
         const id = this.currentFolderId();
@@ -84,6 +96,10 @@ export class FolderTree {
             if (!this.deleteConfirmationId()) { return; }
             this.deleteCancelButton()?.nativeElement.focus();
         });
+    }
+
+    protected trackNode(_index: number, node: TreeNode<FolderNode>): string | undefined {
+        return node.key;
     }
 
     protected handleExpand(event: TreeNodeExpandEvent): void {
@@ -152,6 +168,11 @@ export class FolderTree {
         event: DragEvent,
         node: TreeNode<FolderNode>
     ): void {
+        if (this.isInternalDrag(event)) {
+            this.internalDragOver.emit({ event, targetId: node.data?.id ?? null });
+
+            return;
+        }
         if (!this.isNodeDroppable(node)) {
             event.preventDefault();
 
@@ -166,9 +187,28 @@ export class FolderTree {
         event: DragEvent,
         node: TreeNode<FolderNode>
     ): void {
+        if (this.isInternalDrag(event)) {
+            this.internalDropped.emit({ event, targetId: node.data?.id ?? null });
+
+            return;
+        }
         if (node.data) {
             this.externalFolderDropped.emit({ event, target: node.data });
         }
+    }
+
+    protected onDragStart(event: DragEvent, node: FileSystemNode): void {
+        if (!this.draggableIds().has(node.id) || this.renamingId() === node.id ||
+            this.deleteConfirmationId() === node.id) {
+            event.preventDefault();
+
+            return;
+        }
+        this.dragStarted.emit({ event, node });
+    }
+
+    private isInternalDrag(event: DragEvent): boolean {
+        return this.internalDragActive() || hasInternalDragType(event);
     }
 
     private submitInlineRename(node: TreeNode<FolderNode>): void {

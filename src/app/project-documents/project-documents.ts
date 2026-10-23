@@ -41,6 +41,7 @@ import {
 } from './models/file-system-node.model';
 import { FileSystemError } from './models/file-system-error.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
+import { DragDropService } from './services/interaction/drag-drop.service';
 import { ClipboardService } from './services/interaction/clipboard.service';
 import { ExternalDropService } from './services/upload/external-drop.service';
 import { FileLaunchService } from './services/interaction/file-launch.service';
@@ -120,6 +121,7 @@ interface PendingDelete {
         { provide: FileSystemReader, useExisting: FileSystemStore },
         NavigationStore,
         ClipboardService,
+        DragDropService,
         ExternalDropService,
         FileLaunchService,
         MessageService,
@@ -138,6 +140,7 @@ export class ProjectDocuments {
     protected readonly fileSystem = inject(FileSystemStore);
     protected readonly navigation = inject(NavigationStore);
     protected readonly clipboard = inject(ClipboardService);
+    protected readonly dragDrop = inject(DragDropService);
     protected readonly externalDrops = inject(ExternalDropService);
     protected readonly fileLauncher = inject(FileLaunchService);
     protected readonly notifications = inject(NotificationService);
@@ -155,7 +158,10 @@ export class ProjectDocuments {
         return folder !== null && this.fileLauncher.canOpenSharePointWeb(folder);
     });
 
-    protected readonly writingIds = signal<ReadonlySet<string>>(new Set<string>());
+    protected readonly mutationWritingIds = signal<ReadonlySet<string>>(new Set<string>());
+    protected readonly writingIds = computed(() => new Set([
+        ...this.mutationWritingIds(), ...this.dragDrop.busyIds()
+    ]));
     protected readonly inlineRenameError = signal<string | null>(null);
     protected readonly inlineRenameSurface = signal<NodeSurface | null>(null);
     protected readonly focusedSurface = signal<NodeSurface>('table');
@@ -177,13 +183,14 @@ export class ProjectDocuments {
     });
     protected readonly creatingFolder = signal(false);
     protected readonly isCreateFolderButtonDisabled = computed(() => {
-        return !this.navigation.currentFolder() || this.creatingFolder() ||
+        return this.dragDrop.pending() || !this.navigation.currentFolder() ||
+            this.creatingFolder() ||
             this.searchActive()
             || this.navigation.currentFolderIsRecycleBin()
             || this.navigation.isCurrentFolderReadonly();
     });
     protected readonly isUploadButtonDisabled = computed(() => {
-        return !this.navigation.currentFolder() || this.searchActive()
+        return this.dragDrop.pending() || !this.navigation.currentFolder() || this.searchActive()
             || this.navigation.currentFolderIsRecycleBin()
             || this.navigation.isCurrentFolderReadonly();
     });
@@ -355,6 +362,13 @@ export class ProjectDocuments {
         // Reactive project connection: the store re-initializes (cancelling any in-flight
         // load via switchMap) whenever the host rebinds `id`.
         this.fileSystem.connectProject(this.id);
+        this.dragDrop.connect(() => ({
+            writingIds: this.mutationWritingIds(),
+            editingIds: new Set([
+                this.navigation.renamingId(), this.pendingDelete()?.node.id
+            ].filter((id): id is string => typeof id === 'string')),
+            blocked: this.internalDragBlocked()
+        }));
         this.observeProjectChanges();
         this.observeInitializedRoots();
         this.observeReadErrors();
@@ -363,6 +377,11 @@ export class ProjectDocuments {
         });
         this.observeSearchHistory();
         this.observeInitialFolderPath();
+    }
+
+    @HostListener('document:keydown.escape')
+    protected cancelInternalDrag(): void {
+        this.dragDrop.endDrag();
     }
 
     @HostListener('document:pointerdown', ['$event'])
@@ -578,6 +597,11 @@ export class ProjectDocuments {
         event: DragEvent,
         surface: 'table' | 'tree'
     ): void {
+        if (this.dragDrop.handles(event)) {
+            this.dragDrop.over(event, null, surface);
+
+            return;
+        }
         if (!this.externalDrops.containsFiles(event.dataTransfer)) { return; }
         this.externalDropSurface.set(surface);
         this.externalDropTargetId.set(null);
@@ -598,11 +622,18 @@ export class ProjectDocuments {
 
     protected onExternalCurrentFolderDragOver(event: DragEvent): void {
         const target = this.navigation.currentFolder();
+        if (this.dragDrop.handles(event)) {
+            this.dragDrop.over(event, this.currentFolderError() ? null : target?.id ?? null,
+                'current-folder');
+
+            return;
+        }
         if (!target || this.currentFolderError()) { return; }
         this.onExternalFolderDragOver({ event, target }, 'table');
     }
 
     protected onExternalDragLeave(event: DragEvent): void {
+        this.dragDrop.leave(event);
         const pane = event.currentTarget;
         const nextTarget = event.relatedTarget;
         if (
@@ -616,6 +647,11 @@ export class ProjectDocuments {
     }
 
     protected onExternalDropOutsideTarget(event: DragEvent): void {
+        if (this.dragDrop.handles(event)) {
+            void this.dragDrop.drop(event, null);
+
+            return;
+        }
         if (!this.externalDrops.containsFiles(event.dataTransfer)) { return; }
         event.preventDefault();
         event.stopPropagation();
@@ -629,6 +665,12 @@ export class ProjectDocuments {
     }
 
     protected async onExternalCurrentFolderDrop(event: DragEvent): Promise<void> {
+        if (this.dragDrop.handles(event)) {
+            await this.dragDrop.drop(event, this.currentFolderError() ? null :
+                this.navigation.currentFolderId());
+
+            return;
+        }
         await this.uploadExternalDrop(event, this.navigation.currentFolder());
     }
 
@@ -923,21 +965,16 @@ export class ProjectDocuments {
         if (folder) { this.fileLauncher.openSharePointWeb(folder); }
     }
 
-    /**
-   * Coordination point for move flows initiated by the container.
-   * TODO: wire to the cut/copy/paste and drag-and-drop USs.
-   * Guards against moving a folder whose subtree contains the current view — that
-   * would orphan `currentFolderId` in a removed subtree. On success, prunes
-   * navigation/clipboard references that pointed into the removed subtree.
-   */
-    protected async moveNode(sourceId: string, targetParentId: string): Promise<void> {
-        const currentId = this.navigation.currentFolderId();
-        if (currentId && this.isAncestorOrSelf(sourceId, currentId)) {
-            return; // blocked: would remove the folder we're currently viewing
-        }
-        const removed = await this.fileSystem.move(sourceId, targetParentId);
-        this.navigation.pruneReferences(removed);
-        this.clipboard.pruneReferences(removed);
+    private internalDragBlocked(): boolean {
+        const activeUploads = this.uploads.tasks().some((task) =>
+            task.status === 'queued' || task.status === 'uploading' ||
+            task.status === 'finalizing');
+        const activeBatches = this.uploads.batches().some((batch) =>
+            batch.status === 'queued' || batch.status === 'preparing' ||
+            batch.status === 'uploading');
+
+        return this.creatingFolder() || this.pasting() || this.mutationWritingIds().size > 0 ||
+            activeUploads || activeBatches;
     }
 
     private observeProjectChanges(): void {
@@ -1389,6 +1426,7 @@ export class ProjectDocuments {
         event.preventDefault();
         event.stopPropagation();
         this.clearExternalDropState();
+        if (this.dragDrop.pending()) { return; }
         if (!target || this.fileSystem.isInitializing()) { return; }
 
         try {
@@ -1428,17 +1466,17 @@ export class ProjectDocuments {
     }
 
     private isWriting(id: string): boolean {
-        return this.writingIds().has(id);
+        return this.dragDrop.pending() || this.writingIds().has(id);
     }
 
     private setWriting(id: string, writing: boolean): void {
-        const next = new Set(this.writingIds());
+        const next = new Set(this.mutationWritingIds());
         if (writing) {
             next.add(id);
         } else {
             next.delete(id);
         }
-        this.writingIds.set(next);
+        this.mutationWritingIds.set(next);
     }
 
     private cachedSubtreeIds(id: string): string[] {

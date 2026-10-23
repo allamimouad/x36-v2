@@ -28,6 +28,7 @@ import {
     setEntity,
     withEntities
 } from '@ngrx/signals/entities';
+import { containsNode } from '../utils/node-containment.utils';
 import type { DocumentListing } from '../models/document-listing.model';
 import type {
     DocumentListRoots,
@@ -81,8 +82,14 @@ export const FileSystemStore = signalStore(
     withState(initialState),
     fileSystemDevtoolsFeature(),
     withMethods((store, api = inject(FileSystemApi)) => {
-    // The `_`-prefixed functions below are private local closures (internal helpers),
-    // NOT NgRx private store members — they are not returned from `withMethods`.
+        let connectionRevision = 0;
+        const _checkConnection = (revision: number): void => {
+            if (revision !== connectionRevision) {
+                throw new FileSystemError('cancelled', 'The project changed during the operation');
+            }
+        };
+        // The `_`-prefixed functions below are private local closures (internal helpers),
+        // NOT NgRx private store members — they are not returned from `withMethods`.
         const _markLoading = (folderId: string): void => {
             const ids = store.folderIdsWithLoadingChildren();
             if (ids.includes(folderId)) { return; }
@@ -150,6 +157,7 @@ export const FileSystemStore = signalStore(
 
         /** Wipe all project state and mark the given project as the one being loaded. */
         const _beginInitialize = (projectId: string): void => {
+            connectionRevision++;
             patchState(store, setAllEntities<FileSystemNode>([]), {
                 projectId,
                 folderIdsWithLoadingChildren: [],
@@ -549,9 +557,13 @@ export const FileSystemStore = signalStore(
                 );
             }
             const oldParentId = node.parentId;
-            const removedSubtree = _cachedSubtree(id);
-            const removedIds = removedSubtree.map((candidate) => candidate.id);
+            const revision = connectionRevision;
             const moved = await firstValueFrom(api.move(_requireProjectId(), node, targetParent));
+            _checkConnection(revision);
+            const entities = store.entityMap();
+            const removedSubtree = store.entities().filter((candidate) =>
+                containsNode(node, candidate, entities));
+            const removedIds = removedSubtree.map((candidate) => candidate.id);
             patchState(store, removeEntities(removedIds), setEntity<FileSystemNode>(moved));
             _adjustParentCount(oldParentId, -1);
             _adjustParentCount(targetParentId, 1);
@@ -577,9 +589,11 @@ export const FileSystemStore = signalStore(
                     'Cannot copy a folder into itself or a descendant'
                 );
             }
+            const revision = connectionRevision;
             const copied = await firstValueFrom(
                 api.copy(_requireProjectId(), source, targetParent)
             );
+            _checkConnection(revision);
             if (store.entityMap()[targetParent.id]) {
                 patchState(store, setEntity<FileSystemNode>(copied));
                 _adjustParentCount(targetParent.id, 1);

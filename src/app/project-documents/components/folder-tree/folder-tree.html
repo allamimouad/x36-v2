@@ -1,5 +1,6 @@
 <p-tree
   [value]="visibleNodes()"
+  [trackBy]="trackNode"
   selectionMode="single"
   [selection]="selectedTreeNode()"
   [metaKeySelection]="true"
@@ -13,6 +14,7 @@
     @if (node.data.isRecycleBin) {
       <span
         class="pd-tree-node"
+        [attr.data-testid]="'pd-tree-node-' + node.key"
         (dragenter)="onExternalFolderDragOver($event, node)"
         (dragover)="onExternalFolderDragOver($event, node)"
       >
@@ -22,8 +24,16 @@
     } @else {
       <span
         class="pd-tree-node"
+        [attr.data-testid]="'pd-tree-node-' + node.key"
         [class.pd-tree-node-writing]="writingIds().has(node.key)"
-        [class.pd-tree-node-external-drop-target]="externalDropTargetId() === node.key"
+        [draggable]="draggableIds().has(node.key) && renamingId() !== node.key &&
+          deleteConfirmationId() !== node.key"
+        [class.pd-internal-drag-source]="internalSourceId() === node.key"
+        [class.pd-tree-node-external-drop-target]="externalDropTargetId() === node.key ||
+          internalDropTargetId() === node.key"
+        (dragstart)="onDragStart($event, node.data)"
+        (dragend)="$event.stopPropagation(); dragEnded.emit()"
+        (dragleave)="internalDragLeft.emit($event)"
         (contextmenu)="handleContextMenu($event, node)"
         (dragenter)="onExternalFolderDragOver($event, node)"
         (dragover)="onExternalFolderDragOver($event, node)"

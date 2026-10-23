@@ -25,6 +25,9 @@ import type {
     NodeContextMenuRequest
 } from '../../models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from '../../models/external-drop-request.model';
+import {
+    hasInternalDragType, type ItemDragRequest, type ItemDropRequest
+} from '../../models/drag-state.model';
 import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
 import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 
@@ -59,6 +62,11 @@ export class FileTable {
     public readonly writingIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly deleteConfirmationId = input<string | null>(null);
     public readonly externalDropTargetId = input<string | null>(null);
+    public readonly draggableIds = input<ReadonlySet<string>>(new Set());
+    public readonly internalDragActive = input(false);
+    public readonly internalCurrentFolderTarget = input(false);
+    public readonly internalSourceId = input<string | null>(null);
+    public readonly internalDropTargetId = input<string | null>(null);
     public readonly externalDragActive = input<boolean>(false);
     public readonly projectName = input<string>('');
     public readonly currentFolderName = input<string>('');
@@ -77,6 +85,11 @@ export class FileTable {
     public readonly deleteCancelled = output();
     public readonly externalFolderDragOver = output<ExternalFolderDropRequest>();
     public readonly externalFolderDropped = output<ExternalFolderDropRequest>();
+    public readonly dragStarted = output<ItemDragRequest>();
+    public readonly dragEnded = output();
+    public readonly internalDragOver = output<ItemDropRequest>();
+    public readonly internalDropped = output<ItemDropRequest>();
+    public readonly internalDragLeft = output<DragEvent>();
     public readonly currentFolderDragOver = output<DragEvent>();
     public readonly currentFolderDropped = output<DragEvent>();
 
@@ -151,6 +164,10 @@ export class FileTable {
             if (!this.deleteConfirmationId()) { return; }
             this.deleteCancelButton()?.nativeElement.focus();
         });
+    }
+
+    protected trackRow(_index: number, row: RowVm): string {
+        return row.id;
     }
 
     protected onRowDblClick(row: RowVm): void {
@@ -230,6 +247,12 @@ export class FileTable {
     }
 
     protected onExternalFolderDragOver(event: DragEvent, row: RowVm): void {
+        if (this.isInternalDrag(event)) {
+            this.internalDragOver.emit({ event,
+                targetId: isFolder(row.node) ? row.id : null });
+
+            return;
+        }
         if (this.isDropInFolderDisabled(row)) {
             if (event.dataTransfer) { event.dataTransfer.dropEffect = 'none'; }
             event.preventDefault();
@@ -242,12 +265,23 @@ export class FileTable {
     }
 
     protected onExternalFolderDrop(event: DragEvent, row: RowVm): void {
+        if (this.isInternalDrag(event)) {
+            this.internalDropped.emit({ event,
+                targetId: isFolder(row.node) ? row.id : null });
+
+            return;
+        }
         if (isFolder(row.node)) {
             this.externalFolderDropped.emit({ event, target: row.node });
         }
     }
 
     protected onCurrentFolderDragOver(event: DragEvent): void {
+        if (this.isInternalDrag(event)) {
+            this.currentFolderDragOver.emit(event);
+
+            return;
+        }
         if (this.isCurrentFolderReadonly()) {
             if (event.dataTransfer) { event.dataTransfer.dropEffect = 'none'; }
             event.preventDefault();
@@ -258,12 +292,31 @@ export class FileTable {
     }
 
     protected onCurrentFolderDrop(event: DragEvent): void {
+        if (this.isInternalDrag(event)) {
+            this.currentFolderDropped.emit(event);
+
+            return;
+        }
         if (this.isCurrentFolderReadonly()) {
             event.preventDefault();
 
             return;
         }
         this.currentFolderDropped.emit(event);
+    }
+
+    protected onDragStart(event: DragEvent, node: FileSystemNode): void {
+        if (!this.draggableIds().has(node.id) || this.renamingId() === node.id ||
+            this.deleteConfirmationId() === node.id) {
+            event.preventDefault();
+
+            return;
+        }
+        this.dragStarted.emit({ event, node });
+    }
+
+    private isInternalDrag(event: DragEvent): boolean {
+        return this.internalDragActive() || hasInternalDragType(event);
     }
 
     private submitInlineRename(row: RowVm): void {

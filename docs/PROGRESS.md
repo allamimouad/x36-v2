@@ -6,6 +6,56 @@
 
 ## Current Status
 
+**Active work (2026-10-23): internal drag-and-drop implemented** on
+`feat/internal-drag-drop`, created from merged `main` (`ea8bfd0`). The user requested
+a commit marked **not reviewed yet** and will review it later; no push is requested.
+User-owned `.vscode/launch.json`, `tmp-screenshots/`, and the temporary
+backend-search investigation document were preserved.
+
+**Open review feedback (2026-10-23):** the green current-folder drop area appears
+when dragging an item that already belongs to that folder. Normal same-parent
+moves are already rejected, but the indicator still appears. No indicator change
+has been applied; review this later, including whether same-parent Ctrl-copy stays
+available. The implementation is **not reviewed yet**; the requested commit preserves this open feedback.
+
+Single ordinary tree folder/table file or folder can move (default) or copy (Ctrl)
+to tree folders, table folder rows, and unused current-folder space. Same-parent
+moves are rejected; same-parent copies retain existing KeepBoth names. Search-result
+sources, cut, multi-selection/bulk drag and new backend endpoints remain deferred.
+A component-provided DragDropService owns the in-memory MIME-token session,
+permission/busy checks repeated at drop, target feedback, 700ms hover expansion,
+lifecycle cleanup and mutation coordination. PrimeNG source event propagation is
+isolated from its disabled DnD handlers; node/row tracking preserves native DOM
+sources during lazy loading. Children retain typed inputs/outputs and inject no stores.
+
+Move/copy stay pessimistic through the existing public API/store signatures.
+Connection revisions reject late results after any project reinitialization,
+including the same project ID. Move computes the removed cached subtree at completion,
+including path-only descendants and records loaded while pending, then prunes
+navigation/clipboard references. A moved current folder/ancestor opens the destination;
+normal drops preserve the view, and failures preserve data/view/references.
+Stale or destroyed-component completions do not show drag notifications/navigation.
+The bin `slice(3)` formatter and broad current-bin activation guard remain unchanged.
+
+**Verification (2026-10-23):** full headless Chrome suite passed **182/182** tests
+(145 existing plus 37 new). After the final completion-helper extraction, all **37/37**
+focused drag tests passed again. Production build, spec TypeScript, repository lint
+and whitespace checks pass. Only the existing initial bundle/container-style budget
+warnings, two path-bar accessibility warnings and test font 404 remain.
+Native Chrome/CDP checks against the user's already-running app passed table-to-tree
+cross-list move, tree-to-table folder move into a protected target, file move,
+Ctrl-copy/KeepBoth, target highlight, 700ms expansion without navigation and protected
+source move rejection. No second development server was started.
+
+**Remaining acceptance:** physical Escape and desktop cursor icons need confirmation
+in Edge/Chrome: the headless CDP cancellation check delivered neither keydown nor
+native dragend. DOM Escape/dragend cleanup is covered by integration tests. The real
+SharePoint move adapter remains unimplemented; verify actual endpoints, returned nodes,
+permissions, collisions and cross-list/site capability on the backend machine.
+See [the drag handoff](handoffs/internal-drag-drop.md); SPEC and PHASES are updated.
+
+### Earlier synchronization record (2026-10-22)
+
 **Active Work**: PR-only behavior restored (2026-10-22). Reverted the extra bin path
 normalization and restored the broad current-bin activation guard. The rollback
 is kept in a separate commit on `sync/pr-changes`.
@@ -154,7 +204,12 @@ The user requested a follow-up commit after `62ce0fa` and will push manually.
 
 - [x] External OS file/folder upload drops on tree folders, right-pane folders, and
   the unused right-pane space below the table rows
-- [ ] Internal move/copy drag state and the remaining matrix
+- [x] Single-item internal move/Ctrl-copy across tree/table/current-folder targets
+- [x] Session/permission/busy guards, 700ms expansion and project-scoped completion
+- [x] Canonical subtree/reference cleanup, including path-only and late-loaded nodes
+- [x] Automated drag regression and native browser smoke checks
+- [ ] Desktop Escape/cursor acceptance and actual SharePoint adapter verification
+- [ ] Multi-selection/bulk drag and search-result drag (deferred)
 
 ---
 
@@ -184,34 +239,21 @@ The user requested a follow-up commit after `62ce0fa` and will push manually.
 
 ## Current Focus
 
-1. Review PR-only behavior before starting internal drag-and-drop. The user
-   explicitly rejected additional bug fixes: keep the original `slice(3)` table
-   formatter and the broad current-bin guard, including tree Open Folder doing
-   nothing while a bin is displayed. Do not apply the proposed narrower guard.
-   Bug fixes require a separate explicit task after synchronization is reviewed.
-   The support message is deferred until supplied; the user handles the unused
-   mock import, generator settings, and user-specific configuration on the
-   destination. No actual-path sample is needed to justify extra normalization.
-2. Use [the PR synchronization handoff](handoffs/pr-sync.md) when transferring this
-   feature. Keep the destination's generated services, working SharePoint adapter,
-   document/error mappers, providers, and shared popup/reporting integrations.
-   Common names, declaration/property order, helpers, and templates now follow the
-   screenshots. The handoff lists the remaining local adaptations and screenshot
-   anchors; the alignment is kept as a separate commit on `sync/pr-changes`.
-   Popup imports and calls now match PR1. Their local implementations, aliases,
-   and demo providers live outside the copied feature directory; the destination
-   keeps its existing package, shared confirmation component, and reporting flow.
-   Access enums also use the original `@api/model/folderNodeResponse` and
-   `@api/model/fileNodeResponse` imports. Local equivalents live in `src/local/api/`;
-   keep the destination's generated models and `@api` alias when copying the feature.
-3. Permission gaps deliberately preserved from the PRs (protected search results,
-   actual row/tree drops, cross-list paste target access) need a separate decision
-   before hardening. No new role inference or mutation retries were added.
-4. Complete manual Edge/Chrome acceptance and real backend verification for uploads,
-   search, and recycle-bin operations on the destination. The local browser suite
-   passed again after the PR-only rollback: 144 tests in headless Chrome. App/spec TypeScript
-   checks, production build, lint, and whitespace checks pass; existing
-   budget/accessibility warnings remain.
+1. Review the implemented single-item internal drag feature on `feat/internal-drag-drop`.
+   Confirm physical Escape and move/copy/no-drop cursor icons in desktop Edge/Chrome.
+   The user requested a commit marked **not reviewed yet**, with review deferred.
+   Keep the current-folder indicator feedback open; do not push this commit.
+2. Use [the drag handoff](handoffs/internal-drag-drop.md) alongside
+   [the PR synchronization handoff](handoffs/pr-sync.md) when transferring the feature.
+   Keep the destination's generated services/models, working SharePoint adapter and
+   mappers, providers, shared popup/reporting integrations and overview service.
+3. Implement/verify the real SharePoint move method using the existing abstract
+   move/copy contract; no new endpoint or cross-site capability is assumed here.
+   Backend and desktop acceptance remain separate from the passing local mock suite.
+4. Preserve the PR's bin display formatter and broad current-bin activation guard.
+   Additional permission gaps outside internal drag, notification text changes,
+   unrelated bug fixes, cut, multi-selection/bulk operations and search-result drag
+   remain outside this authorization.
 
 Backend upload implementation handoff: use
 `docs/backend-operations/upload-file-feign-buffered.md` for the first bounded

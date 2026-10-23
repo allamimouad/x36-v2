@@ -7,7 +7,7 @@
 >
 > **Before starting any work**: read `PROGRESS.md` to see which phase is active.
 > **Before ending your session**: update `PROGRESS.md` with what you completed, what you deferred, and what the next session should pick up.
-> **Authorized scope update (2026-10-21):** the four PRs are synchronized locally, including recycle bin, backend-supplied access rules, and initial folder links. This explicitly extends the original scope; internal drag-and-drop remains deferred. See `handoffs/pr-sync.md`.
+> **Authorized scope update (2026-10-21):** the four PRs are synchronized locally, including recycle bin, backend-supplied access rules, and initial folder links. This explicitly extends the original scope; internal drag-and-drop was deferred until the separate authorization below. See `handoffs/pr-sync.md`.
 > **Additional PR (2026-10-22):** PR5 names the routed project input `id` and
 > replaces the container's `projectLabel` input with a writable signal initialized
 > to `''`. Immediately after `observeReadErrors()`, the constructor effect sets it
@@ -19,6 +19,12 @@
 > broad current-bin activation guard. Preserve existing limitations, including
 > tree Open Folder doing nothing while a recycle bin is displayed. Any proposed
 > bug fixes require a separate, explicit task after synchronization is reviewed.
+>
+> **Internal drag authorization (2026-10-23):** implement single-item native file/folder
+> move and Ctrl-copy on `feat/internal-drag-drop`, using the existing store/API
+> contract. Tree nodes, table folder rows, and unused table space are targets.
+> Search-result sources, multi-selection, cut, and new backend endpoints remain
+> deferred. See `handoffs/internal-drag-drop.md` for behavior and backend follow-up.
 >
 > **Never implement features from a future phase.** If you notice something needed later, note it in `PROGRESS.md` under "Deferred" and move on.
 > **Git publishing rule**: commit and push to `main` by default. Create or use another
@@ -152,7 +158,7 @@ existing popup implementation and generated models without changing those import
 
 ### 3.4 Drag-and-drop — full matrix
 
-All scenarios must work:
+The authorized single-item scenarios are implemented below; multi-selection remains deferred:
 
 | # | Source | Target | Result | Guard |
 |---|--------|--------|--------|-------|
@@ -161,7 +167,8 @@ All scenarios must work:
 | 3 | Tree (folder) | Tree (folder node) | Move source under target | Descendant guard |
 | 4 | Right pane (folder or file) | Tree (folder node) | Move item into target | Self/descendant guard |
 | 5 | Right pane (folder or file) | Right pane (folder row) | Move item into target | No self-drop |
-| 6 | Right-pane multi-selection | Any folder | Move all selected | Applied per-item |
+| 6 | Right-pane multi-selection | Any folder | Deferred | Not part of current authorization |
+| 6a | Right pane (folder or file) | Unused right-pane space | Ctrl-copy into current folder | Same-parent move is rejected |
 | 7 | External OS files/folders | Right pane (folder row) | Upload into that folder | — |
 | 8 | External OS files/folders | Unused right-pane space below rows | Upload to current folder | — |
 | 9 | External OS files/folders | Tree folder node | Upload into that folder | — |
@@ -177,7 +184,7 @@ All scenarios must work:
 - Valid target: folder row/node highlights
 - Invalid: `cursor: no-drop`, no highlight
 - Current-folder target: the complete unused space below the rendered rows becomes a
-  dashed drop zone during an external drag. If rows fill the pane, it keeps a usable
+  dashed drop zone during an internal or external drag. If rows fill the pane, it keeps a usable
   minimum height at the bottom; the table/header/file rows do not become the target.
 
 ### 3.5 Right-click context menus
@@ -617,7 +624,7 @@ All stores and feature services are provided at `ProjectDocuments` level.
 - **`FileSystemApi`** (abstract) — §5
 - **`MockFileSystemApi`** — §6
 - **`SharePointFileSystemApi`** — §7
-- **`DragDropService`** — cross-component drag state (signal-based); methods: `startDrag`, `updateEffect`, `endDrag`, `canDropOn`
+- **`DragDropService`** — cross-component drag state (signal-based); methods: `startDrag`, `over`, `drop`, `leave`, `endDrag`, `canDropOn`
 - **`UploadService`** — upload queue with concurrency limit; exposes task signals for the panel
 - **`ClipboardService`** — small signal-based clipboard state holder
 - **`ConcurrencyQueue`** — generic promise-based queue, max N concurrent; used for bulk ops and uploads
@@ -651,7 +658,7 @@ project-documents/
       mock-file-system-api.ts          # mock/dev backend + unit-test double
       mock-seed.ts                     # seed data
       mock-config.token.ts             # mock latency/error settings
-    drag-drop.service.ts
+    interaction/drag-drop.service.ts
     upload.service.ts
     concurrency-queue.ts
     directory-manifest.ts
@@ -677,45 +684,56 @@ project-documents/
 
 ### 9.1 Contract
 
-Draggable elements:
-- `draggable="true"`
-- `(dragstart)` → `dragDropService.startDrag({ source, items, sourceParentId, effect: 'move' })`; set `event.dataTransfer.effectAllowed = 'copyMove'`
-- `(dragend)` → `dragDropService.endDrag()`
+`services/interaction/drag-drop.service.ts` is provided by `ProjectDocuments`.
+Tree/table children emit typed `ItemDragRequest` / `ItemDropRequest` events and
+receive source, target, active-state, and draggable-ID inputs; they inject no stores.
 
-Drop targets:
-- `(dragover)`:
-  - `event.preventDefault()` if `dragDropService.canDropOn(targetId)` is true
-  - Read `event.ctrlKey` → `dragDropService.updateEffect(ctrlKey ? 'copy' : 'move')`
-  - Set `event.dataTransfer.dropEffect` accordingly
-  - Toggle local `isDragOver` signal
-- `(dragleave)` → clear `isDragOver`
-- `(drop)`:
-  - `event.preventDefault()`
-  - If `dragState().source === 'external'` → read `event.dataTransfer.files`, enqueue uploads to target
-  - Else → emit `dropReceived` event; container calls `fileSystemStore.move()` or `.copy()`
+- One cached item per session; only ordinary tree folders and table files/folders
+  are draggable. Roots, bins, deleted records, editing or busy items are excluded.
+- `dragstart` writes a random session token under
+  `application/x-project-documents-item` and sets `effectAllowed = 'copyMove'`.
+  Payload IDs alone never authorize a mutation: an active in-memory session for
+  this component/project is required. Internal events take precedence over `Files`.
+- `dragover` reads only types and `ctrlKey`, validates the current canonical nodes,
+  sets `dropEffect`, and highlights the valid target on its actual surface.
+  Default is move; Ctrl is copy. Modifier changes are read from drag events because
+  native drags suppress ordinary keyboard events.
+- `drop` synchronously reads and verifies the token, reads the final Ctrl state,
+  and validates again before clearing the gesture and awaiting the mutation.
+  Source and destination are marked busy; a second internal operation is rejected.
+- A valid collapsed tree folder expands after 700ms hover without navigation.
+  Leaving/changing targets, cancellation, drop, project changes, and destruction
+  clear the timer. Tree/table tracking uses node IDs to preserve native sources
+  while lazy-loaded entities change.
+- `dragend` clears the gesture, including native Escape cancellation. A document
+  Escape handler also cancels when the browser delivers the keyboard event.
 
-### 9.2 `canDropOn` logic
+### 9.2 Validation and completion
 
-```ts
-canDropOn(targetId: string): boolean {
-  const drag = this.dragState();
-  if (!drag) return false;
-  if (drag.source === 'external') return true;
-  // Cannot drop onto items currently being dragged
-  if (drag.items.some(i => i.id === targetId)) return false;
-  // Cannot drop a folder into its own descendant
-  for (const item of drag.items) {
-    if (item.kind === 'folder' && isAncestorOrSelf(item.id, targetId, allFolders)) {
-      return false;
-    }
-  }
-  // No-op move (same parent)
-  if (drag.effect === 'move' && drag.sourceParentId === targetId) return false;
-  return true;
-}
-```
+`drag-drop-policy.ts` rechecks source/destination availability, current write/edit
+state, node access flags, parent access, and document-list access on hover and drop.
+Roots and bins cannot be dragged; bins and deleted records cannot receive drops.
+Self/descendant drops and same-parent moves are rejected. Same-parent Ctrl-copy
+retains the existing backend/mock KeepBoth naming (locally `name - Copy`, then
+`name - Copy (2)`). Protected/readonly sources may be copied to a writable target.
+Moving also requires an editable source and a writable source parent/list.
+Protected target folders accept new contents; readonly targets/lists do not.
 
-`isAncestorOrSelf(ancestorId, candidateId, allFolders)`: walks up from `candidateId` via `parentId` until it either hits `ancestorId` (true) or null (false). Use `id` traversal, not path string matching (paths change on rename, ids don't).
+Containment walks cached parent IDs with a same-list canonical path-prefix fallback
+for a folder resolved without its ancestors. This does not change bin display paths.
+
+Mutations reuse `FileSystemStore.move/copy` and remain pessimistic. Success applies
+canonical returned nodes, prunes moved subtree navigation/clipboard references, and
+shows a notification. The view stays open unless the moved folder contains it; that
+case opens the destination after success. Failure preserves data/view/references.
+The removed subtree is found at completion, including path-resolved descendants
+and records loaded while the move was pending. A connection revision prevents late
+move/copy results patching a reinitialized
+project, including reinitialization with the same ID. Stale completions and
+completions after component destruction produce no drag navigation/toast.
+
+Local mocks support cross-list operations. Real SharePoint move remains a stub;
+actual backend support, especially cross-site support, must be verified separately.
 
 ---
 
@@ -727,7 +745,7 @@ canDropOn(targetId: string): boolean {
 | Rename | Pessimistic | Await server, apply the returned node, repath cached descendants |
 | Single delete | Pessimistic | Await server, then remove the cached subtree |
 | Single move | Pessimistic | Await server; drop the moved subtree and insert only the returned node (collapsed/unloaded), adjust both parent counts, prune dangling refs (replace-on-success) |
-| Single copy | Pessimistic | Same-list only; await server (copy creates a new entity, need real id) |
+| Single copy | Pessimistic | Await canonical returned node; mock supports same/cross-list, real backend capability requires verification |
 | Bulk delete/move/copy | Pessimistic + progress | Run through ConcurrencyQueue, apply each on success, summarize errors |
 | Upload | Pessimistic + progress | Always |
 
