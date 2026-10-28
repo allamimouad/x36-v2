@@ -1,6 +1,7 @@
 # DELETE Document
 
-> **Status: contract agreed; frontend alignment implemented, backend pending.** This is the
+> **Status (2026-10-28): implemented end to end.** The contract is agreed, the frontend
+> alignment is implemented, and the backend controller exists. This is the
 > operation-specific companion to the [backend endpoint overview](../backend-endpoints.md).
 
 ## Domain endpoint
