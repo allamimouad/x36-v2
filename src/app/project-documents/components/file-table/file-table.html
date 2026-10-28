@@ -297,15 +297,15 @@
     </div>
     <div
       class="pd-current-folder-space"
-      [class.pd-current-folder-drop-zone]="externalDragActive() || internalDragActive()"
+      [class.pd-current-folder-drop-zone]="externalDragActive() || internalCurrentFolderDropActive()"
       [class.pd-current-folder-internal-target]="internalCurrentFolderTarget()"
       (dragleave)="internalDragLeft.emit($event)"
-      [attr.role]="externalDragActive() || internalDragActive() ? 'status' : null"
+      [attr.role]="externalDragActive() || internalCurrentFolderDropActive() ? 'status' : null"
       (dragenter)="onCurrentFolderDragOver($event)"
       (dragover)="onCurrentFolderDragOver($event)"
       (drop)="onCurrentFolderDrop($event)"
     >
-      @if (externalDragActive() || internalDragActive()) {
+      @if (externalDragActive() || internalCurrentFolderDropActive()) {
         <span class="material-symbols-outlined pd-current-folder-drop-icon" aria-hidden="true">
           drive_folder_upload
         </span>

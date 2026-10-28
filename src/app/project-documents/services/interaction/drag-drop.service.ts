@@ -16,6 +16,15 @@ import { NotificationService } from './notification.service';
 import { containsNode } from '../../utils/node-containment.utils';
 import { canDropItem, canStartDrag, type DragPolicy } from './drag-drop-policy';
 
+/**
+ * Narrowings applied when a check must look past state the caller already owns:
+ * an in-flight children load it is about to await, or its own claimed request.
+ */
+interface PolicyOptions {
+    ignoreLoadingChildren?: boolean;
+    ignoreOwnRequest?: boolean;
+}
+
 @Injectable()
 export class DragDropService {
     public readonly state = signal<DragState | null>(null);
@@ -98,15 +107,18 @@ export class DragDropService {
         this.setTarget(targetId, surface);
     }
 
+    /**
+     * Whether the active drag would be accepted on `targetId`. A folder whose children
+     * are still loading is treated as a usable target here: the drop awaits that load
+     * and re-checks before mutating, so feedback stays steady instead of flickering
+     * invalid for the length of a round-trip.
+     */
     public canDropOn(targetId: string, operation: DragEffect): boolean {
         const session = this.state();
-        if (!session || !this.isCurrentSession(session)) { return false; }
-        const entities = this.fileSystem.entityMap();
-        const source = entities[session.sourceId];
-        const target = entities[targetId];
 
-        return source !== undefined && target !== undefined && isFolder(target) &&
-            canDropItem(source, target, operation, this.policy());
+        return session !== null && this.canSessionDrop(
+            session, this.sessionRoots, targetId, operation, { ignoreLoadingChildren: true }
+        );
     }
 
     public async drop(event: DragEvent, targetId: string | null): Promise<void> {
@@ -117,9 +129,24 @@ export class DragDropService {
         const roots = this.sessionRoots;
         this.endDrag();
         if (!session || targetId === null) { return; }
+        // Claim the request before the first await so a repeated drop cannot start a
+        // second one, then discount that claim when re-checking below.
         this.pending.set(true);
         this.busyIds.set(new Set([session.sourceId, targetId]));
         try {
+            // A target expanded mid-drag may still be loading its children. Let that
+            // listing land first: it decides the drop, and applying it afterwards would
+            // prune the node this drop is about to add. Only wait when such a load is
+            // actually in flight, so an ordinary drop still issues its request without
+            // yielding first.
+            const loads = this.pendingChildrenLoads(session.sourceId, targetId);
+            if (loads.length > 0) {
+                await Promise.all(loads);
+                if (!this.canSessionDrop(session, roots, targetId, operation,
+                    { ignoreOwnRequest: true })) {
+                    return;
+                }
+            }
             await this.perform(session, targetId, operation, roots);
         } catch (error) {
             if (this.isCurrentProject(session.projectId, roots)) {
@@ -146,6 +173,22 @@ export class DragDropService {
         this.sessionRoots = null;
     }
 
+    private canSessionDrop(
+        session: DragState,
+        roots: DocumentListRoots | null,
+        targetId: string,
+        operation: DragEffect,
+        options: PolicyOptions = {}
+    ): boolean {
+        if (!this.isCurrentProject(session.projectId, roots)) { return false; }
+        const entities = this.fileSystem.entityMap();
+        const source = entities[session.sourceId];
+        const target = entities[targetId];
+
+        return source !== undefined && target !== undefined && isFolder(target) &&
+            canDropItem(source, target, operation, this.policy(options));
+    }
+
     private setTarget(targetId: string, surface: DragSurface): void {
         const previous = this.target();
         if (previous?.id === targetId && previous.surface === surface) { return; }
@@ -160,33 +203,33 @@ export class DragDropService {
         const operation = event.ctrlKey ? 'copy' : 'move';
 
         return session && token === session.token && targetId !== null &&
-            this.canDropOn(targetId, operation) ? session : null;
+            this.canSessionDrop(session, this.sessionRoots, targetId, operation,
+                { ignoreLoadingChildren: true })
+            ? session
+            : null;
     }
 
-    private policy(): DragPolicy {
+    private policy(options: PolicyOptions = {}): DragPolicy {
         const context = this.context()();
         const entities = this.fileSystem.entityMap();
         const failedIds = Object.entries(this.fileSystem.errorByParentId())
             .filter(([, error]) => error !== undefined).map(([id]) => id);
+        const loadingIds = options.ignoreLoadingChildren === true
+            ? []
+            : this.fileSystem.folderIdsWithLoadingChildren();
 
         return {
             ...context,
-            blocked: this.destroyed || context.blocked || this.pending() ||
+            blocked: this.destroyed || context.blocked ||
+                options.ignoreOwnRequest !== true && this.pending() ||
                 this.fileSystem.isInitializing() ||
                 this.fileSystem.initializedRoots() === null,
             entities,
             recycleBins: Object.values(entities).filter((node): node is FolderNode =>
                 isFolder(node) && node.isRecycleBin),
             readonlyLists: this.navigation.readonlyAccessByListKey(),
-            unavailableIds: new Set([
-                ...failedIds,
-                ...this.fileSystem.folderIdsWithLoadingChildren()
-            ])
+            unavailableIds: new Set([...failedIds, ...loadingIds])
         };
-    }
-
-    private isCurrentSession(session: DragState): boolean {
-        return this.isCurrentProject(session.projectId, this.sessionRoots);
     }
 
     private isCurrentProject(projectId: string, roots: DocumentListRoots | null): boolean {
@@ -200,7 +243,7 @@ export class DragDropService {
             this.hoverTimer = null;
             const session = this.state();
             if (session && this.canDropOn(targetId, session.effect)) {
-                this.navigation.expand(targetId);
+                this.navigation.expandWithoutReload(targetId);
             }
         }, 700);
     }
@@ -213,6 +256,26 @@ export class DragDropService {
 
     private isControl(target: EventTarget | null): boolean {
         return target instanceof Element && target.closest('input, button, textarea') !== null;
+    }
+
+    /**
+     * The in-flight children loads covering the source or the target. Awaiting these
+     * lets the drop decide against settled state instead of racing the listing.
+     */
+    private pendingChildrenLoads(sourceId: string, targetId: string): Promise<void>[] {
+        const entities = this.fileSystem.entityMap();
+        const nodes = [entities[sourceId], entities[targetId]]
+            .filter((node): node is FileSystemNode => node !== undefined);
+
+        return this.fileSystem.folderIdsWithLoadingChildren()
+            .filter((id) => {
+                const loading = entities[id];
+
+                return loading !== undefined &&
+                    nodes.some((node) => containsNode(loading, node, entities));
+            })
+            .map((id) => this.fileSystem.pendingChildrenLoad(id))
+            .filter((load): load is Promise<void> => load !== null);
     }
 
     private async perform(

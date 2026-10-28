@@ -44,6 +44,11 @@ import {
 } from '../models/file-system-node.model';
 import { FileSystemApi } from '../services/file-system/file-system-api';
 
+/** One in-flight children load, boxed so its cleanup can verify it still owns the id. */
+interface ChildrenLoad {
+    promise: Promise<void>;
+}
+
 interface FileSystemState {
     projectId: string | null;
     folderIdsWithLoadingChildren: string[];
@@ -90,6 +95,10 @@ export const FileSystemStore = signalStore(
         };
         // The `_`-prefixed functions below are private local closures (internal helpers),
         // NOT NgRx private store members — they are not returned from `withMethods`.
+        // Identity box: the map is keyed by folder id, but a settling request must be
+        // able to tell its own entry from a newer one that took the id after a
+        // reinitialization cleared the map.
+        const _childrenLoads = new Map<string, ChildrenLoad>();
         const _markLoading = (folderId: string): void => {
             const ids = store.folderIdsWithLoadingChildren();
             if (ids.includes(folderId)) { return; }
@@ -158,6 +167,9 @@ export const FileSystemStore = signalStore(
         /** Wipe all project state and mark the given project as the one being loaded. */
         const _beginInitialize = (projectId: string): void => {
             connectionRevision++;
+            // Folder ids are re-resolved against the new connection, so no load issued
+            // against the old one may answer for them.
+            _childrenLoads.clear();
             patchState(store, setAllEntities<FileSystemNode>([]), {
                 projectId,
                 folderIdsWithLoadingChildren: [],
@@ -248,8 +260,8 @@ export const FileSystemStore = signalStore(
             _markLoaded(listing.currentFolder.id);
         };
 
-        const loadChildren = async (parentId: string): Promise<void> => {
-            if (store.folderIdsWithLoadingChildren().includes(parentId)) { return; }
+        const _loadChildren = async (parentId: string, entry: ChildrenLoad): Promise<void> => {
+            const revision = connectionRevision;
             _markLoading(parentId);
             _setError(parentId, undefined);
             try {
@@ -265,13 +277,52 @@ export const FileSystemStore = signalStore(
                         ? api.getRecycleBinItems(_requireProjectId(), parent.id)
                         : api.listDocuments(_requireProjectId(), parent)
                 );
+                // A reinitialization while this was in flight discards it: its listing
+                // describes the previous connection and must not reach the new cache,
+                // where the stale-entity pruning would also act on it.
+                if (revision !== connectionRevision) { return; }
                 _applyListing(listing);
             } catch (e) {
-                _setError(parentId, toFileSystemError(e));
+                if (revision === connectionRevision) {
+                    _setError(parentId, toFileSystemError(e));
+                }
             } finally {
-                _unmarkLoading(parentId);
+                // Release the marker and the map entry together, and only while this
+                // request still owns the id. After a reinitialization a newer load may
+                // hold it, and clearing its marker would tell everything gated on
+                // `folderIdsWithLoadingChildren` that a live request had finished.
+                // When nothing replaced it there is nothing to release either:
+                // `_beginInitialize` already emptied both.
+                if (_childrenLoads.get(parentId) === entry) {
+                    _unmarkLoading(parentId);
+                    _childrenLoads.delete(parentId);
+                }
             }
         };
+
+        /**
+     * Load a folder's children, reusing the request already in flight for the same
+     * folder instead of starting a second one. The returned promise settles when that
+     * load finishes, so a caller that must act on the fresh listing can await it.
+     */
+        const loadChildren = (parentId: string): Promise<void> => {
+            const inFlight = _childrenLoads.get(parentId);
+            if (inFlight !== undefined) { return inFlight.promise; }
+            // Registered before the request starts: `_loadChildren` can reach its
+            // `finally` synchronously (an uncached parent throws before any await),
+            // and that cleanup must find this entry in order to retire it.
+            const entry: ChildrenLoad = { promise: Promise.resolve() };
+            _childrenLoads.set(parentId, entry);
+            // `_loadChildren` records its own failures in `errorByParentId` and never
+            // rejects, so this promise is always safe to await or discard.
+            entry.promise = _loadChildren(parentId, entry);
+
+            return entry.promise;
+        };
+
+        /** The in-flight children load for `parentId`, or null when none is running. */
+        const pendingChildrenLoad = (parentId: string): Promise<void> | null =>
+            _childrenLoads.get(parentId)?.promise ?? null;
 
         /**
      * Resolve a typed list-relative path to its target and load only that folder's
@@ -633,6 +684,7 @@ export const FileSystemStore = signalStore(
             connectProject,
             initialize,
             loadChildren,
+            pendingChildrenLoad,
             loadPathListing,
             invalidate,
             createFolder,

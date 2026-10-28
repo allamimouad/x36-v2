@@ -393,13 +393,28 @@ export const NavigationStore = signalStore(
             });
         };
 
-        const expand = (id: string): void => {
+        const _markExpanded = (id: string): void => {
             const set = store.expandedTreeIds();
-            if (!set.has(id)) {
-                const next = new Set(set);
-                next.add(id);
-                patchState(store, { expandedTreeIds: next });
-            }
+            if (set.has(id)) { return; }
+            const next = new Set(set);
+            next.add(id);
+            patchState(store, { expandedTreeIds: next });
+        };
+
+        const expand = (id: string): void => {
+            _markExpanded(id);
+            _loadChildrenUnlessAlreadyLoading(id);
+        };
+
+        /**
+         * Expand a folder without refetching children that are already cached.
+         * `expand` always refreshes the listing; this variant loads only when the
+         * folder has none, so an expansion the user did not ask for does not mark
+         * the folder as loading for a whole round-trip.
+         */
+        const expandWithoutReload = (id: string): void => {
+            _markExpanded(id);
+            if (fsReader.folderIdsWithLoadedChildren().includes(id)) { return; }
             _loadChildrenUnlessAlreadyLoading(id);
         };
 
@@ -438,6 +453,7 @@ export const NavigationStore = signalStore(
             up,
             refresh,
             expand,
+            expandWithoutReload,
             collapse,
             setExpanded,
             focus,

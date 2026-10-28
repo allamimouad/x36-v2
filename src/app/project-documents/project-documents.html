@@ -320,6 +320,7 @@
             (internalDropped)="dragDrop.drop($event.event, $event.targetId)"
             (internalDragLeft)="dragDrop.leave($event)"
             [internalCurrentFolderTarget]="dragDrop.target()?.surface === 'current-folder'"
+            [internalCurrentFolderDropActive]="internalCurrentFolderDropActive()"
             [writingIds]="writingIds()"
             [deleteConfirmationId]="tableDeleteConfirmationId()"
             [externalDropTargetId]="

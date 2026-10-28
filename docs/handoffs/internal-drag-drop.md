@@ -67,6 +67,82 @@ check did not deliver key or dragend events for its emulated Escape cancellation
 physical-input details therefore still require desktop confirmation. Automated DOM Escape/dragend
 cleanup and the policy/session/mutation behavior are covered by tests.
 
+## Reviewed fixes (2026-10-27)
+
+A code review of the uncommitted feature found five issues. Three are fixed here.
+
+- **Hover expansion no longer invalidates its own target.** `NavigationStore` gained
+  `expandWithoutReload`, used by the 700ms expansion: it skips the refetch when
+  `folderIdsWithLoadedChildren` already holds the folder. Plain `expand` still always
+  refreshes, so user-initiated expansion is unchanged. `FileSystemStore` now reuses the
+  children load already in flight for a folder and exposes `pendingChildrenLoad`, so a
+  drop onto a folder loading for the first time awaits that listing and re-checks before
+  mutating — which also keeps the listing's stale-entity pruning from removing the node
+  the drop just added. Drop feedback (`canDropOn`) deliberately ignores an in-flight
+  load so the highlight does not flicker; the drop's own check does not.
+- **Paste no longer reports a successful copy as cancelled.** `reportPasteFailure`
+  swallows `FileSystemError('cancelled')`, which the store throws when the project
+  changed mid-request. The store's connection guard is unchanged.
+- **The current-folder space only invites a drop the policy accepts.** New
+  `internalCurrentFolderDropActive` computed, bound to a new `FileTable` input. It is
+  separate from `internalDragActive` on purpose: that input also routes drag events and
+  must stay true for the whole gesture.
+
+Transfer these with the feature: the changed `navigation.store.ts`, `file-system.store.ts`
+(in-flight load map, `pendingChildrenLoad`), `drag-drop.service.ts`, container and
+`file-table` input, plus the new `file-system.store.children-load.spec.ts` and the two
+new drag specs.
+
+A follow-up review found that the in-flight load map introduced above initially had no
+lifecycle, and that is fixed too. It replaced a guard that read
+`folderIdsWithLoadingChildren` — state that `_beginInitialize` resets — with a closure
+map keyed only by folder id, so a request issued before a reinitialization kept
+answering for its folder: the next expand, navigate or refresh of that folder returned
+the old promise and issued no request. The map now clears in `_beginInitialize`, a
+settling request deletes only its own entry (entries are boxed so cleanup can check
+identity, since a newer load may already own the id), and that deletion happens in the
+same `finally` as `_unmarkLoading` so the marker and the map cannot disagree — a window
+in which a caller gated on the marker would otherwise receive an already-settled
+promise instead of a fresh fetch. Entries are cleared rather than keyed by connection
+revision: after `_beginInitialize` every entity is gone and folder ids are re-resolved,
+so no later caller should reuse an earlier load.
+
+A discarded children load is now inert in every respect. Releasing the loading marker
+is owner-only, inside the same ownership check as the map entry: previously
+`_unmarkLoading` ran unconditionally, so an old request settling after a
+reinitialization cleared the *replacement* request's marker. That one predates this work
+— the committed original clears it the same way — but the drag path depends on the
+marker, since `pendingChildrenLoads` filters by `folderIdsWithLoadingChildren` and the
+policy folds it into `unavailableIds`; a false clear would make a folder look droppable
+while its listing was in flight and stop the drop from awaiting it. `_loadChildren` also
+captures `connectionRevision` up front and skips both post-await writes when it moves,
+so a discarded request no longer inserts its listing (nor marks the folder loaded) or
+records its error against the connection that replaced it. The revision is compared
+directly rather than through `_checkConnection`, whose `cancelled` throw would land in
+this function's own `catch` and be stored as a folder error.
+
+Two issues are deliberately open. A missed `dragend` can leave a session latched, since
+there is no document-level `dragend`/`drop` fallback — the MIME token still prevents a
+wrong mutation, the cost is one silently lost external upload, and `Escape` recovers it;
+reproduce it before adding the fallback. Separately, `connectionRevision` guards only
+`move`, `copy` and now `loadChildren`: `createFolder`, `rename` and `deleteNodes` still
+patch state after their awaits. That gap predates this feature and belongs in its own
+commit.
+
+## Verification (2026-10-27)
+
+- Full headless suite: **190 passed** (182 existing, 2 new drag tests, 6 new
+  children-load tests). All eight new tests were confirmed to fail against the
+  corresponding pre-fix code.
+- Production build, both TypeScript projects and repository lint pass. Only the existing
+  bundle/container-style budget warnings and two path-bar accessibility warnings remain.
+- In this WSL environment the suite needs
+  `LD_LIBRARY_PATH=/tmp/x36-browser-deps/root/usr/lib/x86_64-linux-gnu` and
+  `CHROME_BIN` pointed at puppeteer's `chrome-headless-shell`; the full `chrome` binary
+  still lacks `libcups`, `libcairo` and `libpango`.
+- Desktop Escape/cursor confirmation and the real SharePoint adapter remain open exactly
+  as described above.
+
 ## Verification (2026-10-23)
 
 - Full headless Chrome suite: 182 tests passed, including the existing upload,

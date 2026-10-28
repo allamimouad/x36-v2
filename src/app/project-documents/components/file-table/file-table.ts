@@ -64,6 +64,13 @@ export class FileTable {
     public readonly externalDropTargetId = input<string | null>(null);
     public readonly draggableIds = input<ReadonlySet<string>>(new Set());
     public readonly internalDragActive = input(false);
+    /**
+     * Whether the current folder would actually accept the active internal drag.
+     * Separate from `internalDragActive`, which routes events and must stay true for
+     * the whole gesture: this one drives the invitation, so it must not promise a
+     * drop the policy rejects.
+     */
+    public readonly internalCurrentFolderDropActive = input(false);
     public readonly internalCurrentFolderTarget = input(false);
     public readonly internalSourceId = input<string | null>(null);
     public readonly internalDropTargetId = input<string | null>(null);

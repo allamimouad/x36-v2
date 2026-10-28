@@ -6,7 +6,70 @@
 
 ## Current Status
 
-**Active work (2026-10-23): internal drag-and-drop implemented** on
+**Active work (2026-10-27): reviewed internal drag-and-drop and fixed three defects.**
+A code review of the uncommitted feature (cross-checked independently) found five
+issues; three confirmed ones are fixed, two are deliberately deferred.
+
+Fixed: (1) hover auto-expansion invalidated the target it had just expanded. `expand`
+always refetches — `loadChildren` dedupes only *concurrent* loads — so the folder sat in
+`folderIdsWithLoadingChildren`, which feeds the policy's `unavailableIds`, for a whole
+round-trip; a release in that window was discarded silently. `NavigationStore` gained
+`expandWithoutReload`, which skips the refetch when `folderIdsWithLoadedChildren`
+already holds the folder, and hover expansion now uses it. `FileSystemStore` keeps an
+in-flight children-load map and exposes `pendingChildrenLoad`, so a drop onto a folder
+loading for the first time awaits that listing, then re-checks before mutating; the
+wait also orders the mutation after the listing, which the stale-id pruning requires.
+Target feedback is deliberately lenient about an in-flight load so the highlight no
+longer flickers, while the authoritative drop check stays strict.
+(2) Paste reported a successful copy as "cancelled" when the project changed mid-request;
+`reportPasteFailure` now swallows that code. The store's connection guard is unchanged.
+(3) The current-folder space invited every rejected destination because it keyed off
+drag existence. A new `internalCurrentFolderDropActive` computed asks the policy
+instead. It is a separate input: `internalDragActive` also routes drag events and must
+stay true for the whole gesture.
+
+Deferred, with reasons recorded: a stranded drag session after a missed `dragend` has no
+document-level fallback, but is unproven without a reproduction and `Escape` already
+recovers it; and `connectionRevision` is still absent from `createFolder`/`rename`/
+`deleteNodes`, which is pre-existing and belongs in its own commit.
+
+A follow-up review then found a regression in fix (1) itself, now also fixed. The
+in-flight children-load map had no lifecycle: it replaced a guard that read
+`folderIdsWithLoadingChildren` — state `_beginInitialize` resets — with a closure map
+keyed only by folder id, so a load issued before a reinitialization kept answering for
+its folder and the next expand/navigate/refresh of it issued no request. The map now
+clears in `_beginInitialize`; a settling request deletes only its own entry (boxed for
+identity, since a newer load may own the id by then); and that deletion shares the
+`finally` with `_unmarkLoading`, closing a window where a caller gated on the marker got
+an already-settled promise instead of a fresh fetch. Clearing is preferred over
+revision-keyed entries because reinitialization re-resolves every folder id anyway.
+A third round then made a discarded children load fully inert. Releasing the loading
+marker is now owner-only, inside the same ownership check as the map entry:
+`_unmarkLoading` previously ran unconditionally, so an old request settling after a
+reinitialization cleared the *replacement* request's marker. That one predates this work
+— the committed original behaves the same — but the drag path depends on the marker
+(`pendingChildrenLoads` filters by it, and the policy folds it into `unavailableIds`),
+so a false clear would make a folder look droppable while its listing was in flight and
+stop the drop from awaiting it. `_loadChildren` now also captures `connectionRevision`
+up front and skips both post-await writes when it moves, so a discarded request cannot
+insert its listing, mark the folder loaded, or record its error against the connection
+that replaced it. The revision is compared directly rather than through
+`_checkConnection`, whose `cancelled` throw would land in this function's own `catch`
+and be stored as a folder error. The deferred guard item is now just
+`createFolder`/`rename`/`deleteNodes`.
+
+**Verification (2026-10-27):** full headless suite **190/190** (182 existing plus 8 new),
+production build, both TypeScript projects and repository lint pass. Each new test was
+confirmed to fail against its corresponding pre-fix code. Only the existing initial
+bundle/container style budget warnings and two path-bar accessibility warnings remain.
+The commit is still **not pushed**, per the standing instruction.
+
+Running the suite in this WSL environment needs
+`LD_LIBRARY_PATH=/tmp/x36-browser-deps/root/usr/lib/x86_64-linux-gnu` and
+`CHROME_BIN=<puppeteer>/chrome-headless-shell-linux64/chrome-headless-shell`; the full
+`chrome` binary still lacks `libcups`/`libcairo`/`libpango`.
+
+**Earlier record (2026-10-23): internal drag-and-drop implemented** on
 `feat/internal-drag-drop`, created from merged `main` (`ea8bfd0`). The user requested
 a commit marked **not reviewed yet** and will review it later; no push is requested.
 User-owned `.vscode/launch.json`, `tmp-screenshots/`, and the temporary
@@ -239,10 +302,10 @@ The user requested a follow-up commit after `62ce0fa` and will push manually.
 
 ## Current Focus
 
-1. Review the implemented single-item internal drag feature on `feat/internal-drag-drop`.
-   Confirm physical Escape and move/copy/no-drop cursor icons in desktop Edge/Chrome.
-   The user requested a commit marked **not reviewed yet**, with review deferred.
-   Keep the current-folder indicator feedback open; do not push this commit.
+1. Confirm physical Escape and move/copy/no-drop cursor icons in desktop Edge/Chrome,
+   the last acceptance item for the feature. The code review is done (2026-10-27) and
+   its three confirmed defects are fixed, including the current-folder indicator
+   feedback that was previously left open. Do not push this commit.
 2. Use [the drag handoff](handoffs/internal-drag-drop.md) alongside
    [the PR synchronization handoff](handoffs/pr-sync.md) when transferring the feature.
    Keep the destination's generated services/models, working SharePoint adapter and
@@ -250,7 +313,10 @@ The user requested a follow-up commit after `62ce0fa` and will push manually.
 3. Implement/verify the real SharePoint move method using the existing abstract
    move/copy contract; no new endpoint or cross-site capability is assumed here.
    Backend and desktop acceptance remain separate from the passing local mock suite.
-4. Preserve the PR's bin display formatter and broad current-bin activation guard.
+4. Two reviewed issues are deliberately left open: reproduce a missed `dragend` before
+   adding a document-level drag fallback, and extend `connectionRevision` to
+   `createFolder`/`rename`/`deleteNodes` as its own pre-existing-bug commit.
+5. Preserve the PR's bin display formatter and broad current-bin activation guard.
    Additional permission gaps outside internal drag, notification text changes,
    unrelated bug fixes, cut, multi-selection/bulk operations and search-result drag
    remain outside this authorization.

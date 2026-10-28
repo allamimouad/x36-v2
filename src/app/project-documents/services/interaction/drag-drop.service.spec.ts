@@ -3,6 +3,7 @@ import { of, Subject, throwError } from 'rxjs';
 import { MessageService } from 'primeng/api';
 import { FolderNodeResponseAccessLevelEnum as Access } from '@api/model/folderNodeResponse';
 import { INTERNAL_DRAG_TYPE } from '../../models/drag-state.model';
+import type { DocumentListing } from '../../models/document-listing.model';
 import { FileSystemError } from '../../models/file-system-error.model';
 import {
     type FileSystemNode, type FolderNode, isFolder
@@ -134,7 +135,7 @@ describe('DragDropService native session and mutations', () => {
     });
 
     it('expands only after 700ms without navigating and cancels abandoned hover', fakeAsync(() => {
-        const expand = spyOn(navigation, 'expand').and.stub();
+        const expand = spyOn(navigation, 'expandWithoutReload').and.stub();
         start();
         service.over(event('dragover'), destination.id, 'tree');
         tick(699);
@@ -149,6 +150,42 @@ describe('DragDropService native session and mutations', () => {
         tick(701);
         expect(expand).toHaveBeenCalledTimes(1);
     }));
+
+    it('completes a drop released while the destination children are still loading',
+        async () => {
+            const move = spyOn(api, 'move').and.callThrough();
+            const listing = new Subject<DocumentListing>();
+            spyOn(api, 'listDocuments').and.returnValue(listing);
+            start();
+            service.over(event('dragover'), destination.id, 'tree');
+            const load = store.loadChildren(destination.id);
+            expect(store.folderIdsWithLoadingChildren()).toContain(destination.id);
+            // Feedback must not flicker invalid while the listing is in flight.
+            expect(service.canDropOn(destination.id, 'move')).toBeTrue();
+            const dropped = service.drop(event('drop'), destination.id);
+            expect(move).not.toHaveBeenCalled();
+            listing.next({ currentFolder: destination, folders: [], files: [] });
+            listing.complete();
+            await load;
+            await dropped;
+            expect(move).toHaveBeenCalledOnceWith('project', source, destination);
+            expect(store.entityMap()[source.id].parentId).toBe(destination.id);
+            expect(notifications.error).not.toHaveBeenCalled();
+        });
+
+    it('expands a hovered folder without refetching a listing it already has',
+        fakeAsync(() => {
+            const list = spyOn(api, 'listDocuments').and.callThrough();
+            expect(store.folderIdsWithLoadedChildren()).toContain(destination.id);
+            start();
+            service.over(event('dragover'), destination.id, 'tree');
+            tick(700);
+            expect(navigation.expandedTreeIds().has(destination.id)).toBeTrue();
+            expect(list).not.toHaveBeenCalled();
+            expect(store.folderIdsWithLoadingChildren()).not.toContain(destination.id);
+            expect(service.canDropOn(destination.id, 'move')).toBeTrue();
+            service.endDrag();
+        }));
 
     it('does not inspect protected payload data during dragover', () => {
         start();

@@ -199,6 +199,18 @@ export class ProjectDocuments {
     protected readonly uploadPanelCollapsed = signal(false);
     protected readonly externalDropTargetId = signal<string | null>(null);
     protected readonly externalDropSurface = signal<'table' | 'tree' | null>(null);
+    /**
+     * Whether the current-folder space should invite the active internal drag. Asks the
+     * policy rather than merely checking that a drag exists, so a readonly destination,
+     * a same-parent move or a drop onto the source itself is not advertised.
+     */
+    protected readonly internalCurrentFolderDropActive = computed(() => {
+        const session = this.dragDrop.state();
+        const currentFolderId = this.navigation.currentFolderId();
+        if (session === null || currentFolderId === null) { return false; }
+
+        return this.dragDrop.canDropOn(currentFolderId, session.effect);
+    });
     protected readonly currentFolderDropActive = computed(() => {
         if (this.externalDropSurface() !== 'table' || this.currentFolderError() ||
             this.navigation.isCurrentFolderReadonly()) {
@@ -780,7 +792,7 @@ export class ProjectDocuments {
             await this.fileSystem.copy(source, target);
             this.notifications.success(`“${source.name}” was copied.`);
         } catch (error) {
-            this.notifications.error(error);
+            this.reportPasteFailure(error);
         } finally {
             this.setWriting(target.id, false);
             this.pasting.set(false);
@@ -963,6 +975,16 @@ export class ProjectDocuments {
     protected openCurrentFolderInSharePoint(): void {
         const folder = this.navigation.currentFolder();
         if (folder) { this.fileLauncher.openSharePointWeb(folder); }
+    }
+
+    /**
+     * Surface a failed paste, except when the project changed while the request was in
+     * flight: the store deliberately discards that result, and the server copy may well
+     * have succeeded, so reporting it as a failure would be wrong.
+     */
+    private reportPasteFailure(error: unknown): void {
+        if (error instanceof FileSystemError && error.code === 'cancelled') { return; }
+        this.notifications.error(error);
     }
 
     private internalDragBlocked(): boolean {
