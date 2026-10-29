@@ -216,9 +216,26 @@ The authorized single-item scenarios are implemented below; multi-selection rema
 
 ### 3.7 Multi-select (right pane only)
 
-- **Click**: select one (becomes anchor)
-- Drives bulk delete, bulk move/copy, bulk cut/copy
-- PrimeNG `p-table` `selectionMode="multiple"` with `dataKey="id"`
+Implemented 2026-10-28 for internal drag-and-drop. The tree is single-item throughout;
+the recycle bin does not take part.
+
+- **Click** replaces the selection and becomes the anchor.
+- **Ctrl/Cmd+click** toggles one row and moves the anchor to it.
+- **Shift+click** selects from the anchor to the clicked row, in the order the rows are
+  currently rendered, and leaves the anchor where it is so a further Shift-click
+  re-extends from the same row.
+- Clicking the space below the rows, changing the viewed folder, or Escape clears it.
+- Enter/Space on a focused row selects it, matching a plain click.
+
+Selection is **not** wired through PrimeNG's `selectionMode="multiple"`. The rows own
+native drag listeners whose propagation is deliberately stopped before PrimeNG's own
+handlers, and a Shift-range has to follow the rendered order, which column sorting
+changes. The table therefore resolves the whole next selection itself and reports it;
+the store only stores it.
+
+Drives drag-and-drop of several items. Bulk delete and bulk cut/copy/paste remain
+deferred, so while more than one row is selected the single-item Rename, Copy and
+Delete actions are disabled rather than silently acting on one of them.
 
 ### 3.9 Upload with progress
 

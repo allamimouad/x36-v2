@@ -187,6 +187,67 @@ describe('DragDropService native session and mutations', () => {
             service.endDrag();
         }));
 
+    function siblingsOf(node: FileSystemNode, count: number): FolderNode[] {
+        const found = store.entities().filter((other): other is FolderNode =>
+            isFolder(other) && other.parentId === node.parentId && !other.isRecycleBin);
+        if (found.length < count) { throw new Error('Expected more sibling folders'); }
+
+        return found.slice(0, count);
+    }
+
+    it('drags a whole selection but collapses it to top-most ancestors', async () => {
+        await store.loadChildren(source.id);
+        const child = store.entities().find((node) => node.parentId === source.id);
+        if (!child) { throw new Error('Expected a child of the source'); }
+        const move = spyOn(api, 'move').and.callThrough();
+
+        service.startDrag({
+            event: event('dragstart'),
+            node: source,
+            selectedIds: new Set([source.id, child.id])
+        });
+
+        // The descendant is dropped: moving it too would chase a path its parent changed.
+        expect(service.state()?.sourceIds).toEqual([source.id]);
+        await service.drop(event('drop'), destination.id);
+        expect(move).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses the whole gesture when one selected item cannot be dragged', () => {
+        const dragstart = event('dragstart');
+
+        // `destination` is a list root, which is never draggable.
+        service.startDrag({
+            event: dragstart,
+            node: source,
+            selectedIds: new Set([source.id, destination.id])
+        });
+
+        expect(dragstart.defaultPrevented).toBeTrue();
+        expect(service.state()).toBeNull();
+    });
+
+    it('keeps the items that succeeded and summarises the ones that did not', async () => {
+        const warning = spyOn(notifications, 'warning');
+        const [first, second] = siblingsOf(source, 2);
+        spyOn(api, 'move').and.callFake((_projectId, node, target) =>
+            node.id === second.id
+                ? throwError(() => new FileSystemError('network', 'Offline'))
+                : of<FileSystemNode>({ ...node, parentId: target.id }));
+
+        service.startDrag({
+            event: event('dragstart'),
+            node: first,
+            selectedIds: new Set([first.id, second.id])
+        });
+        await service.drop(event('drop'), destination.id);
+
+        expect(store.entityMap()[first.id].parentId).toBe(destination.id);
+        expect(store.entityMap()[second.id].parentId).toBe(second.parentId);
+        expect(warning).toHaveBeenCalled();
+        expect(notifications.error).not.toHaveBeenCalled();
+    });
+
     it('does not inspect protected payload data during dragover', () => {
         start();
         const read = spyOn(data, 'getData').and.throwError('Protected drag data');

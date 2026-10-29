@@ -28,7 +28,7 @@
         [class.pd-tree-node-writing]="writingIds().has(node.key)"
         [draggable]="draggableIds().has(node.key) && renamingId() !== node.key &&
           deleteConfirmationId() !== node.key"
-        [class.pd-internal-drag-source]="internalSourceId() === node.key"
+        [class.pd-internal-drag-source]="internalSourceIds().has(node.key)"
         [class.pd-tree-node-external-drop-target]="externalDropTargetId() === node.key ||
           internalDropTargetId() === node.key"
         (dragstart)="onDragStart($event, node.data)"

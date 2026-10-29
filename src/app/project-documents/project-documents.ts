@@ -40,6 +40,7 @@ import {
     isFolder
 } from './models/file-system-node.model';
 import { FileSystemError } from './models/file-system-error.model';
+import type { SelectionRequest } from './models/selection-request.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
 import { DragDropService } from './services/interaction/drag-drop.service';
 import { ClipboardService } from './services/interaction/clipboard.service';
@@ -394,6 +395,7 @@ export class ProjectDocuments {
     @HostListener('document:keydown.escape')
     protected cancelInternalDrag(): void {
         this.dragDrop.endDrag();
+        this.navigation.clearSelection();
     }
 
     @HostListener('document:pointerdown', ['$event'])
@@ -404,6 +406,10 @@ export class ProjectDocuments {
             return;
         }
         this.cancelDeleteConfirmation();
+    }
+
+    protected onSelectionRequested(request: SelectionRequest): void {
+        this.navigation.setSelection(request.ids, request.anchorId);
     }
 
     protected onItemFocused(id: string): void {
@@ -1171,6 +1177,9 @@ export class ProjectDocuments {
         const root = folder.parentId === null;
         const isProtected = folder.accessLevel === FolderNodeResponseAccessLevelEnum.Protected;
         const isReadonly = this.isRightClickedFolderReadonly(folder);
+        const multi = this.isMultiSelected(folder, source);
+        const mutateBlocked = root || locked || isProtected || isReadonly || multi;
+        const copyBlocked = root || locked || multi;
 
         return [
             this.menuItem('Open Folder', 'folder_open', 'pd-menu-open-folder', () => {
@@ -1179,16 +1188,16 @@ export class ProjectDocuments {
             { separator: true },
             this.menuItem('Rename Folder', 'edit', 'pd-menu-rename-folder', () => {
                 this.startInlineRename(folder, source);
-            }, root || locked || isProtected || isReadonly),
+            }, mutateBlocked),
             this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
                 this.copyToClipboard(folder);
-            }, root || locked),
+            }, copyBlocked),
             this.menuItem('Paste', 'content_paste', 'pd-menu-paste', () => {
                 void this.pasteInto(folder);
             }, locked || !this.canPaste(folder)),
             this.menuItem('Delete Folder', 'delete', 'pd-menu-delete-folder', () => {
                 this.requestDelete(folder, source);
-            }, root || locked || isProtected || isReadonly),
+            }, mutateBlocked),
             { separator: true },
             this.menuItem(
                 'Upload within folder',
@@ -1218,6 +1227,7 @@ export class ProjectDocuments {
         const openItems = this.fileOpenMenuItems(file, locked);
         const isReadonly = file.accessLevel === FileNodeResponseAccessLevelEnum.Readonly
             || this.navigation.isCurrentFolderReadonly();
+        const multi = this.isMultiSelected(file, source);
 
         return [
             this.menuItem(
@@ -1231,13 +1241,13 @@ export class ProjectDocuments {
             { separator: true },
             this.menuItem('Rename File', 'edit', 'pd-menu-rename-file', () => {
                 this.startInlineRename(file, source);
-            }, locked || isReadonly),
+            }, locked || isReadonly || multi),
             this.menuItem('Copy File', 'content_copy', 'pd-menu-copy-file', () => {
                 this.copyToClipboard(file);
-            }, locked),
+            }, locked || multi),
             this.menuItem('Delete File', 'delete', 'pd-menu-delete-file', () => {
                 this.requestDelete(file, source);
-            }, locked || isReadonly),
+            }, locked || isReadonly || multi),
             { separator: true },
             this.menuItem('Download File', 'download', 'pd-menu-download-file', () => {
                 this.downloadFile(file);
@@ -1390,6 +1400,17 @@ export class ProjectDocuments {
                 this.pickFiles(target);
             })
         ];
+    }
+
+    /**
+     * Whether a single-item action should stand down. Only drag acts on a selection
+     * today, so with several rows selected an action aimed at one of them would
+     * silently do less than the user asked for. The tree has no selection.
+     */
+    private isMultiSelected(node: FileSystemNode, source: NodeSurface): boolean {
+        const selected = this.navigation.selectedIds();
+
+        return source === 'table' && selected.size > 1 && selected.has(node.id);
     }
 
     private menuItem(

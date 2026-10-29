@@ -41,7 +41,7 @@ export class FolderTree {
     public readonly externalDropTargetId = input<string | null>(null);
     public readonly draggableIds = input<ReadonlySet<string>>(new Set());
     public readonly internalDragActive = input(false);
-    public readonly internalSourceId = input<string | null>(null);
+    public readonly internalSourceIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly internalDropTargetId = input<string | null>(null);
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);

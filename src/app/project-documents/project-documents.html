@@ -199,7 +199,7 @@
               [folderIdsWithLoadingChildren]="fileSystem.folderIdsWithLoadingChildren()"
               [draggableIds]="dragDrop.draggableIds()"
               [internalDragActive]="dragDrop.state() !== null"
-              [internalSourceId]="dragDrop.state()?.sourceId ?? null"
+              [internalSourceIds]="dragDrop.sourceIds()"
               [internalDropTargetId]="dragDrop.target()?.surface === 'tree' ?
                 dragDrop.target()?.id ?? null : null"
               (dragStarted)="dragDrop.startDrag($event)"
@@ -311,7 +311,7 @@
             [renameError]="inlineRenameError()"
             [draggableIds]="dragDrop.draggableIds()"
             [internalDragActive]="dragDrop.state() !== null"
-            [internalSourceId]="dragDrop.state()?.sourceId ?? null"
+            [internalSourceIds]="dragDrop.sourceIds()"
             [internalDropTargetId]="dragDrop.target()?.surface === 'table' ?
               dragDrop.target()?.id ?? null : null"
             (dragStarted)="dragDrop.startDrag($event)"
@@ -333,6 +333,10 @@
             [currentFolderIsRecycleBin]="navigation.currentFolderIsRecycleBin()"
             [isCurrentFolderReadonly]="navigation.isCurrentFolderReadonly()"
             (itemDoubleClicked)="onItemDoubleClicked($event)"
+            [selectedIds]="navigation.selectedIds()"
+            [selectionAnchorId]="navigation.selectionAnchorId()"
+            (selectionRequested)="onSelectionRequested($event)"
+            (emptySpaceClicked)="navigation.clearSelection()"
             (itemFocused)="onItemFocused($event)"
             (itemContextMenuRequested)="onNodeContextMenu($event)"
             (emptyContextMenuRequested)="onEmptyContextMenu($event)"

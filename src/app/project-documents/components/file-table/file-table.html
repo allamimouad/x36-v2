@@ -50,7 +50,7 @@
           <tr
             [attr.data-testid]="'pd-row-' + row.id"
             [class.pd-row-focused]="focusedId() === row.id"
-            (click)="onRowClick(row)"
+            (click)="onBinRowClick(row)"
             (keydown)="onRowKeydown($event, row)"
             (contextmenu)="onRowContextMenu($event, row)"
             tabindex="0"
@@ -153,18 +153,19 @@
           <tr
             [attr.data-testid]="'pd-row-' + row.id"
             [class.pd-row-focused]="focusedId() === row.id"
+            [class.pd-row-selected]="selectedIds().has(row.id)"
             [class.pd-row-writing]="writingIds().has(row.id)"
             [class.pd-row-external-drop-target]="externalDropTargetId() === row.id ||
               internalDropTargetId() === row.id"
-            [class.pd-internal-drag-source]="internalSourceId() === row.id"
+            [class.pd-internal-drag-source]="internalSourceIds().has(row.id)"
             [draggable]="draggableIds().has(row.id) && renamingId() !== row.id &&
               deleteConfirmationId() !== row.id"
             (dragstart)="onDragStart($event, row.node)"
             (dragend)="dragEnded.emit()"
             (dragleave)="internalDragLeft.emit($event)"
             tabindex="0"
-            (click)="onRowClick(row)"
-            (keydown)="onRowKeydown($event, row)"
+            (click)="onRowClick($event, row)"
+            (keydown)="onTableRowKeydown($event, row)"
             (dblclick)="onRowDblClick(row)"
             (contextmenu)="onRowContextMenu($event, row)"
             (dragenter)="onExternalFolderDragOver($event, row)"

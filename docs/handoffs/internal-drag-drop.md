@@ -129,6 +129,76 @@ reproduce it before adding the fallback. Separately, `connectionRevision` guards
 patch state after their awaits. That gap predates this feature and belongs in its own
 commit.
 
+## Multi-item drag (2026-10-28)
+
+A drag now carries a set. Grabbing a row inside the table selection drags the whole
+selection; grabbing one outside it drags that row alone, and the tree stays single-item.
+
+- The set is collapsed to its **top-most ancestors** (`topMostNodes`, beside
+  `containsNode`). A selection holding a folder and something inside it drags the folder
+  only — otherwise the folder moves first and the descendant's path changes underneath
+  its own queued request.
+- Validation is set-wide at both ends: if any item cannot be dragged, or cannot be
+  dropped on the target, the whole gesture is refused. Silently filtering would move
+  part of what the user grabbed and explain nothing.
+- Execution loops the **single-item** `FileSystemStore.move`/`.copy` through the existing
+  `ConcurrencyQueue` at `bulkOpConcurrency`, each item's failure isolated. This
+  supersedes the PHASES line about the store accepting arrays; see PHASES for why.
+- A move prunes per item but decides **once** whether the viewed folder went with the
+  batch and should open the destination.
+- Partial failure never rolls back: successes are already applied, and undoing them
+  would mean issuing deletes that can fail in turn. One summary reports the batch, and
+  for a move it names what stayed in place, since the selection is now split across two
+  folders.
+- Selection itself is new (`select`, `setSelection`, `clearSelection`, plus a
+  `selectionAnchorId`), cleared whenever the viewed folder changes. The table resolves
+  Shift-ranges against its rendered order — see SPEC 3.7.
+- While several rows are selected, single-item Rename/Copy/Delete are disabled.
+
+Transfer with the feature: the changed `navigation.store.ts`, `drag-drop.service.ts`,
+`drag-state.model.ts`, `node-containment.utils.ts`, the new
+`models/selection-request.model.ts`, the table/tree `internalSourceIds` input, the
+container wiring, and the new selection and multi-drag specs.
+
+A queued batch item is no longer issued after the project changes. `performOne` checks
+`isCurrentProject` **before** touching the store, not only after the queue drains: a
+selection larger than `bulkOpConcurrency` leaves the overflow waiting, and a project
+reinitialization while it waits must stop it going out. Abandoned items are marked and
+filtered out before the summary and the move bookkeeping, both of which read a missing
+error as success. Nothing is reported — a toast about the previous project would land
+while the new one is on screen — and the items that never ran simply stay where they
+are, so re-selecting and dragging again is the recovery.
+
+The same check covers this component being destroyed, since `isCurrentProject` already
+includes `destroyed`. `ConcurrencyQueue` needs no cancellation, so uploads are untouched.
+
+Two limits worth keeping in mind. Requests already **sent** cannot be recalled: their
+results are discarded by `connectionRevision`, so a batch interrupted mid-flight can
+still end up half-applied, silently and by design. And every caller currently has to
+remember this kind of check for itself — `move`/`copy` guard their results,
+`createFolder`/`rename`/`deleteNodes` still do not, and the batch needed its own. If
+project switching becomes routine, the systemic fix is for the store to own connection
+scoping: callers capture a connection token and mutations refuse at entry. That would
+close the deferred gap in the same stroke. Bulk paste will need the per-item guard too,
+the moment paste loops through the queue — today it is single-node, so it has no
+queue to go stale.
+
+## Verification (2026-10-29)
+
+- Full headless suite **202 passed** (199 plus 3). The two guard tests were confirmed to
+  fail with the guard removed, while the third — every item issued when the project is
+  unchanged — kept passing, showing the guard does not block the normal path.
+- Production build, both TypeScript projects and repository lint pass.
+
+## Verification (2026-10-28)
+
+- Full headless suite **199 passed**. The six new tests (three multi-drag, three
+  file-table selection) and three store-selection tests were added on top of 190; each
+  behavioural one was confirmed to fail against the pre-change code.
+- **Type-check with `-p tsconfig.app.json`.** Bare `npx tsc --noEmit` checks nothing:
+  the root `tsconfig.json` sets `"files": []` and only references the app and spec
+  projects. `tsconfig.spec.json` covers app code transitively through spec imports.
+
 ## Verification (2026-10-27)
 
 - Full headless suite: **190 passed** (182 existing, 2 new drag tests, 6 new

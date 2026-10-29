@@ -90,8 +90,15 @@
     background: var(--pd-hover-bg);
   }
 
-  .p-datatable-tbody > tr.pd-row-focused {
+  .p-datatable-tbody > tr.pd-row-focused,
+  .p-datatable-tbody > tr.pd-row-selected {
     background: var(--pd-selection-bg);
+  }
+
+  // A multi-selection reads as one block, so the focused row inside it needs an edge
+  // of its own to stay findable.
+  .p-datatable-tbody > tr.pd-row-selected.pd-row-focused {
+    box-shadow: inset 2px 0 0 var(--pd-accent);
   }
 
   .p-datatable-tbody > tr.pd-row-external-drop-target {

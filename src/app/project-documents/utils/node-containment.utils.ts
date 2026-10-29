@@ -18,3 +18,18 @@ export function containsNode(
 
     return isFolder(ancestor) && candidate.path.startsWith(`${ancestor.path}/`);
 }
+
+/**
+ * The top-most nodes of `nodes`: any node that already has an ancestor in the set is
+ * dropped. A multi-item move must not carry both a folder and something inside it —
+ * the folder moves first and the descendant's path changes underneath its own queued
+ * request, which then fails or acts on the wrong item.
+ */
+export function topMostNodes(
+    nodes: readonly FileSystemNode[],
+    entities: Record<string, FileSystemNode>
+): FileSystemNode[] {
+    return nodes.filter((node) => !nodes.some(
+        (other) => other.id !== node.id && containsNode(other, node, entities)
+    ));
+}

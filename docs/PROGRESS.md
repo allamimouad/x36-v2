@@ -6,7 +6,49 @@
 
 ## Current Status
 
-**Active work (2026-10-27): reviewed internal drag-and-drop and fixed three defects.**
+**Active work (2026-10-28): multi-select drag-and-drop.** The reviewed fixes below are
+committed (`e5b5819`, plus `2d3c209` for stale operation-doc status lines); nothing is
+pushed. Multi-select itself is new and uncommitted.
+
+Selection is right-pane only: click replaces, Ctrl/Cmd toggles, Shift extends from the
+anchor across the **rendered** row order, and changing folder, Escape or clicking below
+the rows clears it. It is wired with explicit click handlers rather than PrimeNG's
+`selectionMode="multiple"`, because the rows own native drag listeners and a range has
+to follow the sorted order; the table resolves the next selection and the store only
+stores it. See SPEC 3.7.
+
+A drag now carries a set, collapsed to top-most ancestors so a folder and something
+inside it never both travel. Validation is set-wide at both ends — any item failing
+refuses the whole gesture. Execution loops the single-item store methods through the
+existing `ConcurrencyQueue` at `bulkOpConcurrency` with per-item failures isolated,
+which supersedes the PHASES line about the store accepting arrays. A move prunes per
+item but decides once whether the viewed folder should follow the batch. Partial
+failures are never rolled back and produce one summary that, for a move, names what
+stayed in place. While several rows are selected, single-item Rename/Copy/Delete are
+disabled; bulk delete and bulk paste remain deferred.
+
+A review of the batching then found that a queued item was still issued after a project
+change: `perform` checked the project only once the whole queue had drained, so with a
+selection larger than `bulkOpConcurrency` the waiting overflow went out against the new
+connection. `performOne` now checks `isCurrentProject` before touching the store, and
+abandoned items are filtered out before the summary and the move bookkeeping, which both
+read a missing error as success. Nothing is reported, by decision: a toast about the
+previous project would land while the new one is on screen, and the items that never ran
+stay where they are. The same check covers component destruction. Requests already sent
+still cannot be recalled — `connectionRevision` discards their results — so an
+interrupted batch can still end up half-applied.
+
+**Verification (2026-10-29):** full headless suite **202/202** (199 plus 3), production
+build, both TypeScript projects and repository lint pass. Each new behavioural test was
+confirmed to fail against the pre-change code; for the queue guard, the third test kept
+passing with the guard removed, showing it does not block the normal path.
+
+**Type-check with `npx tsc --noEmit -p tsconfig.app.json`.** Bare `npx tsc --noEmit`
+checks nothing — the root `tsconfig.json` sets `"files": []` and only references the app
+and spec projects. Earlier entries in this file that cite the bare command overstate
+what it verified; `ng build` and the suite were the real checks.
+
+**Earlier record (2026-10-27): reviewed internal drag-and-drop and fixed three defects.**
 A code review of the uncommitted feature (cross-checked independently) found five
 issues; three confirmed ones are fixed, two are deliberately deferred.
 
@@ -62,7 +104,9 @@ and be stored as a folder error. The deferred guard item is now just
 production build, both TypeScript projects and repository lint pass. Each new test was
 confirmed to fail against its corresponding pre-fix code. Only the existing initial
 bundle/container style budget warnings and two path-bar accessibility warnings remain.
-The commit is still **not pushed**, per the standing instruction.
+Pushed to `origin/feat/internal-drag-drop` on 2026-10-29; the earlier hold on pushing
+was lifted by the user. The branch stays active for further fixes and the user merges
+it themselves, so no pull request was opened.
 
 Running the suite in this WSL environment needs
 `LD_LIBRARY_PATH=/tmp/x36-browser-deps/root/usr/lib/x86_64-linux-gnu` and
@@ -302,21 +346,24 @@ The user requested a follow-up commit after `62ce0fa` and will push manually.
 
 ## Current Focus
 
-1. Confirm physical Escape and move/copy/no-drop cursor icons in desktop Edge/Chrome,
+1. Manually check multi-select in a desktop browser: Ctrl/Shift selection, dragging a
+   selection to a tree folder and a table row, Ctrl-drag to copy, a selection holding a
+   folder and a file inside it, and one where a single item is protected.
+2. Confirm physical Escape and move/copy/no-drop cursor icons in desktop Edge/Chrome,
    the last acceptance item for the feature. The code review is done (2026-10-27) and
    its three confirmed defects are fixed, including the current-folder indicator
-   feedback that was previously left open. Do not push this commit.
-2. Use [the drag handoff](handoffs/internal-drag-drop.md) alongside
+   feedback that was previously left open.
+3. Use [the drag handoff](handoffs/internal-drag-drop.md) alongside
    [the PR synchronization handoff](handoffs/pr-sync.md) when transferring the feature.
    Keep the destination's generated services/models, working SharePoint adapter and
    mappers, providers, shared popup/reporting integrations and overview service.
-3. Implement/verify the real SharePoint move method using the existing abstract
+4. Implement/verify the real SharePoint move method using the existing abstract
    move/copy contract; no new endpoint or cross-site capability is assumed here.
    Backend and desktop acceptance remain separate from the passing local mock suite.
-4. Two reviewed issues are deliberately left open: reproduce a missed `dragend` before
+5. Two reviewed issues are deliberately left open: reproduce a missed `dragend` before
    adding a document-level drag fallback, and extend `connectionRevision` to
    `createFolder`/`rename`/`deleteNodes` as its own pre-existing-bug commit.
-5. Preserve the PR's bin display formatter and broad current-bin activation guard.
+6. Preserve the PR's bin display formatter and broad current-bin activation guard.
    Additional permission gaps outside internal drag, notification text changes,
    unrelated bug fixes, cut, multi-selection/bulk operations and search-result drag
    remain outside this authorization.

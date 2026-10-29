@@ -215,7 +215,12 @@ this feature; real backend move work is a separate follow-up.
 
 **Stores**
 - `stores/navigation.store.ts` — implement `select(id, mode: 'single' | 'toggle' | 'range')`, `selectRange(id)`, `clearSelection()`
-- `stores/file-system.store.ts` — accept arrays in `delete`, `move`, `copy` (pessimistic + progress for bulk); uses `ConcurrencyQueue`
+- `stores/file-system.store.ts` — **superseded 2026-10-28**: the store stays single-item
+  and the caller loops it through `ConcurrencyQueue` instead of accepting arrays. Its
+  per-item logic (connection revision, removed-subtree computation, navigation and
+  clipboard pruning) is verified and wrapping it preserves that, where making it
+  array-aware would mean rewriting it. `DragDropService` does this for multi-item
+  drag; bulk delete/paste should follow the same shape.
 
 **Services**
 - `services/upload/concurrency-queue.ts` — generic queue, max N concurrent; returns per-task results with errors isolated
@@ -223,7 +228,8 @@ this feature; real backend move work is a separate follow-up.
 
 **Components**
 - `components/file-table/file-table.ts`:
-  - Multi-select wired (p-table selectionMode="multiple")
+  - Multi-select wired (explicit click handlers, not `selectionMode="multiple"` —
+    see SPEC 3.7 for why)
   - Cut items render at 50% opacity (read from `ClipboardService`)
   - Context menu adds: Cut, Copy, Paste (if clipboard not empty); folder-menu Paste
     targets the right-clicked folder without opening it first

@@ -8,6 +8,12 @@ export type DragEffect = 'move' | 'copy';
 export interface ItemDragRequest {
     event: DragEvent;
     node: FileSystemNode;
+    /**
+     * Rows selected when the gesture began. Dragging a row inside the selection drags
+     * the whole selection; dragging one outside it drags that row alone. Empty for
+     * surfaces without selection, such as the tree.
+     */
+    selectedIds?: ReadonlySet<string>;
 }
 
 export interface DragContext {
@@ -19,7 +25,12 @@ export interface DragContext {
 export interface DragState {
     token: string;
     projectId: string;
-    sourceId: string;
+    /**
+     * The nodes being dragged, already collapsed to top-most ancestors: a selection
+     * holding a folder and something inside it drags the folder only, or the
+     * descendant's path would change underneath its own queued request.
+     */
+    sourceIds: readonly string[];
     effect: DragEffect;
 }
 

@@ -13,7 +13,9 @@ import { FileSystemStore } from '../../stores/file-system.store';
 import { NavigationStore } from '../../stores/navigation.store';
 import { ClipboardService } from './clipboard.service';
 import { NotificationService } from './notification.service';
-import { containsNode } from '../../utils/node-containment.utils';
+import { containsNode, topMostNodes } from '../../utils/node-containment.utils';
+import { ConcurrencyQueue } from '../upload/concurrency-queue';
+import { FILE_MANAGER_CONFIG } from '../../tokens/file-manager-config.token';
 import { canDropItem, canStartDrag, type DragPolicy } from './drag-drop-policy';
 
 /**
@@ -25,12 +27,26 @@ interface PolicyOptions {
     ignoreOwnRequest?: boolean;
 }
 
+/** What one item's move/copy produced, so a partial batch can be reported honestly. */
+interface ItemOutcome {
+    node: FileSystemNode;
+    /** Cache ids the move removed; empty for a copy. */
+    removed: string[];
+    error?: unknown;
+    /** Set when the project changed before this item left the queue, so it never ran. */
+    abandoned?: boolean;
+}
+
 @Injectable()
 export class DragDropService {
     public readonly state = signal<DragState | null>(null);
     public readonly target = signal<DragTarget | null>(null);
     public readonly busyIds = signal<ReadonlySet<string>>(new Set());
     public readonly pending = signal(false);
+    /** Ids currently being dragged, for source highlighting. */
+    public readonly sourceIds = computed<ReadonlySet<string>>(
+        () => new Set(this.state()?.sourceIds ?? [])
+    );
     public readonly draggableIds = computed(() => {
         const policy = this.policy();
 
@@ -42,6 +58,7 @@ export class DragDropService {
     private readonly navigation = inject(NavigationStore);
     private readonly clipboard = inject(ClipboardService);
     private readonly notifications = inject(NotificationService);
+    private readonly config = inject(FILE_MANAGER_CONFIG);
     private readonly context = signal<() => DragContext>(() => ({
         writingIds: new Set(), editingIds: new Set(), blocked: false
     }));
@@ -71,12 +88,16 @@ export class DragDropService {
             Array.from(event.dataTransfer?.types ?? []).includes(INTERNAL_DRAG_TYPE);
     }
 
-    public startDrag({ event, node }: ItemDragRequest): void {
+    public startDrag({ event, node, selectedIds }: ItemDragRequest): void {
         event.stopPropagation();
-        const source = this.fileSystem.entityMap()[node.id];
+        const sources = this.dragSet(node, selectedIds);
         const projectId = this.fileSystem.projectId();
-        if (!source || !projectId || !event.dataTransfer ||
-            !canStartDrag(source, this.policy()) || this.isControl(event.target)) {
+        const policy = this.policy();
+        // Every item must be draggable, or none is: letting a mixed selection through
+        // would move some of what the user grabbed and silently leave the rest.
+        if (sources.length === 0 || !projectId || !event.dataTransfer ||
+            !sources.every((source) => canStartDrag(source, policy)) ||
+            this.isControl(event.target)) {
             event.preventDefault();
 
             return;
@@ -86,7 +107,7 @@ export class DragDropService {
         event.dataTransfer.setData(INTERNAL_DRAG_TYPE, token);
         event.dataTransfer.effectAllowed = 'copyMove';
         this.sessionRoots = this.fileSystem.initializedRoots();
-        this.state.set({ token, projectId, sourceId: source.id,
+        this.state.set({ token, projectId, sourceIds: sources.map((source) => source.id),
             effect: event.ctrlKey ? 'copy' : 'move' });
     }
 
@@ -132,14 +153,14 @@ export class DragDropService {
         // Claim the request before the first await so a repeated drop cannot start a
         // second one, then discount that claim when re-checking below.
         this.pending.set(true);
-        this.busyIds.set(new Set([session.sourceId, targetId]));
+        this.busyIds.set(new Set([...session.sourceIds, targetId]));
         try {
             // A target expanded mid-drag may still be loading its children. Let that
             // listing land first: it decides the drop, and applying it afterwards would
             // prune the node this drop is about to add. Only wait when such a load is
             // actually in flight, so an ordinary drop still issues its request without
             // yielding first.
-            const loads = this.pendingChildrenLoads(session.sourceId, targetId);
+            const loads = this.pendingChildrenLoads(session.sourceIds, targetId);
             if (loads.length > 0) {
                 await Promise.all(loads);
                 if (!this.canSessionDrop(session, roots, targetId, operation,
@@ -182,11 +203,13 @@ export class DragDropService {
     ): boolean {
         if (!this.isCurrentProject(session.projectId, roots)) { return false; }
         const entities = this.fileSystem.entityMap();
-        const source = entities[session.sourceId];
         const target = entities[targetId];
+        if (target === undefined || !isFolder(target)) { return false; }
+        const sources = session.sourceIds.map((id) => entities[id]);
+        if (sources.some((source) => source === undefined)) { return false; }
+        const policy = this.policy(options);
 
-        return source !== undefined && target !== undefined && isFolder(target) &&
-            canDropItem(source, target, operation, this.policy(options));
+        return sources.every((source) => canDropItem(source, target, operation, policy));
     }
 
     private setTarget(targetId: string, surface: DragSurface): void {
@@ -262,9 +285,13 @@ export class DragDropService {
      * The in-flight children loads covering the source or the target. Awaiting these
      * lets the drop decide against settled state instead of racing the listing.
      */
-    private pendingChildrenLoads(sourceId: string, targetId: string): Promise<void>[] {
+    private pendingChildrenLoads(
+        sourceIds: readonly string[],
+        targetId: string
+    ): Promise<void>[] {
         const entities = this.fileSystem.entityMap();
-        const nodes = [entities[sourceId], entities[targetId]]
+        const nodes = [...sourceIds, targetId]
+            .map((id) => entities[id])
             .filter((node): node is FileSystemNode => node !== undefined);
 
         return this.fileSystem.folderIdsWithLoadingChildren()
@@ -278,39 +305,136 @@ export class DragDropService {
             .filter((load): load is Promise<void> => load !== null);
     }
 
+    /**
+     * The nodes this gesture carries. Grabbing a row inside the selection drags the
+     * whole selection; grabbing one outside it drags that row alone. The set is
+     * collapsed to top-most ancestors, and a selection naming something the cache no
+     * longer holds drags nothing rather than a silently smaller set.
+     */
+    private dragSet(
+        node: FileSystemNode,
+        selectedIds: ReadonlySet<string> | undefined
+    ): FileSystemNode[] {
+        const entities = this.fileSystem.entityMap();
+        const ids = selectedIds !== undefined && selectedIds.has(node.id) && selectedIds.size > 1
+            ? [...selectedIds]
+            : [node.id];
+        const nodes = ids
+            .map((id) => entities[id])
+            .filter((candidate): candidate is FileSystemNode => candidate !== undefined);
+        if (nodes.length !== ids.length) { return []; }
+
+        return topMostNodes(nodes, entities);
+    }
+
     private async perform(
         session: DragState,
         targetId: string,
         operation: DragEffect,
         roots: DocumentListRoots | null
     ): Promise<void> {
-        const source = this.fileSystem.entityMap()[session.sourceId];
+        const entities = this.fileSystem.entityMap();
+        const sources = session.sourceIds
+            .map((id) => entities[id])
+            .filter((node): node is FileSystemNode => node !== undefined);
         const view = this.navigation.currentFolder();
-        if (operation === 'copy') {
-            await this.fileSystem.copy(source.id, targetId);
-        } else {
-            const removed = await this.fileSystem.move(source.id, targetId);
-            if (!this.isCurrentProject(session.projectId, roots)) { return; }
-            this.finishMove(source, view, removed, targetId);
+        const queue = new ConcurrencyQueue(this.config.bulkOpConcurrency);
+        const outcomes = await Promise.all(sources.map(
+            (source) => queue.enqueue(
+                () => this.performOne(session, roots, source, targetId, operation)
+            )
+        ));
+        if (!this.isCurrentProject(session.projectId, roots)) { return; }
+        // Items that never ran are neither moved nor failed, and must not be counted as
+        // either: both helpers below read a missing error as success.
+        const settled = outcomes.filter((outcome) => outcome.abandoned !== true);
+        if (operation === 'move') { this.finishMove(settled, view, targetId); }
+        this.report(settled, operation);
+    }
+
+    /**
+     * One item, with its failure isolated so the rest of the batch still runs.
+     *
+     * Checked here rather than only after the queue drains: with a selection larger than
+     * `bulkOpConcurrency` the overflow waits, and a project change while it waits must
+     * stop it going out at all. Requests already sent cannot be recalled — the store's
+     * connection revision discards their results instead. `isCurrentProject` also covers
+     * this component being destroyed.
+     */
+    private async performOne(
+        session: DragState,
+        roots: DocumentListRoots | null,
+        node: FileSystemNode,
+        targetId: string,
+        operation: DragEffect
+    ): Promise<ItemOutcome> {
+        if (!this.isCurrentProject(session.projectId, roots)) {
+            return { node, removed: [], abandoned: true };
         }
-        if (this.isCurrentProject(session.projectId, roots)) {
-            const verb = operation === 'copy' ? 'copied' : 'moved';
-            this.notifications.success(`${source.name} was ${verb}.`);
+        try {
+            if (operation === 'copy') {
+                await this.fileSystem.copy(node.id, targetId);
+
+                return { node, removed: [] };
+            }
+
+            return { node, removed: await this.fileSystem.move(node.id, targetId) };
+        } catch (error) {
+            return { node, removed: [], error };
         }
     }
 
+    /**
+     * Prune what the successful moves removed and, when the viewed folder went with
+     * them, open the destination — decided once for the batch rather than per item.
+     */
     private finishMove(
-        source: FileSystemNode,
+        outcomes: ItemOutcome[],
         view: FolderNode | null,
-        removed: string[],
         targetId: string
     ): void {
+        const moved = outcomes.filter((outcome) => outcome.error === undefined);
+        if (moved.length === 0) { return; }
+        const removed = moved.flatMap((outcome) => outcome.removed);
         const currentId = this.navigation.currentFolderId();
         const current = this.navigation.currentFolder() ?? (currentId === view?.id ? view : null);
+        const entities = this.fileSystem.entityMap();
         const affected = removed.includes(currentId ?? '') || current !== null &&
-            containsNode(source, current, this.fileSystem.entityMap());
+            moved.some((outcome) => containsNode(outcome.node, current, entities));
         this.navigation.pruneReferences(removed);
         this.clipboard.pruneReferences(removed);
         if (affected) { this.navigation.navigateTo(targetId); }
+    }
+
+    /**
+     * One summary for the batch. Successes are already applied and are never rolled
+     * back: undoing them would mean issuing deletes that can fail in turn, on items the
+     * user can see.
+     */
+    private report(outcomes: ItemOutcome[], operation: DragEffect): void {
+        if (outcomes.length === 0) { return; }
+        const verb = operation === 'copy' ? 'copied' : 'moved';
+        const failed = outcomes.filter((outcome) => outcome.error !== undefined);
+        if (failed.length === outcomes.length) {
+            this.notifications.error(failed[0].error);
+
+            return;
+        }
+        if (failed.length === 0) {
+            this.notifications.success(outcomes.length === 1
+                ? `${outcomes[0].node.name} was ${verb}.`
+                : `${outcomes.length} items were ${verb}.`);
+
+            return;
+        }
+        const names = failed.map((outcome) => outcome.node.name).join(', ');
+        // A partly-failed move leaves the selection split across two folders, so name
+        // what stayed rather than only what worked.
+        const tail = operation === 'copy'
+            ? `${failed.length} failed: ${names}.`
+            : `${failed.length} stayed in place: ${names}.`;
+        this.notifications.warning(
+            `${outcomes.length - failed.length} of ${outcomes.length} items ${verb}. ${tail}`
+        );
     }
 }

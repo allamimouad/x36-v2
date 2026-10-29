@@ -4,6 +4,7 @@ import {
     computed,
     effect,
     ElementRef,
+    HostListener,
     input,
     output,
     signal,
@@ -11,7 +12,7 @@ import {
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { InputText } from 'primeng/inputtext';
-import { TableModule } from 'primeng/table';
+import { Table, TableModule } from 'primeng/table';
 import { ProgressSpinner } from 'primeng/progressspinner';
 import { Tooltip } from 'primeng/tooltip';
 import {
@@ -25,6 +26,7 @@ import type {
     NodeContextMenuRequest
 } from '../../models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from '../../models/external-drop-request.model';
+import type { SelectionRequest } from '../../models/selection-request.model';
 import {
     hasInternalDragType, type ItemDragRequest, type ItemDropRequest
 } from '../../models/drag-state.model';
@@ -72,17 +74,21 @@ export class FileTable {
      */
     public readonly internalCurrentFolderDropActive = input(false);
     public readonly internalCurrentFolderTarget = input(false);
-    public readonly internalSourceId = input<string | null>(null);
+    public readonly internalSourceIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly internalDropTargetId = input<string | null>(null);
     public readonly externalDragActive = input<boolean>(false);
     public readonly projectName = input<string>('');
     public readonly currentFolderName = input<string>('');
     public readonly currentFolderListKey = input<string | null>(null);
+    public readonly selectedIds = input<ReadonlySet<string>>(new Set<string>());
+    public readonly selectionAnchorId = input<string | null>(null);
     public readonly currentFolderIsRecycleBin = input<boolean | null>(null);
     public readonly isCurrentFolderReadonly = input<boolean>(false);
 
     public readonly itemDoubleClicked = output<FileSystemNode>();
     public readonly itemFocused = output<string>();
+    public readonly selectionRequested = output<SelectionRequest>();
+    public readonly emptySpaceClicked = output();
     public readonly itemContextMenuRequested = output<NodeContextMenuRequest>();
     public readonly emptyContextMenuRequested = output<MouseEvent>();
     public readonly renameSubmitted = output<ItemRenameRequest>();
@@ -147,6 +153,7 @@ export class FileTable {
      */
     protected readonly tooltipSuppressedCellId = signal<string | null>(null);
     protected readonly inlineRenameValue = signal('');
+    private readonly table = viewChild(Table);
     private readonly inlineRenameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput');
     private readonly deleteCancelButton =
         viewChild<ElementRef<HTMLButtonElement>>('deleteCancelButton');
@@ -173,6 +180,20 @@ export class FileTable {
         });
     }
 
+    /**
+     * Clicking the unused space below the rows clears the selection. Delegated from the
+     * host rather than bound on that element: it is a background region, not a control,
+     * so giving it its own click handler would ask it to be focusable too. The keyboard
+     * path to the same outcome is Escape, handled by the container.
+     */
+    @HostListener('click', ['$event'])
+    protected onHostClick(event: MouseEvent): void {
+        const target = event.target;
+        if (target instanceof Element && target.closest('.pd-current-folder-space')) {
+            this.emptySpaceClicked.emit();
+        }
+    }
+
     protected trackRow(_index: number, row: RowVm): string {
         return row.id;
     }
@@ -181,8 +202,14 @@ export class FileTable {
         this.itemDoubleClicked.emit(row.node);
     }
 
-    protected onRowClick(row: RowVm): void {
+    /** Recycle-bin rows focus but never select: the bin has no multi-item actions. */
+    protected onBinRowClick(row: RowVm): void {
         this.itemFocused.emit(row.id);
+    }
+
+    protected onRowClick(event: MouseEvent, row: RowVm): void {
+        this.itemFocused.emit(row.id);
+        this.selectionRequested.emit(this.resolveSelection(event, row));
     }
 
     protected onRowKeydown(event: KeyboardEvent, row: RowVm): void {
@@ -191,7 +218,18 @@ export class FileTable {
         }
         if (event.key !== 'Enter' && event.key !== ' ') { return; }
         event.preventDefault();
-        this.onRowClick(row);
+        this.itemFocused.emit(row.id);
+    }
+
+    /** Keyboard activation in the normal table selects, matching a plain click. */
+    protected onTableRowKeydown(event: KeyboardEvent, row: RowVm): void {
+        if (event.target instanceof HTMLElement && event.target.closest('input, button')) {
+            return;
+        }
+        if (event.key !== 'Enter' && event.key !== ' ') { return; }
+        event.preventDefault();
+        this.itemFocused.emit(row.id);
+        this.selectionRequested.emit({ ids: [row.id], anchorId: row.id });
     }
 
     protected onRowContextMenu(event: MouseEvent, row: RowVm): void {
@@ -319,7 +357,7 @@ export class FileTable {
 
             return;
         }
-        this.dragStarted.emit({ event, node });
+        this.dragStarted.emit({ event, node, selectedIds: this.selectedIds() });
     }
 
     private isInternalDrag(event: DragEvent): boolean {
@@ -350,6 +388,40 @@ export class FileTable {
             : '';
 
         return pathAfterRoot ? `${listKey}/${pathAfterRoot}` : listKey;
+    }
+
+    private resolveSelection(event: MouseEvent, row: RowVm): SelectionRequest {
+        if (event.shiftKey) {
+            const range = this.renderedRangeTo(row.id);
+            // The anchor stays put, so a further Shift-click re-extends from the same
+            // row rather than from the last one touched.
+            if (range !== null) { return { ids: range, anchorId: this.selectionAnchorId() }; }
+        }
+        if (event.ctrlKey || event.metaKey) {
+            const next = new Set(this.selectedIds());
+            if (!next.delete(row.id)) { next.add(row.id); }
+
+            return { ids: [...next], anchorId: row.id };
+        }
+
+        return { ids: [row.id], anchorId: row.id };
+    }
+
+    /**
+     * Ids from the anchor to `id` in the order the rows are currently rendered, which
+     * column sorting changes. Null when there is no anchor yet or either row is not
+     * rendered, leaving the caller to treat the click as an ordinary one.
+     */
+    private renderedRangeTo(id: string): string[] | null {
+        const anchorId = this.selectionAnchorId();
+        const rendered = this.table()?.value as RowVm[] | undefined;
+        if (anchorId === null || rendered === undefined) { return null; }
+        const from = rendered.findIndex((row) => row.id === anchorId);
+        const to = rendered.findIndex((row) => row.id === id);
+        if (from === -1 || to === -1) { return null; }
+        const [start, end] = from <= to ? [from, to] : [to, from];
+
+        return rendered.slice(start, end + 1).map((row) => row.id);
     }
 
     private isDropInFolderDisabled(row: RowVm): boolean {
