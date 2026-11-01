@@ -44,6 +44,20 @@ import {
 } from '../models/file-system-node.model';
 import { FileSystemApi } from '../services/file-system/file-system-api';
 
+/**
+ * Everything cached beneath `node`, itself included. `containsNode` walks parent links
+ * and falls back to a path prefix, so this also reaches descendants whose intermediate
+ * parents were never cached. Resolve it *after* a mutation returns: a set captured
+ * beforehand misses whatever was loaded while the request was in flight.
+ */
+function removedSubtreeOf(
+    node: FileSystemNode,
+    all: FileSystemNode[],
+    entities: Record<string, FileSystemNode>
+): FileSystemNode[] {
+    return all.filter((candidate) => containsNode(node, candidate, entities));
+}
+
 /** One in-flight children load, boxed so its cleanup can verify it still owns the id. */
 interface ChildrenLoad {
     promise: Promise<void>;
@@ -448,9 +462,11 @@ export const FileSystemStore = signalStore(
                 );
             }
             const trimmed = name.trim();
+            const revision = connectionRevision;
             const created = await firstValueFrom(
                 api.createFolder(_requireProjectId(), parent, trimmed)
             );
+            _checkConnection(revision);
             patchState(store, setEntity<FileSystemNode>(created));
             _adjustParentCount(parentId, 1);
 
@@ -503,7 +519,9 @@ export const FileSystemStore = signalStore(
                     );
                 }
             }
+            const revision = connectionRevision;
             const renamed = await firstValueFrom(api.rename(_requireProjectId(), node, newName));
+            _checkConnection(revision);
             if (cachedNode) {
                 const updated = _updateCachedSubtreePaths(
                     node.id,
@@ -523,15 +541,19 @@ export const FileSystemStore = signalStore(
             input: string | string[] | FileSystemNode
         ): Promise<string[]> => {
             const node = _mutationNode(input, 'delete');
-            const subtree = store.entityMap()[node.id] ? _cachedSubtree(node.id) : [];
+            const revision = connectionRevision;
             await firstValueFrom(api.delete(_requireProjectId(), node));
-            if (subtree.length === 0) { return []; }
-            const removed = subtree.map((candidate) => candidate.id);
+            _checkConnection(revision);
+            // Resolved after the request, like `move`. A set captured beforehand left
+            // orphans behind — descendants loaded while the request was in flight, and
+            // descendants whose intermediate parents were never cached — still holding
+            // clipboard and selection references to a node that no longer exists.
+            const removedSubtree = removedSubtreeOf(node, store.entities(), store.entityMap());
+            if (removedSubtree.length === 0) { return []; }
+            const removed = removedSubtree.map((candidate) => candidate.id);
             patchState(store, removeEntities(removed));
             _adjustParentCount(node.parentId, -1);
-            // Clear loaded markers for every removed folder, not just the root — loaded
-            // descendant folders would otherwise leave orphaned ids in the loaded set.
-            _unmarkLoaded(...subtree.filter(isFolder).map((folder) => folder.id));
+            clearRemovedFolderMarkers(removedSubtree);
 
             return removed;
         };
@@ -615,9 +637,7 @@ export const FileSystemStore = signalStore(
             const revision = connectionRevision;
             const moved = await firstValueFrom(api.move(_requireProjectId(), node, targetParent));
             _checkConnection(revision);
-            const entities = store.entityMap();
-            const removedSubtree = store.entities().filter((candidate) =>
-                containsNode(node, candidate, entities));
+            const removedSubtree = removedSubtreeOf(node, store.entities(), store.entityMap());
             const removedIds = removedSubtree.map((candidate) => candidate.id);
             patchState(store, removeEntities(removedIds), setEntity<FileSystemNode>(moved));
             _adjustParentCount(oldParentId, -1);

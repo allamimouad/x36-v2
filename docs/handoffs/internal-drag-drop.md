@@ -220,10 +220,36 @@ multi-selection, so the menu and the drag disagree — it needs a bulk confirmat
 own. Dragging *out* of a bin to restore is deliberately absent:
 `restoreRecycleBinItem` returns an item to its original location, not the drop target.
 
+### Store fixes that drag-to-bin exposed (2026-11-01)
+
+Both were pre-existing limits of `delete`, reachable far more easily once a drag could
+delete a whole selection.
+
+- **`delete` discarded nothing on a stale connection.** `move` and `copy` capture
+  `connectionRevision` and call `_checkConnection` after their request; `delete` did
+  neither, so a late response still edited the refreshed cache. The visible symptom was
+  not in the drag path — `perform`'s project check already short-circuits `finishBatch` —
+  but in the container's `deleteNode`, which compares a pre-await `currentId` against the
+  returned ids and could `navigateTo` a parent belonging to the project you just left.
+  `delete`, `createFolder` and `rename` now all capture and check the revision.
+- **`delete` left descendants behind.** It snapshotted its subtree *before* the request
+  using parent links only, so it missed descendants loaded while the request was in
+  flight and descendants whose intermediate parents were never cached. Those survived as
+  orphans holding clipboard and selection references. It now resolves the set *after*
+  the request through the shared `removedSubtreeOf`, which `move` already used — the two
+  no longer differ — and uses `clearRemovedFolderMarkers` rather than a bare
+  `_unmarkLoaded`.
+
+Because `_checkConnection` throws `cancelled`, adding it to three more mutations would
+have produced three new false-error toasts for operations that actually succeeded — the
+bug already fixed once on the paste path. `reportPasteFailure` is therefore generalised
+to `reportMutationFailure`, and create, rename, delete and paste all report through it.
+
 ## Verification (2026-11-01)
 
-- Full headless suite **207 passed** (203 plus 4). Reverting the policy branch failed
-  exactly the four new behavioural tests.
+- Full headless suite **211 passed** (203 plus 8). Reverting the policy branch failed
+  exactly the four drag tests; reverting the two store fixes failed exactly the four
+  store tests.
 - Production build, both TypeScript projects and repository lint pass.
 
 ## Verification (2026-10-29)

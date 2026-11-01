@@ -556,7 +556,7 @@ export class ProjectDocuments {
                 this.notifications.success(`Folder “${created.name}” was created.`);
             }
         } catch (error) {
-            this.notifications.error(error);
+            this.reportMutationFailure(error);
         } finally {
             this.creatingFolder.set(false);
         }
@@ -713,7 +713,7 @@ export class ProjectDocuments {
             if (fieldError) {
                 this.inlineRenameError.set(fieldError);
             } else {
-                this.notifications.error(error);
+                this.reportMutationFailure(error);
             }
         } finally {
             this.setWriting(request.node.id, false);
@@ -759,7 +759,7 @@ export class ProjectDocuments {
             this.refreshActiveSearch();
             this.notifications.success(`“${node.name}” was deleted.`);
         } catch (error) {
-            this.notifications.error(error);
+            this.reportMutationFailure(error);
         } finally {
             this.setWriting(node.id, false);
         }
@@ -797,7 +797,7 @@ export class ProjectDocuments {
             await this.fileSystem.copy(source, target);
             this.notifications.success(`“${source.name}” was copied.`);
         } catch (error) {
-            this.reportPasteFailure(error);
+            this.reportMutationFailure(error);
         } finally {
             this.setWriting(target.id, false);
             this.pasting.set(false);
@@ -983,11 +983,12 @@ export class ProjectDocuments {
     }
 
     /**
-     * Surface a failed paste, except when the project changed while the request was in
-     * flight: the store deliberately discards that result, and the server copy may well
-     * have succeeded, so reporting it as a failure would be wrong.
+     * Surface a failed mutation, except when the project changed while the request was
+     * in flight: the store deliberately discards that result, and the server operation
+     * may well have succeeded, so reporting it as a failure would be wrong. Every
+     * mutation guarded by the store's connection revision reports through here.
      */
-    private reportPasteFailure(error: unknown): void {
+    private reportMutationFailure(error: unknown): void {
         if (error instanceof FileSystemError && error.code === 'cancelled') { return; }
         this.notifications.error(error);
     }

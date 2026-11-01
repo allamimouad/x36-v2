@@ -31,9 +31,28 @@ search, exactly as moving by drag already does not. Still deferred: bulk delete 
 context menu (disabled on a multi-selection, so the menu and the drag disagree) and
 dragging out of a bin to restore, which would misrepresent where the item lands.
 
-**Verification (2026-11-01):** full headless suite **207/207** (203 plus 4), production
+A review of that work then surfaced two pre-existing `delete` limits, both far easier to
+reach once a drag could delete a selection, and both now fixed. `delete` captured no
+connection revision, so a late response still edited a refreshed cache — the visible
+symptom being the container's `deleteNode` navigating to a parent from the project you
+just left; `createFolder` and `rename` had the same gap and are guarded too. And `delete`
+snapshotted its subtree *before* the request using parent links only, missing descendants
+loaded mid-flight and descendants whose intermediate parents were never cached, which
+survived as orphans holding clipboard and selection references; it now resolves the set
+after the request through the shared `removedSubtreeOf` that `move` already used. Since
+`_checkConnection` throws `cancelled`, `reportPasteFailure` is generalised to
+`reportMutationFailure` so create, rename, delete and paste all suppress a stale
+completion instead of reporting a false failure.
+
+Still open from that review: drag operations do not refresh an active search, so a
+deleted or moved item can leave a stale result row. It needs a seam between the drag
+service and the container's `refreshActiveSearch`, and it affects move just as much, so
+it is tracked separately rather than folded in here.
+
+**Verification (2026-11-01):** full headless suite **211/211** (203 plus 8), production
 build, both TypeScript projects and repository lint pass. Reverting the policy branch
-failed exactly the four new behavioural tests.
+failed exactly the four drag tests; reverting the two store fixes failed exactly the
+four store tests.
 
 **Earlier record (2026-10-28): multi-select drag-and-drop.** The reviewed fixes below are
 committed (`e5b5819`, plus `2d3c209` for stale operation-doc status lines); nothing is
