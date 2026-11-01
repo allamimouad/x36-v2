@@ -163,19 +163,50 @@ describe('ProjectDocuments internal drag wiring', () => {
         expect(enqueue).not.toHaveBeenCalled();
     });
 
-    it('rejects recycle-bin targets', async () => {
-        const bin = store.entities().find((node) => isFolder(node) && node.isRecycleBin);
-        if (!bin) { throw new Error('Expected bin'); }
+    function recycleBin(listKey: string): FolderNode {
+        const bin = store.entities().find((node): node is FolderNode =>
+            isFolder(node) && node.isRecycleBin && node.listKey === listKey);
+        if (!bin) { throw new Error(`Missing bin for ${listKey}`); }
+
+        return bin;
+    }
+
+    it('deletes an item dropped on its own list bin', async () => {
         const source = folder('Contracts');
+        const remove = spyOn(api, 'delete').and.callThrough();
         const move = spyOn(api, 'move').and.callThrough();
         const data = new DataTransfer();
         dispatch(element(`[data-testid="pd-row-${source.id}"]`), 'dragstart', data);
-        const binElement = element(`[data-testid="pd-tree-node-${bin.id}"]`);
+        const binElement = element(
+            `[data-testid="pd-tree-node-${recycleBin(source.listKey).id}"]`
+        );
+
+        dispatch(binElement, 'dragover', data);
+        expect(drag.target()?.id).toBe(recycleBin(source.listKey).id);
+        dispatch(binElement, 'drop', data);
+        await render();
+
+        expect(remove).toHaveBeenCalled();
+        // The drop target is only an affordance: the backend routes the item itself.
+        expect(move).not.toHaveBeenCalled();
+        expect(store.entityMap()[source.id]).toBeUndefined();
+    });
+
+    it('rejects a recycle bin belonging to another list', async () => {
+        const source = folder('Contracts');
+        const other = source.listKey === 'EXECUTION' ? 'MARKETING' : 'EXECUTION';
+        const remove = spyOn(api, 'delete').and.callThrough();
+        const data = new DataTransfer();
+        dispatch(element(`[data-testid="pd-row-${source.id}"]`), 'dragstart', data);
+        const binElement = element(`[data-testid="pd-tree-node-${recycleBin(other).id}"]`);
+
         dispatch(binElement, 'dragover', data);
         expect(drag.target()).toBeNull();
         dispatch(binElement, 'drop', data);
         await render();
-        expect(move).not.toHaveBeenCalled();
+
+        expect(remove).not.toHaveBeenCalled();
+        expect(store.entityMap()[source.id]).toBeDefined();
     });
 
     it('retains drag source elements when hover expansion loads more nodes', async () => {

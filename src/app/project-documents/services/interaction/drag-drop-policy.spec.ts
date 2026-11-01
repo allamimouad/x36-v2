@@ -48,6 +48,46 @@ describe('internal drag policy', () => {
         expect(canDropItem(source, deleted, 'copy', policy)).toBeFalse();
     });
 
+    it('accepts a delete only on the bin of the source own list', () => {
+        const bin = folder('bin', root.id, '/execution/bin');
+        bin.isRecycleBin = true;
+        const otherBin = folder('other-bin', root.id, '/marketing/bin');
+        otherBin.isRecycleBin = true;
+        otherBin.listKey = 'MARKETING';
+        const deleted = folder('deleted', bin.id, '/execution/bin/former');
+        Object.assign(policy.entities, { bin, otherBin, deleted });
+        policy.recycleBins = [bin, otherBin];
+
+        expect(canDropItem(source, bin, 'delete', policy)).toBeTrue();
+        // The backend routes a deleted item to its own list bin whichever was aimed at.
+        expect(canDropItem(source, otherBin, 'delete', policy)).toBeFalse();
+        // A record inside a bin is not itself a bin.
+        expect(canDropItem(source, deleted, 'delete', policy)).toBeFalse();
+        // An ordinary folder cannot absorb a delete either.
+        expect(canDropItem(source, target, 'delete', policy)).toBeFalse();
+    });
+
+    it('refuses to delete what it would refuse to move out of its parent', () => {
+        const bin = folder('bin', root.id, '/execution/bin');
+        bin.isRecycleBin = true;
+        Object.assign(policy.entities, { bin });
+        policy.recycleBins = [bin];
+
+        source.accessLevel = Access.Protected;
+        expect(canDropItem(source, bin, 'delete', policy)).toBeFalse();
+
+        source.accessLevel = Access.Readonly;
+        expect(canDropItem(source, bin, 'delete', policy)).toBeFalse();
+
+        source.accessLevel = undefined;
+        root.accessLevel = Access.Readonly;
+        expect(canDropItem(source, bin, 'delete', policy)).toBeFalse();
+
+        root.accessLevel = undefined;
+        policy.readonlyLists = new Map([['EXECUTION', true]]);
+        expect(canDropItem(source, bin, 'delete', policy)).toBeFalse();
+    });
+
     it('blocks self, cached descendants and unresolved path descendants', () => {
         const child = folder('child', source.id, '/execution/source/child');
         const resolved = folder('resolved', 'uncached', '/execution/source/a/b');

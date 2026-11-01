@@ -747,13 +747,12 @@ export class ProjectDocuments {
 
     protected async deleteNode(node: FileSystemNode): Promise<void> {
         if (this.isWriting(node.id)) { return; }
-        const removedIds = this.cachedSubtreeIds(node.id);
         const currentId = this.navigation.currentFolderId();
-        const removesCurrent = currentId !== null && removedIds.includes(currentId);
         const parentId = node.parentId;
         this.setWriting(node.id, true);
         try {
-            await this.fileSystem.delete(node);
+            const removedIds = await this.fileSystem.delete(node);
+            const removesCurrent = currentId !== null && removedIds.includes(currentId);
             this.navigation.pruneReferences(removedIds);
             this.clipboard.pruneReferences(removedIds);
             if (removesCurrent && parentId) { this.navigation.navigateTo(parentId); }
@@ -1520,16 +1519,6 @@ export class ProjectDocuments {
             next.delete(id);
         }
         this.mutationWritingIds.set(next);
-    }
-
-    private cachedSubtreeIds(id: string): string[] {
-        const result = [id];
-        for (const node of this.fileSystem.entities()) {
-            if (node.parentId !== id) { continue; }
-            result.push(...isFolder(node) ? this.cachedSubtreeIds(node.id) : [node.id]);
-        }
-
-        return result;
     }
 
     /** Build the `p-tree` nodes for one loaded document-list root. */

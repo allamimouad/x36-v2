@@ -15,8 +15,10 @@
       <span
         class="pd-tree-node"
         [attr.data-testid]="'pd-tree-node-' + node.key"
+        [class.pd-tree-node-external-drop-target]="internalDropTargetId() === node.key"
         (dragenter)="onExternalFolderDragOver($event, node)"
         (dragover)="onExternalFolderDragOver($event, node)"
+        (drop)="onExternalFolderDrop($event, node)"
       >
         <pr-file-system-icon name="recyclebin" />
         <span class="pd-tree-label">{{ node.label }}</span>

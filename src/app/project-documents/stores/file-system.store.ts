@@ -518,18 +518,22 @@ export const FileSystemStore = signalStore(
             return renamed;
         };
 
+        /** Deletes `input` and returns the cache ids it removed, as `move` does. */
         const deleteNodes = async (
             input: string | string[] | FileSystemNode
-        ): Promise<void> => {
+        ): Promise<string[]> => {
             const node = _mutationNode(input, 'delete');
             const subtree = store.entityMap()[node.id] ? _cachedSubtree(node.id) : [];
             await firstValueFrom(api.delete(_requireProjectId(), node));
-            if (subtree.length === 0) { return; }
-            patchState(store, removeEntities(subtree.map((candidate) => candidate.id)));
+            if (subtree.length === 0) { return []; }
+            const removed = subtree.map((candidate) => candidate.id);
+            patchState(store, removeEntities(removed));
             _adjustParentCount(node.parentId, -1);
             // Clear loaded markers for every removed folder, not just the root — loaded
             // descendant folders would otherwise leave orphaned ids in the loaded set.
             _unmarkLoaded(...subtree.filter(isFolder).map((folder) => folder.id));
+
+            return removed;
         };
 
         const deleteRecycleBinNodes = async (ids: string | string[]): Promise<void> => {

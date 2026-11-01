@@ -3,7 +3,15 @@ import type { FileSystemNode } from './file-system-node.model';
 export const INTERNAL_DRAG_TYPE = 'application/x-project-documents-item';
 
 export type DragSurface = 'tree' | 'table' | 'current-folder';
+/** Assigned straight to `dataTransfer.dropEffect`, which accepts no other values. */
 export type DragEffect = 'move' | 'copy';
+
+/**
+ * What a drop will actually do. Resolved from the target, not the keyboard: a recycle
+ * bin means delete. Kept apart from `DragEffect` because the native drop effect has no
+ * `delete` — a delete still shows `move`, since the item leaves either way.
+ */
+export type DropIntent = DragEffect | 'delete';
 
 export interface ItemDragRequest {
     event: DragEvent;

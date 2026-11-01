@@ -14,7 +14,8 @@ The feature uses the existing `FileSystemApi.move/copy` and store signatures.
   Leaving/end/cancel/drop/project changes/destruction clear drag state and timers.
 - Success normally keeps the view. Moving the viewed folder or an ancestor opens
   the destination after success. Failure leaves cache/view/references unchanged.
-- Roots/bins cannot be dragged; bins/deleted records cannot receive drops.
+- Roots/bins cannot be dragged. A bin receives drops and deletes (see below); deleted
+  records inside one are not bins and still receive none.
   Readonly/protected sources can be copied to a writable target. Moves additionally
   require an editable source and writable source parent/list. Protected targets
   allow contents; readonly targets/lists do not. Self/descendant/busy/unavailable
@@ -182,6 +183,48 @@ scoping: callers capture a connection token and mutations refuse at entry. That 
 close the deferred gap in the same stroke. Bulk paste will need the per-item guard too,
 the moment paste loops through the queue — today it is single-node, so it has no
 queue to go stale.
+
+## Drag to the recycle bin (2026-11-01)
+
+Dropping on a bin deletes. `DropIntent = 'move' | 'copy' | 'delete'` is resolved from
+the **target**, not the keyboard; `DragEffect` stays move/copy because it is assigned
+straight to `dataTransfer.dropEffect`, and a delete still shows `move` since the item
+leaves. Ctrl keeps the intent at `copy`, which a bin cannot satisfy, so the policy
+rejects it instead of deleting something the user asked to copy.
+
+Only the bin of the source's own list accepts the drop: `FileSystemApi.delete` takes no
+target and the backend routes the item to its own list's bin regardless of which was
+aimed at, so any other bin would show the item going somewhere it will not go.
+`canDeleteItem` and `canMoveItem` share `canLeaveParent`, so a delete refuses exactly
+what a move out of the same parent would refuse.
+
+`FileSystemStore.delete` now returns the cache ids it removed, as `move` does. That fed
+the batch's pruning and removed the duplicate subtree walk the container kept; the queue,
+per-item failure isolation, abandoned-item guard and summary all applied unchanged.
+`finishBatch` replaces `finishMove`: when a delete takes the viewed folder it opens that
+item's **parent**, matching the context-menu delete, since a bin is not somewhere to
+open.
+
+One wiring trap, worth knowing if a drop ever seems to do nothing: the tree renders bins
+through a separate template branch which carried `dragenter`/`dragover` but **no
+`drop`**. The target highlighted and the drop vanished. That branch now has a `drop`
+binding, and `onExternalFolderDrop` turns away external file drops with
+`isNodeDroppable` — previously the missing binding did that job implicitly.
+
+Known gap: `deleteNode` refreshes an active search, the drag path does not, and the move
+path never did either. Deleting by drag while a search is open leaves a stale result row,
+exactly as moving by drag already does. It belongs with search work, not here.
+
+Still deferred: bulk delete from the context menu, which stays disabled on a
+multi-selection, so the menu and the drag disagree — it needs a bulk confirmation of its
+own. Dragging *out* of a bin to restore is deliberately absent:
+`restoreRecycleBinItem` returns an item to its original location, not the drop target.
+
+## Verification (2026-11-01)
+
+- Full headless suite **207 passed** (203 plus 4). Reverting the policy branch failed
+  exactly the four new behavioural tests.
+- Production build, both TypeScript projects and repository lint pass.
 
 ## Verification (2026-10-29)
 

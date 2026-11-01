@@ -192,6 +192,9 @@ export class FolderTree {
 
             return;
         }
+        // Bins and readonly folders now carry a drop binding for internal drags, so an
+        // external file drop has to be turned away here rather than by its absence.
+        if (!this.isNodeDroppable(node)) { return; }
         if (node.data) {
             this.externalFolderDropped.emit({ event, target: node.data });
         }

@@ -6,7 +6,36 @@
 
 ## Current Status
 
-**Active work (2026-10-28): multi-select drag-and-drop.** The reviewed fixes below are
+**Active work (2026-11-01): drag to the recycle bin deletes.** Multi-select drag-and-drop
+is pushed (`53ff657`); this builds on it and is uncommitted.
+
+A new `DropIntent` (`move | copy | delete`) is resolved from the **target**, not the
+keyboard — `DragEffect` stays move/copy because it is assigned straight to
+`dataTransfer.dropEffect`, and a delete still shows `move`. Holding Ctrl keeps the
+intent at `copy`, which a bin cannot satisfy, so it is rejected rather than quietly
+deleting. Only the bin of the source's own list accepts the drop: `delete` takes no
+target and the backend routes the item to its own list's bin anyway, so any other bin
+would misrepresent the destination. No confirmation (the item is recoverable and the
+gesture is deliberate), and a multi-selection deletes every item.
+
+`FileSystemStore.delete` now returns the ids it removed, as `move` does, which fed the
+batch's pruning and let the container drop its duplicate subtree walk. `finishBatch`
+replaces `finishMove`: a delete that takes the viewed folder opens that item's parent,
+matching the context-menu delete, since a bin is not somewhere to open. The tree's bin
+template branch had `dragover` but no `drop`, so the target highlighted and the drop
+vanished; it now has one, and external file drops are turned away explicitly by
+`isNodeDroppable` instead of by the binding's absence.
+
+Known gap, recorded rather than fixed: deleting by drag does not refresh an active
+search, exactly as moving by drag already does not. Still deferred: bulk delete from the
+context menu (disabled on a multi-selection, so the menu and the drag disagree) and
+dragging out of a bin to restore, which would misrepresent where the item lands.
+
+**Verification (2026-11-01):** full headless suite **207/207** (203 plus 4), production
+build, both TypeScript projects and repository lint pass. Reverting the policy branch
+failed exactly the four new behavioural tests.
+
+**Earlier record (2026-10-28): multi-select drag-and-drop.** The reviewed fixes below are
 committed (`e5b5819`, plus `2d3c209` for stale operation-doc status lines); nothing is
 pushed. Multi-select itself is new and uncommitted.
 
@@ -346,9 +375,10 @@ The user requested a follow-up commit after `62ce0fa` and will push manually.
 
 ## Current Focus
 
-1. Manually check multi-select in a desktop browser: Ctrl/Shift selection, dragging a
-   selection to a tree folder and a table row, Ctrl-drag to copy, a selection holding a
-   folder and a file inside it, and one where a single item is protected.
+1. Manually check in a desktop browser: Ctrl/Shift selection; dragging a selection to a
+   tree folder and a table row; Ctrl-drag to copy; a selection holding a folder and a
+   file inside it; one where a single item is protected; and dragging one item and a
+   selection onto each list's bin, plus onto the other list's bin.
 2. Confirm physical Escape and move/copy/no-drop cursor icons in desktop Edge/Chrome,
    the last acceptance item for the feature. The code review is done (2026-10-27) and
    its three confirmed defects are fixed, including the current-folder indicator

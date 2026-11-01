@@ -1,6 +1,6 @@
 import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 import type { DocumentListKey } from '../../models/document-list.model';
-import type { DragContext, DragEffect } from '../../models/drag-state.model';
+import type { DragContext, DropIntent } from '../../models/drag-state.model';
 import type { FileSystemNode, FolderNode } from '../../models/file-system-node.model';
 import { containsNode } from '../../utils/node-containment.utils';
 
@@ -48,23 +48,45 @@ function isReadonly(node: FileSystemNode, policy: DragPolicy): boolean {
 export function canDropItem(
     source: FileSystemNode,
     target: FolderNode,
-    effect: DragEffect,
+    intent: DropIntent,
     policy: DragPolicy
 ): boolean {
     if (!canStartDrag(source, policy) || isReadonly(target, policy) ||
-        isInRecycleBin(target, policy) || isBusy(target, policy) || isUnavailable(target, policy)) {
+        isBusy(target, policy) || isUnavailable(target, policy)) {
         return false;
     }
+    if (intent === 'delete') { return canDeleteItem(source, target, policy); }
+    if (isInRecycleBin(target, policy)) { return false; }
     if (containsNode(source, target, policy.entities)) { return false; }
-    if (effect === 'copy') { return true; }
+    if (intent === 'copy') { return true; }
 
     return canMoveItem(source, target, policy);
 }
 
+/**
+ * Dropping on a bin deletes. Only the bin of the source's own list may accept it: the
+ * backend routes a deleted item to its own list's bin whichever one was aimed at, so
+ * any other bin would show the item going somewhere it will not go. Records already
+ * inside a bin are not bins themselves, so they still reject drops.
+ */
+function canDeleteItem(
+    source: FileSystemNode,
+    target: FolderNode,
+    policy: DragPolicy
+): boolean {
+    return target.isRecycleBin && target.listKey === source.listKey &&
+        canLeaveParent(source, policy);
+}
+
 function canMoveItem(source: FileSystemNode, target: FolderNode, policy: DragPolicy): boolean {
+    return source.parentId !== target.id && canLeaveParent(source, policy);
+}
+
+/** Source-side rules shared by move and delete: may this item leave where it is? */
+function canLeaveParent(source: FileSystemNode, policy: DragPolicy): boolean {
     const parent = source.parentId === null ? undefined : policy.entities[source.parentId];
 
-    return parent !== undefined && source.parentId !== target.id &&
+    return parent !== undefined &&
         source.accessLevel !== FolderNodeResponseAccessLevelEnum.Protected &&
         !isReadonly(source, policy) && !isReadonly(parent, policy);
 }

@@ -4,7 +4,7 @@ import {
 import type { DocumentListRoots } from '../../models/document-list.model';
 import {
     type DragContext, type DragEffect, type DragState, type DragSurface,
-    type DragTarget, INTERNAL_DRAG_TYPE, type ItemDragRequest
+    type DragTarget, type DropIntent, INTERNAL_DRAG_TYPE, type ItemDragRequest
 } from '../../models/drag-state.model';
 import {
     type FileSystemNode, type FolderNode, isFolder
@@ -25,6 +25,24 @@ import { canDropItem, canStartDrag, type DragPolicy } from './drag-drop-policy';
 interface PolicyOptions {
     ignoreLoadingChildren?: boolean;
     ignoreOwnRequest?: boolean;
+}
+
+const PAST_TENSE: Record<DropIntent, string> = {
+    move: 'moved', copy: 'copied', delete: 'deleted'
+};
+
+/** How a partial batch describes the items that did not make it. */
+const SHORTFALL: Record<DropIntent, string> = {
+    move: 'stayed in place', copy: 'failed', delete: 'were not deleted'
+};
+
+/**
+ * What dropping on `target` will do. A bin means delete — but only on a plain drag:
+ * holding Ctrl asks for a copy, which a bin cannot satisfy, so the intent stays `copy`
+ * and the policy rejects it rather than quietly deleting instead.
+ */
+function intentFor(target: FolderNode, dragEffect: DragEffect): DropIntent {
+    return dragEffect === 'move' && target.isRecycleBin ? 'delete' : dragEffect;
 }
 
 /** What one item's move/copy produced, so a partial batch can be reported honestly. */
@@ -208,8 +226,9 @@ export class DragDropService {
         const sources = session.sourceIds.map((id) => entities[id]);
         if (sources.some((source) => source === undefined)) { return false; }
         const policy = this.policy(options);
+        const intent = intentFor(target, operation);
 
-        return sources.every((source) => canDropItem(source, target, operation, policy));
+        return sources.every((source) => canDropItem(source, target, intent, policy));
     }
 
     private setTarget(targetId: string, surface: DragSurface): void {
@@ -337,19 +356,22 @@ export class DragDropService {
         const sources = session.sourceIds
             .map((id) => entities[id])
             .filter((node): node is FileSystemNode => node !== undefined);
+        const target = entities[targetId];
+        if (target === undefined || !isFolder(target)) { return; }
+        const intent = intentFor(target, operation);
         const view = this.navigation.currentFolder();
         const queue = new ConcurrencyQueue(this.config.bulkOpConcurrency);
         const outcomes = await Promise.all(sources.map(
             (source) => queue.enqueue(
-                () => this.performOne(session, roots, source, targetId, operation)
+                () => this.performOne(session, roots, source, targetId, intent)
             )
         ));
         if (!this.isCurrentProject(session.projectId, roots)) { return; }
-        // Items that never ran are neither moved nor failed, and must not be counted as
+        // Items that never ran are neither done nor failed, and must not be counted as
         // either: both helpers below read a missing error as success.
         const settled = outcomes.filter((outcome) => outcome.abandoned !== true);
-        if (operation === 'move') { this.finishMove(settled, view, targetId); }
-        this.report(settled, operation);
+        if (intent !== 'copy') { this.finishBatch(intent, settled, view, targetId); }
+        this.report(settled, intent);
     }
 
     /**
@@ -366,44 +388,78 @@ export class DragDropService {
         roots: DocumentListRoots | null,
         node: FileSystemNode,
         targetId: string,
-        operation: DragEffect
+        intent: DropIntent
     ): Promise<ItemOutcome> {
         if (!this.isCurrentProject(session.projectId, roots)) {
             return { node, removed: [], abandoned: true };
         }
         try {
-            if (operation === 'copy') {
+            if (intent === 'copy') {
                 await this.fileSystem.copy(node.id, targetId);
 
                 return { node, removed: [] };
             }
+            // A delete ignores the target: the backend routes the item to its own
+            // list's bin, which the policy has already matched against.
+            const removed = intent === 'delete'
+                ? await this.fileSystem.delete(node.id)
+                : await this.fileSystem.move(node.id, targetId);
 
-            return { node, removed: await this.fileSystem.move(node.id, targetId) };
+            return { node, removed };
         } catch (error) {
             return { node, removed: [], error };
         }
     }
 
     /**
-     * Prune what the successful moves removed and, when the viewed folder went with
-     * them, open the destination — decided once for the batch rather than per item.
+     * Prune what the successful items removed and, when the viewed folder went with
+     * them, open somewhere valid — decided once for the batch rather than per item.
      */
-    private finishMove(
+    private finishBatch(
+        intent: DropIntent,
         outcomes: ItemOutcome[],
         view: FolderNode | null,
         targetId: string
     ): void {
-        const moved = outcomes.filter((outcome) => outcome.error === undefined);
-        if (moved.length === 0) { return; }
-        const removed = moved.flatMap((outcome) => outcome.removed);
+        const done = outcomes.filter((outcome) => outcome.error === undefined);
+        if (done.length === 0) { return; }
+        const removed = done.flatMap((outcome) => outcome.removed);
         const currentId = this.navigation.currentFolderId();
-        const current = this.navigation.currentFolder() ?? (currentId === view?.id ? view : null);
-        const entities = this.fileSystem.entityMap();
-        const affected = removed.includes(currentId ?? '') || current !== null &&
-            moved.some((outcome) => containsNode(outcome.node, current, entities));
+        const affected = this.viewWasTaken(done, removed, view, currentId);
         this.navigation.pruneReferences(removed);
         this.clipboard.pruneReferences(removed);
-        if (affected) { this.navigation.navigateTo(targetId); }
+        if (!affected) { return; }
+        const destination = intent === 'delete'
+            ? this.parentOfRemover(done, currentId)
+            : targetId;
+        if (destination !== null) { this.navigation.navigateTo(destination); }
+    }
+
+    /** Whether the batch carried off the folder currently being viewed. */
+    private viewWasTaken(
+        done: ItemOutcome[],
+        removed: string[],
+        view: FolderNode | null,
+        currentId: string | null
+    ): boolean {
+        const current = this.navigation.currentFolder() ?? (currentId === view?.id ? view : null);
+        const entities = this.fileSystem.entityMap();
+
+        return removed.includes(currentId ?? '') || current !== null &&
+            done.some((outcome) => containsNode(outcome.node, current, entities));
+    }
+
+    /**
+     * Where to land after a delete took the viewed folder. A bin is not somewhere to
+     * open, so fall back to the parent of whichever item removed the view — the same
+     * destination the context-menu delete uses.
+     */
+    private parentOfRemover(done: ItemOutcome[], currentId: string | null): string | null {
+        const remover = done.find(
+            (outcome) => outcome.removed.includes(currentId ?? '')
+        ) ?? done[0];
+
+        return remover.node.parentId;
     }
 
     /**
@@ -411,9 +467,9 @@ export class DragDropService {
      * back: undoing them would mean issuing deletes that can fail in turn, on items the
      * user can see.
      */
-    private report(outcomes: ItemOutcome[], operation: DragEffect): void {
+    private report(outcomes: ItemOutcome[], intent: DropIntent): void {
         if (outcomes.length === 0) { return; }
-        const verb = operation === 'copy' ? 'copied' : 'moved';
+        const verb = PAST_TENSE[intent];
         const failed = outcomes.filter((outcome) => outcome.error !== undefined);
         if (failed.length === outcomes.length) {
             this.notifications.error(failed[0].error);
@@ -428,11 +484,9 @@ export class DragDropService {
             return;
         }
         const names = failed.map((outcome) => outcome.node.name).join(', ');
-        // A partly-failed move leaves the selection split across two folders, so name
-        // what stayed rather than only what worked.
-        const tail = operation === 'copy'
-            ? `${failed.length} failed: ${names}.`
-            : `${failed.length} stayed in place: ${names}.`;
+        // A partly-failed move or delete leaves the selection split, so name what did
+        // not make it rather than only what worked.
+        const tail = `${failed.length} ${SHORTFALL[intent]}: ${names}.`;
         this.notifications.warning(
             `${outcomes.length - failed.length} of ${outcomes.length} items ${verb}. ${tail}`
         );

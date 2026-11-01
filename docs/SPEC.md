@@ -729,7 +729,14 @@ receive source, target, active-state, and draggable-ID inputs; they inject no st
 
 `drag-drop-policy.ts` rechecks source/destination availability, current write/edit
 state, node access flags, parent access, and document-list access on hover and drop.
-Roots and bins cannot be dragged; bins and deleted records cannot receive drops.
+Roots and bins cannot be dragged. Dropping on a recycle bin **deletes** (2026-11-01):
+the bin is only an affordance, since `FileSystemApi.delete` takes no target and the
+backend routes the item to its own list's bin — so only the bin matching the source's
+`listKey` accepts the drop, and any other bin would misrepresent where the item goes.
+Holding Ctrl asks for a copy, which a bin cannot satisfy, so that is rejected rather
+than silently deleting. There is no confirmation: the item is recoverable from the bin
+and the gesture is deliberate. A multi-selection deletes every item. Deleted records
+inside a bin are not bins and still receive no drops.
 Self/descendant drops and same-parent moves are rejected. Same-parent Ctrl-copy
 retains the existing backend/mock KeepBoth naming (locally `name - Copy`, then
 `name - Copy (2)`). Protected/readonly sources may be copied to a writable target.

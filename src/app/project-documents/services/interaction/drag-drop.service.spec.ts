@@ -248,6 +248,46 @@ describe('DragDropService native session and mutations', () => {
         expect(notifications.error).not.toHaveBeenCalled();
     });
 
+    function executionBin(): FolderNode {
+        const bin = store.entities().find((node): node is FolderNode =>
+            isFolder(node) && node.isRecycleBin && node.listKey === source.listKey);
+        if (!bin) { throw new Error('Expected a bin for the source list'); }
+
+        return bin;
+    }
+
+    it('deletes every item of a selection dropped on the bin', async () => {
+        const remove = spyOn(api, 'delete').and.callThrough();
+        const move = spyOn(api, 'move').and.callThrough();
+        const [first, second] = siblingsOf(source, 2);
+
+        service.startDrag({
+            event: event('dragstart'),
+            node: first,
+            selectedIds: new Set([first.id, second.id])
+        });
+        await service.drop(event('drop'), executionBin().id);
+
+        expect(remove).toHaveBeenCalledTimes(2);
+        expect(move).not.toHaveBeenCalled();
+        expect(store.entityMap()[first.id]).toBeUndefined();
+        expect(store.entityMap()[second.id]).toBeUndefined();
+        expect(notifications.success).toHaveBeenCalled();
+    });
+
+    it('opens the parent, not the bin, when the viewed folder is deleted', async () => {
+        await store.loadChildren(source.id);
+        navigation.initialize({ currentFolderId: source.id, expandedRootIds: [] });
+        clipboard.copy([source]);
+
+        service.startDrag({ event: event('dragstart'), node: source });
+        await service.drop(event('drop'), executionBin().id);
+
+        expect(store.entityMap()[source.id]).toBeUndefined();
+        expect(navigation.currentFolderId()).toBe(source.parentId);
+        expect(clipboard.isEmpty()).toBeTrue();
+    });
+
     it('does not inspect protected payload data during dragover', () => {
         start();
         const read = spyOn(data, 'getData').and.throwError('Protected drag data');
