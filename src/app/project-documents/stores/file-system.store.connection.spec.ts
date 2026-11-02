@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
+import type { DocumentListing } from '../models/document-listing.model';
 import type { FileSystemNode, FolderNode } from '../models/file-system-node.model';
 import { isFolder } from '../models/file-system-node.model';
 import { FileSystemApi } from '../services/file-system/file-system-api';
@@ -83,6 +84,30 @@ describe('FileSystemStore mutation connection safety', () => {
         await expectCancelled(pending);
 
         expect(store.entityMap()[folder.id].name).toBe(folder.name);
+    });
+
+    it('discards a listing for a folder deleted while it was loading', async () => {
+        const folder = contracts();
+        const listing = new Subject<DocumentListing>();
+        spyOn(api, 'listDocuments').and.returnValue(listing);
+        const load = store.loadChildren(folder.id);
+
+        // The delete lands first and takes the folder with it.
+        await store.delete(folder.id);
+        expect(store.entityMap()[folder.id]).toBeUndefined();
+
+        listing.next({
+            currentFolder: folder,
+            folders: [{ ...folder, id: 'ghost', parentId: folder.id, name: 'Ghost' }],
+            files: []
+        });
+        listing.complete();
+        await load;
+
+        // Nothing the delete removed may come back, and a deleted folder is not loaded.
+        expect(store.entityMap()[folder.id]).toBeUndefined();
+        expect(store.entityMap()['ghost']).toBeUndefined();
+        expect(store.folderIdsWithLoadedChildren()).not.toContain(folder.id);
     });
 
     it('removes descendants that were resolved while the delete was pending', async () => {

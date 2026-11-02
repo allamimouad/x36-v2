@@ -295,6 +295,11 @@ export const FileSystemStore = signalStore(
                 // describes the previous connection and must not reach the new cache,
                 // where the stale-entity pruning would also act on it.
                 if (revision !== connectionRevision) { return; }
+                // The folder may have been deleted while its listing was in flight.
+                // Applying it would reinsert the removed subtree as orphans and mark a
+                // node that no longer exists as loaded. A delete does not bump the
+                // connection revision, so the check above does not cover this.
+                if (!store.entityMap()[parentId]) { return; }
                 _applyListing(listing);
             } catch (e) {
                 if (revision === connectionRevision) {

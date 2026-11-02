@@ -44,15 +44,23 @@ after the request through the shared `removedSubtreeOf` that `move` already used
 `reportMutationFailure` so create, rename, delete and paste all suppress a stale
 completion instead of reporting a false failure.
 
+A further review found a third: a folder listing still in flight when its folder was
+deleted was applied anyway, reinserting the removed subtree as orphans and marking a
+deleted folder as loaded. `_loadChildren` discarded responses from a changed connection,
+but a delete does not bump the connection revision; it now also checks the folder is
+still cached. `loadPathListing` remains unguarded — it has neither check, and a revision
+check there needs the path editor to suppress a stale completion the way the toasts now
+do, so it is tracked rather than folded in.
+
 Still open from that review: drag operations do not refresh an active search, so a
 deleted or moved item can leave a stale result row. It needs a seam between the drag
 service and the container's `refreshActiveSearch`, and it affects move just as much, so
 it is tracked separately rather than folded in here.
 
-**Verification (2026-11-01):** full headless suite **211/211** (203 plus 8), production
+**Verification (2026-11-02):** full headless suite **212/212** (203 plus 9), production
 build, both TypeScript projects and repository lint pass. Reverting the policy branch
-failed exactly the four drag tests; reverting the two store fixes failed exactly the
-four store tests.
+failed exactly the four drag tests; reverting each store fix failed exactly its own
+tests.
 
 **Earlier record (2026-10-28): multi-select drag-and-drop.** The reviewed fixes below are
 committed (`e5b5819`, plus `2d3c209` for stale operation-doc status lines); nothing is

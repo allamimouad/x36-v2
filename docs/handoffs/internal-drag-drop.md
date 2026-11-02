@@ -240,6 +240,12 @@ delete a whole selection.
   no longer differ — and uses `clearRemovedFolderMarkers` rather than a bare
   `_unmarkLoaded`.
 
+- **A folder listing could resurrect a deleted subtree.** `_loadChildren` discarded a
+  response whose connection had changed, but a delete does not bump the connection
+  revision — so a listing still in flight when its folder was deleted applied anyway,
+  reinserting the removed nodes as orphans and marking a folder that no longer exists as
+  loaded. It now also checks the folder is still cached before applying.
+
 Because `_checkConnection` throws `cancelled`, adding it to three more mutations would
 have produced three new false-error toasts for operations that actually succeeded — the
 bug already fixed once on the paste path. `reportPasteFailure` is therefore generalised
@@ -247,9 +253,14 @@ to `reportMutationFailure`, and create, rename, delete and paste all report thro
 
 ## Verification (2026-11-01)
 
-- Full headless suite **211 passed** (203 plus 8). Reverting the policy branch failed
-  exactly the four drag tests; reverting the two store fixes failed exactly the four
-  store tests.
+- Full headless suite **212 passed** (203 plus 9). Reverting the policy branch failed
+  exactly the four drag tests; reverting each store fix failed exactly its own tests.
+- **Still unguarded: `loadPathListing`.** It has neither a connection check nor an
+  existence check, so a path resolved across a project switch applies to the new
+  project's cache. An existence check would be wrong there — resolving a folder that is
+  not cached is the method's purpose — but a revision check belongs. It is left out
+  here because `_checkConnection` throws, and `resolveAndOpen` feeds the path editor's
+  error state, so the caller needs the same stale-completion suppression the toasts got.
 - Production build, both TypeScript projects and repository lint pass.
 
 ## Verification (2026-10-29)
