@@ -52,10 +52,9 @@ still cached. `loadPathListing` remains unguarded — it has neither check, and 
 check there needs the path editor to suppress a stale completion the way the toasts now
 do, so it is tracked rather than folded in.
 
-Still open from that review: drag operations do not refresh an active search, so a
-deleted or moved item can leave a stale result row. It needs a seam between the drag
-service and the container's `refreshActiveSearch`, and it affects move just as much, so
-it is tracked separately rather than folded in here.
+Everything deliberately left undone is tracked in "Deferred / Known Issues" below and
+in `docs/TODO.md` (items 7-9, plus the narrowed item 3), so it does not live only in
+this narrative.
 
 **Verification (2026-11-02):** full headless suite **212/212** (203 plus 9), production
 build, both TypeScript projects and repository lint pass. Reverting the policy branch
@@ -752,6 +751,20 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
 
 _Things noticed during implementation but not fixed in the current phase. Review before starting the next phase._
 
+- **Drag operations do not refresh an active search** (2026-11-01, review finding):
+  `deleteNode` calls `refreshActiveSearch()`, the drag path cannot. Deleting a searched
+  folder by dragging it to its bin can leave the result row visible; move and copy leave
+  equally stale rows and always have. Needs a seam between `DragDropService` and the
+  container, which owns search. Detail: `docs/TODO.md` item 7.
+- **Bulk delete is unavailable from the context menu** (2026-11-01): dragging a
+  multi-selection to a bin deletes all of it, but the menu's Delete stays disabled for
+  that selection, so the two disagree. Needs a bulk confirmation per `PHASES.md`
+  Phase 3. Detail: `docs/TODO.md` item 8.
+- **A missed `dragend` can leave a drag session latched** (2026-10-27, unproven): the
+  next external file drag would be routed as internal and silently lost. The MIME token
+  prevents a wrong mutation and `Escape` recovers it. Reproduce before adding a
+  document-level fallback. Detail: `docs/TODO.md` item 9.
+
 - **Real descendant-copy rejection needs verification** (2026-07-31, review finding):
   the mock rejects copying a folder into itself or a descendant, but the existing real
   copy service has not yet been confirmed. Frontend guards are cache-based and can
@@ -759,7 +772,16 @@ _Things noticed during implementation but not fixed in the current phase. Review
   `Contracts/Vendors/2026` scenario against the real API on 2026-08-01, capture the
   response, and confirm that no partial copy is created. Potential P1 if the backend
   does not reject safely. Full procedure: `docs/TODO.md` item 6.
-- **Stale async results after a project switch** (2026-07-31, review finding):
+- **Stale async results after a project switch** (2026-07-31, review finding;
+  **store half fixed 2026-11-02**): every `FileSystemStore` mutation now captures
+  `connectionRevision` and checks it after its request (`move`/`copy` already did;
+  `createFolder`, `rename`, `delete` added), `loadChildren` discards listings from a
+  replaced connection or for a folder deleted mid-flight, and callers suppress the
+  `cancelled` code through `reportMutationFailure`. **Still open:** `loadPathListing`
+  has no check at all, the external-drop flow still awaits its decode without
+  confirming the session, and `UploadService.reset()` keeps its single-worker
+  preparation queue. Original finding below; full detail in `docs/TODO.md` item 3.
+
   `copy` can start against project A, finish after project B has initialized,
   and then insert A's returned node into B's cache and alter B's parent count.
   External-drop directory decoding has the same race before upload enqueueing:

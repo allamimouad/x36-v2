@@ -28,6 +28,23 @@
 
 ## 3. A stale async result can be written into a newly selected project
 
+> **Status (2026-11-02): the store half is done; the rest is still open.** Every
+> `FileSystemStore` mutation now captures `connectionRevision` and calls
+> `_checkConnection` after its request — `move` and `copy` already did, and
+> `createFolder`, `rename` and `delete` were added. `loadChildren` discards a listing
+> from a replaced connection, and also one whose folder was deleted while it was in
+> flight. Callers route failures through `reportMutationFailure`, which suppresses the
+> `cancelled` code so a discarded-but-successful operation is not reported as a failure.
+>
+> **Still open, and the reason this item stays:**
+> - `loadPathListing` has **no** check at all. An existence check would be wrong there
+>   — resolving an uncached folder is the method's purpose — but a revision check
+>   belongs. It needs `resolveAndOpen`'s caller to suppress a stale completion too,
+>   since it feeds the path editor's error state rather than a toast.
+> - The external-drop upload flow still awaits `ExternalDropService.read(...)` without
+>   confirming the project session.
+> - `UploadService.reset()` still retains the single-worker directory-preparation queue.
+
 - **Where**:
   - `src/app/project-documents/stores/file-system.store.ts`, currently visible
     in `copy`: it starts the API call with the current project id, awaits the
@@ -248,6 +265,46 @@
   of `/Contracts`.
 - **Status / priority**: verification pending; potential P1 if the real backend does
   not reject the operation safely.
+
+## 7. Drag operations do not refresh an active search
+
+- **Where**: `src/app/project-documents/services/interaction/drag-drop.service.ts` —
+  the batch completion path (`finishBatch` / `report`) has no search awareness.
+- **Problem**: `deleteNode` in the container calls `refreshActiveSearch()` after a
+  delete; the drag path cannot. Search for a folder, then drag it from the tree into
+  its bin: the result row can stay visible after the delete succeeds. Moving and
+  copying by drag leave equally stale rows — this predates drag-to-bin, but a deleted
+  item makes it a ghost rather than merely out of date.
+- **Suggested fix**: give the container a seam to react to a completed drag mutation —
+  the service already takes a context getter through `connect(...)`, so the reverse
+  direction fits the existing shape — and call `refreshActiveSearch()` from there.
+  Do not inject search into the drag service; the container owns search.
+- **Priority**: P2. Visible but narrow, and it affects move identically.
+
+## 8. Bulk delete is unavailable from the context menu
+
+- **Where**: `src/app/project-documents/project-documents.ts` — `isMultiSelected`
+  disables Rename, Copy and Delete while more than one row is selected.
+- **Problem**: dragging a multi-selection onto a recycle bin deletes every item, but
+  the context menu's Delete stays disabled for that same selection. The two disagree,
+  and the menu looks broken rather than deliberate.
+- **Suggested fix**: a bulk confirmation ("Delete 5 items?") per `PHASES.md` Phase 3,
+  then the existing `ConcurrencyQueue` loop the drag already uses. The disabling is
+  deliberate until that exists — it never acts on fewer items than were selected.
+- **Priority**: P2, and the natural next piece of drag/selection work.
+
+## 9. A missed `dragend` can leave a drag session latched
+
+- **Where**: `src/app/project-documents/services/interaction/drag-drop.service.ts` —
+  `handles()` returns true whenever `state()` is set, and there is no document-level
+  `dragend`/`drop` fallback.
+- **Problem**: if `dragend` is never delivered — the source element torn out of the DOM
+  mid-drag, or the drag ending outside the window in some browsers — the session stays
+  latched and the next external file drag is routed as internal. The MIME token still
+  prevents a wrong mutation; the cost is one silently lost upload. `Escape` recovers it.
+- **Suggested fix**: reproduce it first. Both reviews agreed it is unproven, and a
+  document-level fallback is not worth adding against a hypothesis.
+- **Priority**: P3 until reproduced.
 
 > (Two former items were resolved: `initialize`'s reduce-with-spread pipeline —
 > 2026-07-06, by the reactive `connectProject` refactor — and the duplicated
