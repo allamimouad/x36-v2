@@ -16,6 +16,8 @@ The feature uses the existing `FileSystemApi.move/copy` and store signatures.
   the destination after success. Failure leaves cache/view/references unchanged.
 - Roots/bins cannot be dragged. A bin receives drops and deletes (see below); deleted
   records inside one are not bins and still receive none.
+- Search results are draggable, one row at a time (no multi-selection outside the
+  right-pane table). Multi-selection in the table is implemented.
   Readonly/protected sources can be copied to a writable target. Moves additionally
   require an editable source and writable source parent/list. Protected targets
   allow contents; readonly targets/lists do not. Self/descendant/busy/unavailable
@@ -250,6 +252,44 @@ Because `_checkConnection` throws `cancelled`, adding it to three more mutations
 have produced three new false-error toasts for operations that actually succeeded — the
 bug already fixed once on the paste path. `reportPasteFailure` is therefore generalised
 to `reportMutationFailure`, and create, rename, delete and paste all report through it.
+
+## Drag from search results (2026-11-03)
+
+The blocker was never the backend — `api.move` takes a node — but four client-side cache
+assumptions. Search results live in `DocumentSearchService._results` and never enter
+`FileSystemStore`.
+
+The substantive one was the policy requiring the item's **parent** to be cached, to check
+whether that folder was read-only. That turned out to be the only parent permission check
+in the app: every other gate reads the item's own access, the current folder, or the
+list. So the drag was the outlier, and it is now aligned — `canLeaveParent` became
+`isMutable` (item and list only) and `canStartDrag` no longer needs the parent. The
+search blocker disappeared as a consequence rather than through a special case.
+
+The rest followed: the session keeps a `sessionNodes` snapshot so an uncached source
+survives the gesture, and `move` accepts a node as `copy`/`delete`/`rename` already did.
+The part that is easy to miss — `performOne` had to pass the **node** rather than
+`node.id`, or `_mutationNode` resolves through the cache and throws `not-found`.
+Widening `move` alone changed nothing while the caller still passed an id.
+`targetsOwnSubtree` now serves both `move` and `copy`, so an uncached folder dropped into
+its own subtree is still refused through the path comparison.
+
+Trade recorded with the user: if a file inside a read-only folder is ever returned
+without its own read-only flag, the drag is offered and the server refuses — the same
+behaviour the context-menu delete has always had.
+
+Stale result rows are handled by `DocumentSearchService.pruneReferences`, called in
+`finishBatch` beside the navigation and clipboard ones. Scoping by removed ids is right
+per intent on its own: delete and move remove ids so the row goes, copy removes none so
+the list is untouched. The search is **not** re-run — it can take seconds, and re-running
+it after every action was the thing to avoid. This also closes the stale-search gap for
+move and copy from the tree and table.
+
+## Verification (2026-11-03)
+
+- Full headless suite **216 passed**. Reverting the parent-check removal and the
+  node-passing failed exactly the two tests that cover them.
+- Production build, both TypeScript projects and repository lint pass.
 
 ## Verification (2026-11-01)
 

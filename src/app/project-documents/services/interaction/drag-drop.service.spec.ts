@@ -1,5 +1,5 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing';
-import { of, Subject, throwError } from 'rxjs';
+import { firstValueFrom, of, Subject, throwError } from 'rxjs';
 import { MessageService } from 'primeng/api';
 import { FolderNodeResponseAccessLevelEnum as Access } from '@api/model/folderNodeResponse';
 import { INTERNAL_DRAG_TYPE } from '../../models/drag-state.model';
@@ -14,6 +14,7 @@ import { MOCK_CONFIG } from '../mock/mock-config.token';
 import { FileSystemReader } from '../../stores/file-system-reader';
 import { FileSystemStore } from '../../stores/file-system.store';
 import { NavigationStore } from '../../stores/navigation.store';
+import { DocumentSearchService } from '../search/document-search.service';
 import { ClipboardService } from './clipboard.service';
 import { DragDropService } from './drag-drop.service';
 import { NotificationService } from './notification.service';
@@ -32,7 +33,7 @@ describe('DragDropService native session and mutations', () => {
     beforeEach(async () => {
         TestBed.configureTestingModule({ providers: [
             DragDropService, FileSystemStore, NavigationStore, ClipboardService,
-            NotificationService, MessageService,
+            NotificationService, MessageService, DocumentSearchService,
             { provide: FileSystemReader, useExisting: FileSystemStore },
             { provide: FileSystemApi, useClass: MockFileSystemApi },
             { provide: MOCK_CONFIG, useValue: {
@@ -286,6 +287,43 @@ describe('DragDropService native session and mutations', () => {
         expect(store.entityMap()[source.id]).toBeUndefined();
         expect(navigation.currentFolderId()).toBe(source.parentId);
         expect(clipboard.isEmpty()).toBeTrue();
+    });
+
+    it('prunes search results for what a move removed, and not for a copy', async () => {
+        const prune = spyOn(TestBed.inject(DocumentSearchService), 'pruneReferences');
+
+        start();
+        await service.drop(event('drop'), destination.id);
+
+        expect(prune).toHaveBeenCalled();
+        expect([...prune.calls.mostRecent().args[0]]).toContain(source.id);
+
+        // A copy removes nothing, so the result list must be left alone entirely.
+        prune.calls.reset();
+        const sibling = siblingsOf(source, 1)[0];
+        service.startDrag({ event: event('dragstart', true), node: sibling });
+        await service.drop(event('drop', true), destination.id);
+
+        expect(prune).not.toHaveBeenCalled();
+    });
+
+    it('moves a dragged node that was never cached', async () => {
+        // Read a child straight from the API so the store never sees it — the same
+        // position a search result is in.
+        const listing = await firstValueFrom(api.listDocuments('project', source));
+        const uncached: FileSystemNode | undefined = [...listing.folders, ...listing.files]
+            .find((child) => child.accessLevel === undefined);
+        if (!uncached) { throw new Error('Expected an unrestricted child of the source'); }
+        expect(store.entityMap()[uncached.id]).toBeUndefined();
+        const move = spyOn(api, 'move').and.callThrough();
+
+        service.startDrag({ event: event('dragstart'), node: uncached });
+        expect(service.state()?.sourceIds).toEqual([uncached.id]);
+        await service.drop(event('drop'), destination.id);
+
+        expect(move).toHaveBeenCalled();
+        expect(store.entities().some((node) =>
+            node.name === uncached.name && node.parentId === destination.id)).toBeTrue();
     });
 
     it('does not inspect protected payload data during dragover', () => {

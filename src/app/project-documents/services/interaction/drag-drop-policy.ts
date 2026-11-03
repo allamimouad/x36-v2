@@ -34,9 +34,14 @@ function isUnavailable(node: FileSystemNode, policy: DragPolicy): boolean {
     });
 }
 
+/**
+ * `parentId !== null` keeps roots undraggable. The parent itself is deliberately not
+ * required: permissions are item-level everywhere in this app, and a search result's
+ * parent is usually not cached. `containsNode` falls back to a path prefix, so the bin,
+ * busy and unavailable checks below still hold without it.
+ */
 export function canStartDrag(node: FileSystemNode, policy: DragPolicy): boolean {
     return !policy.blocked && node.parentId !== null &&
-        policy.entities[node.parentId] !== undefined &&
         !isInRecycleBin(node, policy) && !isBusy(node, policy) && !isUnavailable(node, policy);
 }
 
@@ -75,18 +80,20 @@ function canDeleteItem(
     policy: DragPolicy
 ): boolean {
     return target.isRecycleBin && target.listKey === source.listKey &&
-        canLeaveParent(source, policy);
+        isMutable(source, policy);
 }
 
 function canMoveItem(source: FileSystemNode, target: FolderNode, policy: DragPolicy): boolean {
-    return source.parentId !== target.id && canLeaveParent(source, policy);
+    return source.parentId !== target.id && isMutable(source, policy);
 }
 
-/** Source-side rules shared by move and delete: may this item leave where it is? */
-function canLeaveParent(source: FileSystemNode, policy: DragPolicy): boolean {
-    const parent = source.parentId === null ? undefined : policy.entities[source.parentId];
-
-    return parent !== undefined &&
-        source.accessLevel !== FolderNodeResponseAccessLevelEnum.Protected &&
-        !isReadonly(source, policy) && !isReadonly(parent, policy);
+/**
+ * Source-side rules shared by move and delete. Item-level only, matching every other
+ * permission gate in the app — the context menus, the tree, the table and the store all
+ * read the item's own access and its list, never its parent's. A read-only item cannot
+ * be moved, renamed or deleted; one that is not, can.
+ */
+function isMutable(source: FileSystemNode, policy: DragPolicy): boolean {
+    return source.accessLevel !== FolderNodeResponseAccessLevelEnum.Protected &&
+        !isReadonly(source, policy);
 }

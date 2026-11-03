@@ -12,6 +12,7 @@ import {
 import { FileSystemStore } from '../../stores/file-system.store';
 import { NavigationStore } from '../../stores/navigation.store';
 import { ClipboardService } from './clipboard.service';
+import { DocumentSearchService } from '../search/document-search.service';
 import { NotificationService } from './notification.service';
 import { containsNode, topMostNodes } from '../../utils/node-containment.utils';
 import { ConcurrencyQueue } from '../upload/concurrency-queue';
@@ -75,12 +76,18 @@ export class DragDropService {
     private readonly fileSystem = inject(FileSystemStore);
     private readonly navigation = inject(NavigationStore);
     private readonly clipboard = inject(ClipboardService);
+    private readonly search = inject(DocumentSearchService);
     private readonly notifications = inject(NotificationService);
     private readonly config = inject(FILE_MANAGER_CONFIG);
     private readonly context = signal<() => DragContext>(() => ({
         writingIds: new Set(), editingIds: new Set(), blocked: false
     }));
     private sessionRoots: DocumentListRoots | null = null;
+    /**
+     * The dragged nodes as they were at dragstart. A search result is not in the cache,
+     * so `entityMap` cannot resolve it; this is consulted second.
+     */
+    private sessionNodes = new Map<string, FileSystemNode>();
     private hoverTimer: ReturnType<typeof setTimeout> | null = null;
     private destroyed = false;
 
@@ -99,6 +106,14 @@ export class DragDropService {
 
     public connect(readContext: () => DragContext): void {
         this.context.set(readContext);
+    }
+
+    /**
+     * Whether `node` could start a drag. `draggableIds` only enumerates the cache, so a
+     * search result — which never enters it — has to be asked about directly.
+     */
+    public canDrag(node: FileSystemNode): boolean {
+        return canStartDrag(node, this.policy());
     }
 
     public handles(event: DragEvent): boolean {
@@ -125,6 +140,7 @@ export class DragDropService {
         event.dataTransfer.setData(INTERNAL_DRAG_TYPE, token);
         event.dataTransfer.effectAllowed = 'copyMove';
         this.sessionRoots = this.fileSystem.initializedRoots();
+        this.sessionNodes = new Map(sources.map((source) => [source.id, source]));
         this.state.set({ token, projectId, sourceIds: sources.map((source) => source.id),
             effect: event.ctrlKey ? 'copy' : 'move' });
     }
@@ -212,6 +228,11 @@ export class DragDropService {
         this.sessionRoots = null;
     }
 
+    /** Cache first, then the dragstart snapshot for sources that were never cached. */
+    private sourceNode(id: string): FileSystemNode | undefined {
+        return this.fileSystem.entityMap()[id] ?? this.sessionNodes.get(id);
+    }
+
     private canSessionDrop(
         session: DragState,
         roots: DocumentListRoots | null,
@@ -223,8 +244,10 @@ export class DragDropService {
         const entities = this.fileSystem.entityMap();
         const target = entities[targetId];
         if (target === undefined || !isFolder(target)) { return false; }
-        const sources = session.sourceIds.map((id) => entities[id]);
-        if (sources.some((source) => source === undefined)) { return false; }
+        const sources = session.sourceIds
+            .map((id) => this.sourceNode(id))
+            .filter((node): node is FileSystemNode => node !== undefined);
+        if (sources.length !== session.sourceIds.length) { return false; }
         const policy = this.policy(options);
         const intent = intentFor(target, operation);
 
@@ -335,12 +358,16 @@ export class DragDropService {
         selectedIds: ReadonlySet<string> | undefined
     ): FileSystemNode[] {
         const entities = this.fileSystem.entityMap();
-        const ids = selectedIds !== undefined && selectedIds.has(node.id) && selectedIds.size > 1
-            ? [...selectedIds]
-            : [node.id];
+        if (selectedIds === undefined || !selectedIds.has(node.id) || selectedIds.size <= 1) {
+            // The grabbed node need not be cached — a search result never is — so trust
+            // what the surface handed us, preferring the cached copy when there is one.
+            return [entities[node.id] ?? node];
+        }
+        const ids = [...selectedIds];
         const nodes = ids
             .map((id) => entities[id])
             .filter((candidate): candidate is FileSystemNode => candidate !== undefined);
+        // A selection naming something the cache no longer holds is not safe to act on.
         if (nodes.length !== ids.length) { return []; }
 
         return topMostNodes(nodes, entities);
@@ -354,7 +381,7 @@ export class DragDropService {
     ): Promise<void> {
         const entities = this.fileSystem.entityMap();
         const sources = session.sourceIds
-            .map((id) => entities[id])
+            .map((id) => this.sourceNode(id))
             .filter((node): node is FileSystemNode => node !== undefined);
         const target = entities[targetId];
         if (target === undefined || !isFolder(target)) { return; }
@@ -394,16 +421,19 @@ export class DragDropService {
             return { node, removed: [], abandoned: true };
         }
         try {
+            // Pass the node, not its id: a search result is not in the cache, and an
+            // id-only call would fail to resolve it. The store prefers its cached copy
+            // when there is one.
             if (intent === 'copy') {
-                await this.fileSystem.copy(node.id, targetId);
+                await this.fileSystem.copy(node, targetId);
 
                 return { node, removed: [] };
             }
             // A delete ignores the target: the backend routes the item to its own
             // list's bin, which the policy has already matched against.
             const removed = intent === 'delete'
-                ? await this.fileSystem.delete(node.id)
-                : await this.fileSystem.move(node.id, targetId);
+                ? await this.fileSystem.delete(node)
+                : await this.fileSystem.move(node, targetId);
 
             return { node, removed };
         } catch (error) {
@@ -428,6 +458,8 @@ export class DragDropService {
         const affected = this.viewWasTaken(done, removed, view, currentId);
         this.navigation.pruneReferences(removed);
         this.clipboard.pruneReferences(removed);
+        // Results are a snapshot: a moved or deleted hit leaves, a copied one stays.
+        this.search.pruneReferences(removed);
         if (!affected) { return; }
         const destination = intent === 'delete'
             ? this.parentOfRemover(done, currentId)

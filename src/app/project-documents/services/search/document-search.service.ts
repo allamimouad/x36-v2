@@ -32,6 +32,21 @@ export class DocumentSearchService {
         this.destroyRef.onDestroy(() => this.request?.unsubscribe());
     }
 
+    /**
+     * Drop results whose ids were removed (a moved or deleted subtree), mirroring the
+     * same method on `NavigationStore` and `ClipboardService`. Scoping by removed ids
+     * is right per operation on its own: a delete or move removes ids so the row goes,
+     * a copy removes none so the list is untouched. Re-running the search instead would
+     * make every action wait for a query that can take tens of seconds.
+     */
+    public pruneReferences(removedIds: Iterable<string>): void {
+        const removed = new Set(removedIds);
+        if (removed.size === 0) { return; }
+        const current = this._results();
+        const next = current.filter(({ id }) => !removed.has(id));
+        if (next.length !== current.length) { this._results.set(next); }
+    }
+
     public search(projectId: string, scope: FolderNode, query: string): void {
         const normalizedQuery = query.trim();
         const version = ++this.requestVersion;

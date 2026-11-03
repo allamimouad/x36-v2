@@ -16,6 +16,7 @@ import type {
     ItemRenameRequest,
     SearchResultContextMenuRequest
 } from '../../models/context-menu-request.model';
+import type { ItemDragRequest } from '../../models/drag-state.model';
 import type { FileSystemNode } from '../../models/file-system-node.model';
 import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
 import { parentOfRelativePath, relativePathFromRoot } from '../../utils/path.utils';
@@ -38,7 +39,11 @@ export class SearchResults {
     public readonly renameError = input<string | null>(null);
     public readonly writingIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly deleteConfirmationId = input<string | null>(null);
+    public readonly draggableIds = input<ReadonlySet<string>>(new Set<string>());
+    public readonly internalSourceIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly resultActivated = output<FileSystemNode>();
+    public readonly dragStarted = output<ItemDragRequest>();
+    public readonly dragEnded = output();
     public readonly contextMenuRequested = output<SearchResultContextMenuRequest>();
     public readonly emptyContextMenuRequested = output<MouseEvent>();
     public readonly renameSubmitted = output<ItemRenameRequest>();
@@ -71,6 +76,18 @@ export class SearchResults {
                 this.deleteCancelButton()?.nativeElement.focus();
             }
         });
+    }
+
+    protected onDragStart(event: DragEvent, result: FileSystemNode): void {
+        if (!this.draggableIds().has(result.id) || this.renamingId() === result.id ||
+            this.deleteConfirmationId() === result.id) {
+            event.preventDefault();
+
+            return;
+        }
+        // No `selectedIds`: selection is right-pane-table only, so a search drag is
+        // always the single row that was grabbed.
+        this.dragStarted.emit({ event, node: result });
     }
 
     protected activate(event: Event, result: FileSystemNode): void {

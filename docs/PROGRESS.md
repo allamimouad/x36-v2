@@ -6,8 +6,37 @@
 
 ## Current Status
 
-**Active work (2026-11-01): drag to the recycle bin deletes.** Multi-select drag-and-drop
-is pushed (`53ff657`); this builds on it and is uncommitted.
+**Active work (2026-11-03): drag and drop from search results.** Uncommitted.
+
+The blocker was never the backend — `api.move` takes a node — but client-side cache
+assumptions: search results live in `DocumentSearchService` and never enter
+`FileSystemStore`. The substantive one was the drag policy requiring an item's **parent**
+to be cached, to check whether that folder was read-only — which turned out to be the
+only parent permission check in the app. Every other gate (context menus, tree, table,
+store) reads the item's own access, the current folder, or the list. The drag was the
+outlier, so it is now aligned: permissions are item-level, `canLeaveParent` became
+`isMutable`, and the search blocker disappeared as a consequence rather than through a
+special case.
+
+The rest followed: a `sessionNodes` snapshot carries an uncached source through the
+gesture, `move` accepts a node like `copy`/`delete`/`rename` already did, and
+`performOne` now passes the node rather than its id — widening `move` alone changed
+nothing while the caller still passed an id, which cost a debugging round. Result rows
+are kept honest by `DocumentSearchService.pruneReferences` in `finishBatch`: a delete or
+move removes ids so the row goes, a copy removes none so the list is untouched. The
+search is **not** re-run, since it can take seconds. That also closes the stale-search
+gap for move and copy from the tree and table.
+
+Trade recorded: if a file inside a read-only folder is ever returned without its own
+read-only flag, the drag is offered and the server refuses — exactly how the
+context-menu delete has always behaved.
+
+**Verification (2026-11-03):** full headless suite **216/216**, production build, both
+TypeScript projects and repository lint pass. Reverting the parent-check removal and the
+node-passing failed exactly the two tests covering them.
+
+**Earlier record (2026-11-01): drag to the recycle bin deletes.** Multi-select
+drag-and-drop is pushed (`53ff657`); this builds on it and is uncommitted.
 
 A new `DropIntent` (`move | copy | delete`) is resolved from the **target**, not the
 keyboard — `DragEffect` stays move/copy because it is assigned straight to
@@ -751,19 +780,14 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
 
 _Things noticed during implementation but not fixed in the current phase. Review before starting the next phase._
 
-- **Drag operations do not refresh an active search** (2026-11-01, review finding):
-  `deleteNode` calls `refreshActiveSearch()`, the drag path cannot. Deleting a searched
-  folder by dragging it to its bin can leave the result row visible; move and copy leave
-  equally stale rows and always have. Needs a seam between `DragDropService` and the
-  container, which owns search. Detail: `docs/TODO.md` item 7.
 - **Bulk delete is unavailable from the context menu** (2026-11-01): dragging a
   multi-selection to a bin deletes all of it, but the menu's Delete stays disabled for
   that selection, so the two disagree. Needs a bulk confirmation per `PHASES.md`
-  Phase 3. Detail: `docs/TODO.md` item 8.
+  Phase 3. Detail: `docs/TODO.md` item 7.
 - **A missed `dragend` can leave a drag session latched** (2026-10-27, unproven): the
   next external file drag would be routed as internal and silently lost. The MIME token
   prevents a wrong mutation and `Escape` recovers it. Reproduce before adding a
-  document-level fallback. Detail: `docs/TODO.md` item 9.
+  document-level fallback. Detail: `docs/TODO.md` item 8.
 
 - **Real descendant-copy rejection needs verification** (2026-07-31, review finding):
   the mock rejects copying a folder into itself or a descendant, but the existing real

@@ -37,6 +37,11 @@
         <tr
           class="pd-search-row"
           [class.pd-search-row-writing]="writingIds().has(result.id)"
+          [class.pd-internal-drag-source]="internalSourceIds().has(result.id)"
+          [draggable]="draggableIds().has(result.id) && renamingId() !== result.id &&
+            deleteConfirmationId() !== result.id"
+          (dragstart)="onDragStart($event, result)"
+          (dragend)="$event.stopPropagation(); dragEnded.emit()"
           tabindex="0"
           [attr.data-testid]="'pd-search-result-' + result.id"
           (dblclick)="activate($event, result)"

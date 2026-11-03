@@ -205,6 +205,15 @@ export class ProjectDocuments {
      * policy rather than merely checking that a drag exists, so a readonly destination,
      * a same-parent move or a drop onto the source itself is not advertised.
      */
+    /**
+     * Search results never enter the cache, so `draggableIds` cannot cover them; each
+     * result is asked about directly.
+     */
+    protected readonly draggableSearchResultIds = computed(
+        () => new Set(this.search.results()
+            .filter((result) => this.dragDrop.canDrag(result))
+            .map((result) => result.id))
+    );
     protected readonly internalCurrentFolderDropActive = computed(() => {
         const session = this.dragDrop.state();
         const currentFolderId = this.navigation.currentFolderId();

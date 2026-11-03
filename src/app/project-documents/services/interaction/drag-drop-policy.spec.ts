@@ -67,7 +67,7 @@ describe('internal drag policy', () => {
         expect(canDropItem(source, target, 'delete', policy)).toBeFalse();
     });
 
-    it('refuses to delete what it would refuse to move out of its parent', () => {
+    it('refuses to delete exactly what it refuses to move', () => {
         const bin = folder('bin', root.id, '/execution/bin');
         bin.isRecycleBin = true;
         Object.assign(policy.entities, { bin });
@@ -79,13 +79,13 @@ describe('internal drag policy', () => {
         source.accessLevel = Access.Readonly;
         expect(canDropItem(source, bin, 'delete', policy)).toBeFalse();
 
+        // A read-only list blocks it even when the item carries no flag.
         source.accessLevel = undefined;
-        root.accessLevel = Access.Readonly;
-        expect(canDropItem(source, bin, 'delete', policy)).toBeFalse();
-
-        root.accessLevel = undefined;
         policy.readonlyLists = new Map([['EXECUTION', true]]);
         expect(canDropItem(source, bin, 'delete', policy)).toBeFalse();
+
+        policy.readonlyLists = new Map();
+        expect(canDropItem(source, bin, 'delete', policy)).toBeTrue();
     });
 
     it('blocks self, cached descendants and unresolved path descendants', () => {
@@ -114,14 +114,31 @@ describe('internal drag policy', () => {
         }
     });
 
-    it('uses source-parent and source-list readonly flags for move restrictions', () => {
+    it('restricts a move by the item and its list, not by its parent', () => {
+        // The parent's own access is deliberately not consulted: permissions are
+        // item-level everywhere else in the app, so the drag matches them.
         root.accessLevel = Access.Readonly;
+        expect(canDropItem(source, target, 'move', policy)).toBeTrue();
+
+        source.accessLevel = Access.Readonly;
         expect(canDropItem(source, target, 'move', policy)).toBeFalse();
         expect(canDropItem(source, target, 'copy', policy)).toBeTrue();
+
+        source.accessLevel = undefined;
         policy.readonlyLists = new Map([['EXECUTION', true]]);
         target.listKey = 'MARKETING';
         expect(canDropItem(source, target, 'move', policy)).toBeFalse();
         expect(canDropItem(source, target, 'copy', policy)).toBeTrue();
+    });
+
+    it('drags an item whose parent is not cached', () => {
+        // A search result: the node is known, the folder it lives in is not.
+        const orphan = folder('orphan', 'never-loaded', '/execution/Archive/2024/orphan');
+        Object.assign(policy.entities, { orphan });
+
+        expect(canStartDrag(orphan, policy)).toBeTrue();
+        expect(canDropItem(orphan, target, 'move', policy)).toBeTrue();
+        expect(canDropItem(orphan, target, 'copy', policy)).toBeTrue();
     });
 
     it('rejects readonly destinations and readonly destination lists', () => {

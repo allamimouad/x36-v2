@@ -45,6 +45,22 @@ describe('DocumentSearchService', () => {
         tick(50);
         expect(service.results()[0]?.name).toBe('second.pdf');
     }));
+
+    it('drops results whose ids were removed and leaves the rest', fakeAsync(() => {
+        spyOn(api, 'searchDocuments').and.returnValue(of([
+            ...response('kept'), ...response('gone')
+        ]));
+        service.search('project', scope, 'anything');
+        tick();
+        expect(service.results().length).toBe(2);
+
+        service.pruneReferences(['gone']);
+
+        expect(service.results().map(({ id }) => id)).toEqual(['kept']);
+        // Nothing matching: the list must be left exactly as it was.
+        service.pruneReferences(['not-a-result']);
+        expect(service.results().map(({ id }) => id)).toEqual(['kept']);
+    }));
 });
 
 function response(query: string): FileSystemNode[] {

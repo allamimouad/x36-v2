@@ -729,6 +729,13 @@ receive source, target, active-state, and draggable-ID inputs; they inject no st
 
 `drag-drop-policy.ts` rechecks source/destination availability, current write/edit
 state, node access flags, parent access, and document-list access on hover and drop.
+Search results are draggable (2026-11-03), one row at a time — selection is
+right-pane-table only. Permissions are **item-level**: a read-only item cannot be moved
+or deleted, and the folder it sits in is not consulted, matching every other gate in the
+app (the context menus, tree, table and store all read the item's own access and its
+list, never its parent's). A moved or deleted result leaves the list; a copied one stays.
+The search is not re-run.
+
 Roots and bins cannot be dragged. Dropping on a recycle bin **deletes** (2026-11-01):
 the bin is only an affordance, since `FileSystemApi.delete` takes no target and the
 backend routes the item to its own list's bin — so only the bin matching the source's

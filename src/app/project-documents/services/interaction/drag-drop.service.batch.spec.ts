@@ -14,6 +14,7 @@ import { MOCK_CONFIG } from '../mock/mock-config.token';
 import { FileSystemReader } from '../../stores/file-system-reader';
 import { FileSystemStore } from '../../stores/file-system.store';
 import { NavigationStore } from '../../stores/navigation.store';
+import { DocumentSearchService } from '../search/document-search.service';
 import { ClipboardService } from './clipboard.service';
 import { DragDropService } from './drag-drop.service';
 import { NotificationService } from './notification.service';
@@ -34,7 +35,7 @@ describe('DragDropService queued batch items', () => {
     beforeEach(async () => {
         TestBed.configureTestingModule({ providers: [
             DragDropService, FileSystemStore, NavigationStore, ClipboardService,
-            NotificationService, MessageService,
+            NotificationService, MessageService, DocumentSearchService,
             { provide: FileSystemReader, useExisting: FileSystemStore },
             { provide: FileSystemApi, useClass: MockFileSystemApi },
             { provide: FILE_MANAGER_CONFIG, useValue: {

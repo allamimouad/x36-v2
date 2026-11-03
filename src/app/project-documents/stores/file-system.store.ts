@@ -58,6 +58,25 @@ function removedSubtreeOf(
     return all.filter((candidate) => containsNode(node, candidate, entities));
 }
 
+/**
+ * Whether `targetParent` lies inside `source` — the one destination a move or copy can
+ * never have. `cachedSubtreeIds` covers descendants reached through parent links; the
+ * path comparison also catches a target whose ancestors were never cached, which is the
+ * only signal available when the source itself is uncached.
+ */
+function targetsOwnSubtree(
+    source: FileSystemNode,
+    targetParent: FolderNode,
+    cachedSubtreeIds: string[]
+): boolean {
+    if (!isFolder(source)) { return false; }
+
+    return cachedSubtreeIds.includes(targetParent.id) ||
+        source.listKey === targetParent.listKey &&
+        (targetParent.path === source.path ||
+            targetParent.path.startsWith(`${source.path}/`));
+}
+
 /** One in-flight children load, boxed so its cleanup can verify it still owns the id. */
 interface ChildrenLoad {
     promise: Promise<void>;
@@ -388,6 +407,10 @@ export const FileSystemStore = signalStore(
             return out;
         };
 
+        /** Subtree ids when the node is cached; empty when it is not (e.g. a search hit). */
+        const _subtreeIdsIfCached = (id: string): string[] =>
+            store.entityMap()[id] ? _cachedSubtreeIds(id) : [];
+
         const _cachedSubtree = (id: string): FileSystemNode[] => {
             const nodeById = store.entityMap();
 
@@ -615,13 +638,14 @@ export const FileSystemStore = signalStore(
      * preserving possibly-stale descendants. Returns the removed subtree ids so a
      * coordinator can prune navigation/clipboard references that pointed into it.
      */
-        const move = async (ids: string | string[], targetParentId: string): Promise<string[]> => {
-            const id = onlySingleId(ids, 'move');
-            const node = store.entityMap()[id];
+        const move = async (
+            input: string | string[] | FileSystemNode,
+            targetParentId: string
+        ): Promise<string[]> => {
+            // Accepts a node, as `copy`, `delete` and `rename` do, so a source that was
+            // never cached — a search result — can still be moved.
+            const node = _mutationNode(input, 'move');
             const targetParent = store.entityMap()[targetParentId];
-            if (!node) {
-                throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
-            }
             if (node.parentId === null) {
                 throw new FileSystemError('invalid-name', 'Root folder cannot be moved');
             }
@@ -632,7 +656,7 @@ export const FileSystemStore = signalStore(
                 );
             }
             if (node.parentId === targetParentId) { return []; }
-            if (isFolder(node) && _cachedSubtreeIds(id).includes(targetParentId)) {
+            if (targetsOwnSubtree(node, targetParent, _subtreeIdsIfCached(node.id))) {
                 throw new FileSystemError(
                     'descendant-move',
                     'Cannot move a folder into itself or a descendant'
@@ -658,12 +682,7 @@ export const FileSystemStore = signalStore(
         ): Promise<void> => {
             const source = _mutationNode(input, 'copy');
             const targetParent = _targetFolder(targetInput);
-            const cachedDescendant = store.entityMap()[source.id] &&
-                _cachedSubtreeIds(source.id).includes(targetParent.id);
-            const pathDescendant = source.listKey === targetParent.listKey &&
-                (targetParent.path === source.path ||
-                    targetParent.path.startsWith(`${source.path}/`));
-            if (isFolder(source) && (cachedDescendant || pathDescendant)) {
+            if (targetsOwnSubtree(source, targetParent, _subtreeIdsIfCached(source.id))) {
                 throw new FileSystemError(
                     'descendant-move',
                     'Cannot copy a folder into itself or a descendant'
