@@ -233,9 +233,18 @@ handlers, and a Shift-range has to follow the rendered order, which column sorti
 changes. The table therefore resolves the whole next selection itself and reports it;
 the store only stores it.
 
-Drives drag-and-drop of several items. Bulk delete and bulk cut/copy/paste remain
-deferred, so while more than one row is selected the single-item Rename, Copy and
-Delete actions are disabled rather than silently acting on one of them.
+Drives drag-and-drop of several items, plus bulk delete, copy and cut (2026-11-03).
+Delete and Copy/Cut act on the whole selection; **Rename stays single-item**, since
+renaming many at once means nothing, and is the only action still disabled on a
+multi-selection.
+
+Deleting a selection asks once in the shared `ConfirmationPopup` ("delete 5 items?");
+a single delete keeps its inline row buttons. Cut is move underneath, so it inherits
+the same rules as a drag move. Paste accepts any number of items and both clipboard
+modes; a cut clipboard is spent once pasted, a copy one survives for another paste.
+Cut rows render at 50% opacity until the paste lands. A paste is rejected as a whole
+if any item would land inside itself. Bulk download is deliberately absent: there is
+no zip endpoint, so it would mean one browser download per file.
 
 ### 3.9 Upload with progress
 

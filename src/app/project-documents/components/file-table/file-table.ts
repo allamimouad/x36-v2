@@ -62,6 +62,8 @@ export class FileTable {
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);
     public readonly writingIds = input<ReadonlySet<string>>(new Set<string>());
+    /** Rows on the clipboard as a cut, shown faded until the paste lands. */
+    public readonly cutIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly deleteConfirmationId = input<string | null>(null);
     public readonly externalDropTargetId = input<string | null>(null);
     public readonly draggableIds = input<ReadonlySet<string>>(new Set());

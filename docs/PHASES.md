@@ -230,7 +230,7 @@ this feature; real backend move work is a separate follow-up.
 - `components/file-table/file-table.ts`:
   - Multi-select wired (explicit click handlers, not `selectionMode="multiple"` —
     see SPEC 3.7 for why)
-  - Cut items render at 50% opacity (read from `ClipboardService`)
+  - Cut items render at 50% opacity (read from `ClipboardService`) — done 2026-11-03
   - Context menu adds: Cut, Copy, Paste (if clipboard not empty); folder-menu Paste
     targets the right-clicked folder without opening it first
 ### Acceptance checks

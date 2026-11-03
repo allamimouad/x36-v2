@@ -155,6 +155,7 @@
             [class.pd-row-focused]="focusedId() === row.id"
             [class.pd-row-selected]="selectedIds().has(row.id)"
             [class.pd-row-writing]="writingIds().has(row.id)"
+            [class.pd-row-cut]="cutIds().has(row.id)"
             [class.pd-row-external-drop-target]="externalDropTargetId() === row.id ||
               internalDropTargetId() === row.id"
             [class.pd-internal-drag-source]="internalSourceIds().has(row.id)"

@@ -90,6 +90,11 @@
     background: var(--pd-hover-bg);
   }
 
+  // Cut rows stay in place but read as pending until the paste lands.
+  .p-datatable-tbody > tr.pd-row-cut {
+    opacity: 0.5;
+  }
+
   .p-datatable-tbody > tr.pd-row-focused,
   .p-datatable-tbody > tr.pd-row-selected {
     background: var(--pd-selection-bg);

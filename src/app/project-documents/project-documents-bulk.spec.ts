@@ -8,10 +8,11 @@ import { DialogService } from 'primeng/dynamicdialog';
 import { of, throwError } from 'rxjs';
 import { PopupService } from 'ibportal-web-ui-commons';
 import { FileSystemError } from './models/file-system-error.model';
-import { isFolder, type FileSystemNode } from './models/file-system-node.model';
+import { isFolder, type FileSystemNode, type FolderNode } from './models/file-system-node.model';
 import { ProjectDocuments } from './project-documents';
 import { FileSystemApi } from './services/file-system/file-system-api';
 import { MOCK_CONFIG } from './services/mock/mock-config.token';
+import { ClipboardService } from './services/interaction/clipboard.service';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore } from './stores/navigation.store';
 import { ProjectOverviewService } from '../../services/project-overview.service';
@@ -66,6 +67,10 @@ describe('ProjectDocuments bulk actions', () => {
         fixture.detectChanges();
         await fixture.whenStable();
         fixture.detectChanges();
+    }
+
+    function clipboard(): ClipboardService {
+        return fixture.debugElement.injector.get(ClipboardService);
     }
 
     function host(): HTMLElement {
@@ -157,6 +162,61 @@ describe('ProjectDocuments bulk actions', () => {
 
         expect(store.entityMap()[first.id]).toBeUndefined();
         expect(store.entityMap()[second.id]).toBeDefined();
+    });
+
+    /** A folder of the current list that is not one of the selected rows. */
+    function otherFolder(exclude: FileSystemNode[]): FolderNode {
+        const excluded = new Set(exclude.map(({ id }) => id));
+        const folder = navigation.currentFolderChildren().folders
+            .find((node) => !excluded.has(node.id) && !node.isRecycleBin);
+        if (!folder) { throw new Error('Expected another folder'); }
+
+        return folder;
+    }
+
+    it('copies every selected row and keeps the clipboard for another paste', async () => {
+        const copy = spyOn(api, 'copy').and.callFake((_project, node, target) =>
+            of({ ...node, id: `${node.id}-copy`, parentId: target.id }));
+        const chosen = selectTwoRows();
+        const target = otherFolder(chosen);
+
+        invoke(menuFor(chosen[0]), chosen[0].kind === 'folder' ? 'Copy Folder' : 'Copy File');
+        invoke(menuFor(target), 'Paste');
+        await flushTimers();
+        await render();
+
+        expect(copy).toHaveBeenCalledTimes(2);
+        // A copy clipboard survives its paste, so it can be pasted again elsewhere.
+        expect(clipboard().isEmpty()).toBeFalse();
+    });
+
+    it('moves every cut row and spends the clipboard', async () => {
+        const move = spyOn(api, 'move').and.callFake((_project, node, target) =>
+            of({ ...node, parentId: target.id }));
+        const chosen = selectTwoRows();
+        const target = otherFolder(chosen);
+
+        invoke(menuFor(chosen[0]), chosen[0].kind === 'folder' ? 'Cut Folder' : 'Cut File');
+        expect(clipboard().mode()).toBe('cut');
+        invoke(menuFor(target), 'Paste');
+        await flushTimers();
+        await render();
+
+        expect(move).toHaveBeenCalledTimes(2);
+        // A cut is spent once pasted; the items have already moved.
+        expect(clipboard().isEmpty()).toBeTrue();
+    });
+
+    it('marks cut rows and leaves copied ones alone', () => {
+        const chosen = selectTwoRows();
+
+        invoke(menuFor(chosen[0]), chosen[0].kind === 'folder' ? 'Copy Folder' : 'Copy File');
+        fixture.detectChanges();
+        expect(host().querySelectorAll('.pd-row-cut').length).toBe(0);
+
+        invoke(menuFor(chosen[0]), chosen[0].kind === 'folder' ? 'Cut Folder' : 'Cut File');
+        fixture.detectChanges();
+        expect(host().querySelectorAll('.pd-row-cut').length).toBe(2);
     });
 
     it('keeps Rename single-item while a selection is active', () => {

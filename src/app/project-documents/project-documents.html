@@ -338,6 +338,7 @@
             [isCurrentFolderReadonly]="navigation.isCurrentFolderReadonly()"
             (itemDoubleClicked)="onItemDoubleClicked($event)"
             [selectedIds]="navigation.selectedIds()"
+            [cutIds]="cutIds()"
             [selectionAnchorId]="navigation.selectionAnchorId()"
             (selectionRequested)="onSelectionRequested($event)"
             (emptySpaceClicked)="navigation.clearSelection()"

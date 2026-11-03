@@ -266,19 +266,7 @@
 - **Status / priority**: verification pending; potential P1 if the real backend does
   not reject the operation safely.
 
-## 7. Bulk delete is unavailable from the context menu
-
-- **Where**: `src/app/project-documents/project-documents.ts` — `isMultiSelected`
-  disables Rename, Copy and Delete while more than one row is selected.
-- **Problem**: dragging a multi-selection onto a recycle bin deletes every item, but
-  the context menu's Delete stays disabled for that same selection. The two disagree,
-  and the menu looks broken rather than deliberate.
-- **Suggested fix**: a bulk confirmation ("Delete 5 items?") per `PHASES.md` Phase 3,
-  then the existing `ConcurrencyQueue` loop the drag already uses. The disabling is
-  deliberate until that exists — it never acts on fewer items than were selected.
-- **Priority**: P2, and the natural next piece of drag/selection work.
-
-## 8. A missed `dragend` can leave a drag session latched
+## 7. A missed `dragend` can leave a drag session latched
 
 - **Where**: `src/app/project-documents/services/interaction/drag-drop.service.ts` —
   `handles()` returns true whenever `state()` is set, and there is no document-level
@@ -291,7 +279,7 @@
   document-level fallback is not worth adding against a hypothesis.
 - **Priority**: P3 until reproduced.
 
-## 9. A project may initialize twice, and a late one aborts work in flight
+## 8. A project may initialize twice, and a late one aborts work in flight
 
 - **Where**: `project-documents.ts` constructor — `this.fileSystem.connectProject(this.id)`
   — reaching `_beginInitialize` through `_initialize$`'s `defer` (`file-system.store.ts`).

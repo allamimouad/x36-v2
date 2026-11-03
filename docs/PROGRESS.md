@@ -6,7 +6,39 @@
 
 ## Current Status
 
-**Active work (2026-11-03): drag and drop from search results.** Uncommitted.
+**Active work (2026-11-03): bulk delete, copy and cut.** Uncommitted beyond
+`5094136`.
+
+The drag already had the batch machinery — bounded queue, per-item failure isolation,
+combined pruning, one summary — but inside `DragDropService`. It is now
+`BulkOperationService`, shared by the drag and the menu actions, with sequencing left to
+the caller since a drag opens its drop target and a delete opens the removed folder's
+parent. That extraction was committed on its own (`cccf884`) with the suite unchanged at
+216 as the evidence it altered nothing.
+
+Delete and Copy/Cut now act on the whole selection; **Rename stays single-item** and is
+the only action still disabled on a multi-selection. A bulk delete asks once in the
+shared `ConfirmationPopup`; a single delete keeps its inline row buttons. Cut is move
+underneath, so it inherits the drag's rules. Paste accepts any number of items and both
+modes: a cut clipboard is spent once pasted, a copy one survives. Cut rows show at 50%
+opacity. A paste is rejected wholesale if any item would land inside itself. Bulk
+download is deliberately absent — no zip endpoint means one browser download per file.
+
+**A finding came out of this, tracked as `docs/TODO.md` item 8:** a project appears to
+initialize **twice** per component startup. The second `_beginInitialize` bumps the
+connection revision, so a mutation overlapping it throws `cancelled` and is discarded —
+right for a real project change, wrong if the second one is spurious — and it means two
+sets of root listings per open. Instrumenting showed it is `connectProject`'s own effect
+firing again rather than a second call site, with `observeInitialFolderPath` ruled out.
+It only surfaces with prolonged waiting, so the drag specs never hit it; the bulk spec
+resolves its API synchronously to stay deterministic. Confirming it outside TestBed
+needs the app in a real browser, and that is the recommended next step.
+
+**Verification (2026-11-03):** full headless suite **222/222**, production build, both
+TypeScript projects and repository lint pass. Reverting the Stage 3 changes failed
+exactly the three cut/copy/paste tests.
+
+**Earlier record (2026-11-03): drag and drop from search results.**
 
 The blocker was never the backend — `api.move` takes a node — but client-side cache
 assumptions: search results live in `DocumentSearchService` and never enter
@@ -780,14 +812,10 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
 
 _Things noticed during implementation but not fixed in the current phase. Review before starting the next phase._
 
-- **Bulk delete is unavailable from the context menu** (2026-11-01): dragging a
-  multi-selection to a bin deletes all of it, but the menu's Delete stays disabled for
-  that selection, so the two disagree. Needs a bulk confirmation per `PHASES.md`
-  Phase 3. Detail: `docs/TODO.md` item 7.
 - **A missed `dragend` can leave a drag session latched** (2026-10-27, unproven): the
   next external file drag would be routed as internal and silently lost. The MIME token
   prevents a wrong mutation and `Escape` recovers it. Reproduce before adding a
-  document-level fallback. Detail: `docs/TODO.md` item 8.
+  document-level fallback. Detail: `docs/TODO.md` item 7.
 
 - **Real descendant-copy rejection needs verification** (2026-07-31, review finding):
   the mock rejects copying a folder into itself or a descendant, but the existing real

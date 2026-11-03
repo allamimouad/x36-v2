@@ -44,7 +44,9 @@ import type { SelectionRequest } from './models/selection-request.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
 import { DragDropService } from './services/interaction/drag-drop.service';
 import { BulkOperationService } from './services/interaction/bulk-operation.service';
-import { ClipboardService } from './services/interaction/clipboard.service';
+import {
+    type ClipboardMode, ClipboardService
+} from './services/interaction/clipboard.service';
 import { ExternalDropService } from './services/upload/external-drop.service';
 import { FileLaunchService } from './services/interaction/file-launch.service';
 import {
@@ -215,6 +217,10 @@ export class ProjectDocuments {
         () => new Set(this.search.results()
             .filter((result) => this.dragDrop.canDrag(result))
             .map((result) => result.id))
+    );
+    /** Ids on the clipboard as a cut; empty for a copy, which leaves rows untouched. */
+    protected readonly cutIds = computed<ReadonlySet<string>>(
+        () => this.clipboard.mode() === 'cut' ? this.clipboard.ids() : new Set<string>()
     );
     protected readonly internalCurrentFolderDropActive = computed(() => {
         const session = this.dragDrop.state();
@@ -527,7 +533,10 @@ export class ProjectDocuments {
                 this.startInlineRename(result, 'search');
             }, locked),
             this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
-                this.copyToClipboard(result);
+                this.copyToClipboard(result, 'search');
+            }, locked),
+            this.menuItem('Cut Folder', 'content_cut', 'pd-menu-cut-folder', () => {
+                this.cutToClipboard(result, 'search');
             }, locked),
             this.menuItem('Delete Folder', 'delete', 'pd-menu-delete-folder', () => {
                 this.requestDelete(result, 'search');
@@ -784,39 +793,39 @@ export class ProjectDocuments {
         }
     }
 
-    protected copyToClipboard(node: FileSystemNode): void {
-        if (node.parentId === null || this.isWriting(node.id)) { return; }
-        this.clipboard.copy([node]);
-        this.notifications.info(`“${node.name}” is ready to paste.`);
+    protected copyToClipboard(node: FileSystemNode, source: NodeSurface): void {
+        this.setClipboard(node, source, 'copy');
+    }
+
+    protected cutToClipboard(node: FileSystemNode, source: NodeSurface): void {
+        this.setClipboard(node, source, 'cut');
     }
 
     protected async pasteInto(target: FolderNode): Promise<void> {
         if (!this.canPaste(target) || this.isWriting(target.id)) { return; }
-        const clipboardSource = this.clipboard.nodes()[0];
-        const source = clipboardSource
-            ? this.fileSystem.entityMap()[clipboardSource.id] ?? clipboardSource
-            : undefined;
-        if (!source) {
+        const cut = this.clipboard.mode() === 'cut';
+        const sources = this.clipboard.nodes()
+            .map((node) => this.fileSystem.entityMap()[node.id] ?? node);
+        if (sources.length === 0) {
             this.clipboard.clear();
             this.notifications.warning('The copied item is no longer available.');
 
             return;
         }
-        if (isFolder(source) && this.isNodeAncestorOrSelf(source, target)) {
+        // Rejected as a set, like a drag: pasting part of what is on the clipboard
+        // would do less than the user asked without saying so.
+        if (sources.some((node) => isFolder(node) && this.isNodeAncestorOrSelf(node, target))) {
             this.notifications.warning(
-                'A folder cannot be copied inside itself or one of its subfolders.'
+                `A folder cannot be ${cut ? 'moved' : 'copied'} inside itself ` +
+                'or one of its subfolders.'
             );
 
             return;
         }
-
         this.pasting.set(true);
         this.setWriting(target.id, true);
         try {
-            await this.fileSystem.copy(source, target);
-            this.notifications.success(`“${source.name}” was copied.`);
-        } catch (error) {
-            this.reportMutationFailure(error);
+            await this.runPaste(sources, target, cut);
         } finally {
             this.setWriting(target.id, false);
             this.pasting.set(false);
@@ -999,6 +1008,57 @@ export class ProjectDocuments {
     protected openCurrentFolderInSharePoint(): void {
         const folder = this.navigation.currentFolder();
         if (folder) { this.fileLauncher.openSharePointWeb(folder); }
+    }
+
+    /**
+     * Put the row, or the whole selection it belongs to, on the clipboard. Cut and copy
+     * differ only in mode: the paste decides whether that means move or copy.
+     */
+    private setClipboard(
+        node: FileSystemNode,
+        source: NodeSurface,
+        mode: ClipboardMode
+    ): void {
+        const nodes = this.isMultiSelected(node, source) ? this.selectedNodes() : [node];
+        const eligible = nodes.filter(
+            (candidate) => candidate.parentId !== null && !this.isWriting(candidate.id)
+        );
+        if (eligible.length === 0) { return; }
+        if (mode === 'cut') {
+            this.clipboard.cut(eligible);
+        } else {
+            this.clipboard.copy(eligible);
+        }
+        const what = eligible.length === 1
+            ? `“${eligible[0].name}”`
+            : `${eligible.length} items`;
+        this.notifications.info(`${what} ready to paste.`);
+    }
+
+    private async runPaste(
+        sources: FileSystemNode[],
+        target: FolderNode,
+        cut: boolean
+    ): Promise<void> {
+        const isCurrent = this.projectSessionGuard();
+        const outcomes = await this.bulk.run({
+            items: sources,
+            isCurrent,
+            run: (node) => cut
+                ? this.fileSystem.move(node, target.id)
+                : this.fileSystem.copy(node, target.id).then(() => [])
+        });
+        if (!isCurrent()) { return; }
+        const settled = outcomes.filter((outcome) => outcome.abandoned !== true);
+        const removed = settled
+            .filter((outcome) => outcome.error === undefined)
+            .flatMap((outcome) => outcome.removed);
+        this.bulk.pruneReferences(removed);
+        this.refreshActiveSearch();
+        // Desktop convention: a cut clipboard is spent once pasted, a copy one is not.
+        // Pruning has already dropped whatever the move removed, so clear only the rest.
+        if (cut) { this.clipboard.clear(); }
+        this.bulk.report(settled, cut ? 'moved' : 'copied', cut ? 'stayed in place' : 'failed');
     }
 
     private requestBulkDelete(nodes: FileSystemNode[]): void {
@@ -1267,8 +1327,11 @@ export class ProjectDocuments {
                 this.startInlineRename(folder, source);
             }, mutateBlocked || multi),
             this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
-                this.copyToClipboard(folder);
+                this.copyToClipboard(folder, source);
             }, copyBlocked),
+            this.menuItem('Cut Folder', 'content_cut', 'pd-menu-cut-folder', () => {
+                this.cutToClipboard(folder, source);
+            }, mutateBlocked),
             this.menuItem('Paste', 'content_paste', 'pd-menu-paste', () => {
                 void this.pasteInto(folder);
             }, locked || !this.canPaste(folder)),
@@ -1320,8 +1383,11 @@ export class ProjectDocuments {
                 this.startInlineRename(file, source);
             }, locked || isReadonly || multi),
             this.menuItem('Copy File', 'content_copy', 'pd-menu-copy-file', () => {
-                this.copyToClipboard(file);
+                this.copyToClipboard(file, source);
             }, locked),
+            this.menuItem('Cut File', 'content_cut', 'pd-menu-cut-file', () => {
+                this.cutToClipboard(file, source);
+            }, locked || isReadonly),
             this.menuItem('Delete File', 'delete', 'pd-menu-delete-file', () => {
                 this.requestDelete(file, source);
             }, locked || isReadonly),
@@ -1523,8 +1589,7 @@ export class ProjectDocuments {
 
     private canPaste(target: FolderNode): boolean {
         return !this.pasting() &&
-            this.clipboard.mode() === 'copy' &&
-            this.clipboard.nodes().length === 1 &&
+            !this.clipboard.isEmpty() &&
             target.accessLevel !== FolderNodeResponseAccessLevelEnum.Readonly &&
             !this.navigation.isCurrentFolderReadonly();
     }
