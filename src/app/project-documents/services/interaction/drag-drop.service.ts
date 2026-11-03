@@ -12,11 +12,9 @@ import {
 import { FileSystemStore } from '../../stores/file-system.store';
 import { NavigationStore } from '../../stores/navigation.store';
 import { ClipboardService } from './clipboard.service';
-import { DocumentSearchService } from '../search/document-search.service';
 import { NotificationService } from './notification.service';
 import { containsNode, topMostNodes } from '../../utils/node-containment.utils';
-import { ConcurrencyQueue } from '../upload/concurrency-queue';
-import { FILE_MANAGER_CONFIG } from '../../tokens/file-manager-config.token';
+import { type BulkOutcome, BulkOperationService } from './bulk-operation.service';
 import { canDropItem, canStartDrag, type DragPolicy } from './drag-drop-policy';
 
 /**
@@ -46,16 +44,6 @@ function intentFor(target: FolderNode, dragEffect: DragEffect): DropIntent {
     return dragEffect === 'move' && target.isRecycleBin ? 'delete' : dragEffect;
 }
 
-/** What one item's move/copy produced, so a partial batch can be reported honestly. */
-interface ItemOutcome {
-    node: FileSystemNode;
-    /** Cache ids the move removed; empty for a copy. */
-    removed: string[];
-    error?: unknown;
-    /** Set when the project changed before this item left the queue, so it never ran. */
-    abandoned?: boolean;
-}
-
 @Injectable()
 export class DragDropService {
     public readonly state = signal<DragState | null>(null);
@@ -76,9 +64,8 @@ export class DragDropService {
     private readonly fileSystem = inject(FileSystemStore);
     private readonly navigation = inject(NavigationStore);
     private readonly clipboard = inject(ClipboardService);
-    private readonly search = inject(DocumentSearchService);
+    private readonly bulk = inject(BulkOperationService);
     private readonly notifications = inject(NotificationService);
-    private readonly config = inject(FILE_MANAGER_CONFIG);
     private readonly context = signal<() => DragContext>(() => ({
         writingIds: new Set(), editingIds: new Set(), blocked: false
     }));
@@ -387,58 +374,39 @@ export class DragDropService {
         if (target === undefined || !isFolder(target)) { return; }
         const intent = intentFor(target, operation);
         const view = this.navigation.currentFolder();
-        const queue = new ConcurrencyQueue(this.config.bulkOpConcurrency);
-        const outcomes = await Promise.all(sources.map(
-            (source) => queue.enqueue(
-                () => this.performOne(session, roots, source, targetId, intent)
-            )
-        ));
+        const outcomes = await this.bulk.run({
+            items: sources,
+            isCurrent: () => this.isCurrentProject(session.projectId, roots),
+            run: (node) => this.runOne(node, targetId, intent)
+        });
         if (!this.isCurrentProject(session.projectId, roots)) { return; }
         // Items that never ran are neither done nor failed, and must not be counted as
         // either: both helpers below read a missing error as success.
         const settled = outcomes.filter((outcome) => outcome.abandoned !== true);
         if (intent !== 'copy') { this.finishBatch(intent, settled, view, targetId); }
-        this.report(settled, intent);
+        this.bulk.report(settled, PAST_TENSE[intent], SHORTFALL[intent]);
     }
 
-    /**
-     * One item, with its failure isolated so the rest of the batch still runs.
-     *
-     * Checked here rather than only after the queue drains: with a selection larger than
-     * `bulkOpConcurrency` the overflow waits, and a project change while it waits must
-     * stop it going out at all. Requests already sent cannot be recalled — the store's
-     * connection revision discards their results instead. `isCurrentProject` also covers
-     * this component being destroyed.
-     */
-    private async performOne(
-        session: DragState,
-        roots: DocumentListRoots | null,
+    /** Runs one item. Isolation and the staleness guard belong to the bulk runner. */
+    private async runOne(
         node: FileSystemNode,
         targetId: string,
         intent: DropIntent
-    ): Promise<ItemOutcome> {
-        if (!this.isCurrentProject(session.projectId, roots)) {
-            return { node, removed: [], abandoned: true };
-        }
-        try {
-            // Pass the node, not its id: a search result is not in the cache, and an
-            // id-only call would fail to resolve it. The store prefers its cached copy
-            // when there is one.
-            if (intent === 'copy') {
-                await this.fileSystem.copy(node, targetId);
+    ): Promise<string[]> {
+        // Pass the node, not its id: a search result is not in the cache, and an
+        // id-only call would fail to resolve it. The store prefers its cached copy
+        // when there is one.
+        if (intent === 'copy') {
+            await this.fileSystem.copy(node, targetId);
 
-                return { node, removed: [] };
-            }
-            // A delete ignores the target: the backend routes the item to its own
-            // list's bin, which the policy has already matched against.
-            const removed = intent === 'delete'
-                ? await this.fileSystem.delete(node)
-                : await this.fileSystem.move(node, targetId);
-
-            return { node, removed };
-        } catch (error) {
-            return { node, removed: [], error };
+            return [];
         }
+
+        // A delete ignores the target: the backend routes the item to its own list's
+        // bin, which the policy has already matched against.
+        return intent === 'delete'
+            ? this.fileSystem.delete(node)
+            : this.fileSystem.move(node, targetId);
     }
 
     /**
@@ -447,7 +415,7 @@ export class DragDropService {
      */
     private finishBatch(
         intent: DropIntent,
-        outcomes: ItemOutcome[],
+        outcomes: BulkOutcome[],
         view: FolderNode | null,
         targetId: string
     ): void {
@@ -456,10 +424,7 @@ export class DragDropService {
         const removed = done.flatMap((outcome) => outcome.removed);
         const currentId = this.navigation.currentFolderId();
         const affected = this.viewWasTaken(done, removed, view, currentId);
-        this.navigation.pruneReferences(removed);
-        this.clipboard.pruneReferences(removed);
-        // Results are a snapshot: a moved or deleted hit leaves, a copied one stays.
-        this.search.pruneReferences(removed);
+        this.bulk.pruneReferences(removed);
         if (!affected) { return; }
         const destination = intent === 'delete'
             ? this.parentOfRemover(done, currentId)
@@ -469,7 +434,7 @@ export class DragDropService {
 
     /** Whether the batch carried off the folder currently being viewed. */
     private viewWasTaken(
-        done: ItemOutcome[],
+        done: BulkOutcome[],
         removed: string[],
         view: FolderNode | null,
         currentId: string | null
@@ -486,7 +451,7 @@ export class DragDropService {
      * open, so fall back to the parent of whichever item removed the view — the same
      * destination the context-menu delete uses.
      */
-    private parentOfRemover(done: ItemOutcome[], currentId: string | null): string | null {
+    private parentOfRemover(done: BulkOutcome[], currentId: string | null): string | null {
         const remover = done.find(
             (outcome) => outcome.removed.includes(currentId ?? '')
         ) ?? done[0];
@@ -494,33 +459,4 @@ export class DragDropService {
         return remover.node.parentId;
     }
 
-    /**
-     * One summary for the batch. Successes are already applied and are never rolled
-     * back: undoing them would mean issuing deletes that can fail in turn, on items the
-     * user can see.
-     */
-    private report(outcomes: ItemOutcome[], intent: DropIntent): void {
-        if (outcomes.length === 0) { return; }
-        const verb = PAST_TENSE[intent];
-        const failed = outcomes.filter((outcome) => outcome.error !== undefined);
-        if (failed.length === outcomes.length) {
-            this.notifications.error(failed[0].error);
-
-            return;
-        }
-        if (failed.length === 0) {
-            this.notifications.success(outcomes.length === 1
-                ? `${outcomes[0].node.name} was ${verb}.`
-                : `${outcomes.length} items were ${verb}.`);
-
-            return;
-        }
-        const names = failed.map((outcome) => outcome.node.name).join(', ');
-        // A partly-failed move or delete leaves the selection split, so name what did
-        // not make it rather than only what worked.
-        const tail = `${failed.length} ${SHORTFALL[intent]}: ${names}.`;
-        this.notifications.warning(
-            `${outcomes.length - failed.length} of ${outcomes.length} items ${verb}. ${tail}`
-        );
-    }
 }

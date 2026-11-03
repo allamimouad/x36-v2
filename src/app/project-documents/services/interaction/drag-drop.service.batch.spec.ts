@@ -15,6 +15,7 @@ import { FileSystemReader } from '../../stores/file-system-reader';
 import { FileSystemStore } from '../../stores/file-system.store';
 import { NavigationStore } from '../../stores/navigation.store';
 import { DocumentSearchService } from '../search/document-search.service';
+import { BulkOperationService } from './bulk-operation.service';
 import { ClipboardService } from './clipboard.service';
 import { DragDropService } from './drag-drop.service';
 import { NotificationService } from './notification.service';
@@ -36,6 +37,7 @@ describe('DragDropService queued batch items', () => {
         TestBed.configureTestingModule({ providers: [
             DragDropService, FileSystemStore, NavigationStore, ClipboardService,
             NotificationService, MessageService, DocumentSearchService,
+            BulkOperationService,
             { provide: FileSystemReader, useExisting: FileSystemStore },
             { provide: FileSystemApi, useClass: MockFileSystemApi },
             { provide: FILE_MANAGER_CONFIG, useValue: {

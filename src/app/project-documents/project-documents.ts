@@ -43,6 +43,7 @@ import { FileSystemError } from './models/file-system-error.model';
 import type { SelectionRequest } from './models/selection-request.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
 import { DragDropService } from './services/interaction/drag-drop.service';
+import { BulkOperationService } from './services/interaction/bulk-operation.service';
 import { ClipboardService } from './services/interaction/clipboard.service';
 import { ExternalDropService } from './services/upload/external-drop.service';
 import { FileLaunchService } from './services/interaction/file-launch.service';
@@ -121,6 +122,7 @@ interface PendingDelete {
         FileSystemStore,
         { provide: FileSystemReader, useExisting: FileSystemStore },
         NavigationStore,
+        BulkOperationService,
         ClipboardService,
         DragDropService,
         ExternalDropService,
