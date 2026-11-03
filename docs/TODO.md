@@ -291,6 +291,31 @@
   document-level fallback is not worth adding against a hypothesis.
 - **Priority**: P3 until reproduced.
 
+## 9. A project may initialize twice, and a late one aborts work in flight
+
+- **Where**: `project-documents.ts` constructor — `this.fileSystem.connectProject(this.id)`
+  — reaching `_beginInitialize` through `_initialize$`'s `defer` (`file-system.store.ts`).
+- **Problem**: in both integration specs the store's `connectionRevision` reaches 2 for a
+  single component, so `_beginInitialize` runs twice per startup. Instrumenting the
+  second call shows every stack frame below it is rxjs internal — it is `connectProject`'s
+  own effect firing again, not a second call site. `observeInitialFolderPath` is ruled
+  out: it is `untracked` and returns early without query params, which these specs have.
+- **Why it matters beyond tests**: `_beginInitialize` bumps the connection revision, and
+  every guarded mutation throws `cancelled` when that happens mid-flight. A delete or
+  move that overlaps the second initialization is silently discarded — correct behaviour
+  given a genuine project change, but wrong if the second initialization is spurious. It
+  also means two sets of root listings per project open.
+- **Why it was not chased further**: it only surfaces with prolonged waiting, so the
+  drag specs never see it; `project-documents-bulk.spec.ts` resolves its API
+  synchronously to stay deterministic, with a comment pointing here. Confirming whether
+  it reproduces outside TestBed needs the app in a real browser.
+- **Suggested next step**: log `_beginInitialize` in the running app and open a project.
+  If it fires twice there too, inspect how `rxMethod` subscribes to the `id` input
+  signal — a required input set after `createComponent` is the most likely source of the
+  extra emission.
+- **Priority**: P2 — invisible today, but it makes mutations abort unpredictably and
+  doubles startup reads.
+
 > (Two former items were resolved: `initialize`'s reduce-with-spread pipeline —
 > 2026-07-06, by the reactive `connectProject` refactor — and the duplicated
 > template tree sections — 2026-07-08, by the tree-splitter work plus a

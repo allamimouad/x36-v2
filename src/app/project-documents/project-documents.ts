@@ -379,6 +379,7 @@ export class ProjectDocuments {
     protected readonly bootstrapLoading = computed(() => this.fileSystem.isInitializing());
     private pendingFileTarget: FolderNode | null = null;
     private readonly popupService = inject(PopupService);
+    private readonly bulk = inject(BulkOperationService);
     private readonly router = inject(Router);
     private readonly activatedRoute = inject(ActivatedRoute);
 
@@ -741,6 +742,13 @@ export class ProjectDocuments {
         if (node.parentId === null || this.isWriting(node.id)) { return; }
         this.cancelInlineRename();
         this.focusedSurface.set(surface);
+        // A whole selection cannot be confirmed on one row, so it asks in the shared
+        // popup instead of arming the inline buttons.
+        if (this.isMultiSelected(node, surface)) {
+            this.requestBulkDelete(this.selectedNodes());
+
+            return;
+        }
         this.navigation.focus(node.id);
         this.pendingDelete.set({ node, surface });
     }
@@ -993,6 +1001,64 @@ export class ProjectDocuments {
         if (folder) { this.fileLauncher.openSharePointWeb(folder); }
     }
 
+    private requestBulkDelete(nodes: FileSystemNode[]): void {
+        if (nodes.length === 0) { return; }
+        this.popupService.showPopup(
+            ConfirmationPopup,
+            { ...DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG, width: '28rem' },
+            {
+                confirmButtonText: 'Confirm',
+                declineButtonText: 'Cancel',
+                message: `Are you sure you want to delete ${nodes.length} items?`,
+                onAccept: () => void this.deleteNodes(nodes)
+            }
+        );
+    }
+
+    private async deleteNodes(nodes: FileSystemNode[]): Promise<void> {
+        const isCurrent = this.projectSessionGuard();
+        const currentId = this.navigation.currentFolderId();
+        for (const node of nodes) { this.setWriting(node.id, true); }
+        try {
+            const outcomes = await this.bulk.run({
+                items: nodes,
+                isCurrent,
+                run: (node) => this.fileSystem.delete(node)
+            });
+            if (!isCurrent()) { return; }
+            const settled = outcomes.filter((outcome) => outcome.abandoned !== true);
+            const done = settled.filter((outcome) => outcome.error === undefined);
+            const removed = done.flatMap((outcome) => outcome.removed);
+            // Decided once for the batch, and before pruning clears the reference.
+            const remover = done.find((o) => o.removed.includes(currentId ?? ''));
+            this.bulk.pruneReferences(removed);
+            if (remover?.node.parentId) { this.navigation.navigateTo(remover.node.parentId); }
+            this.refreshActiveSearch();
+            this.bulk.report(settled, 'deleted', 'were not deleted');
+        } finally {
+            for (const node of nodes) { this.setWriting(node.id, false); }
+        }
+    }
+
+    /** The selected rows as nodes, in the cache's order. */
+    private selectedNodes(): FileSystemNode[] {
+        const selected = this.navigation.selectedIds();
+
+        return this.fileSystem.entities().filter((node) => selected.has(node.id));
+    }
+
+    /**
+     * Captures the project session so a batch can tell when its work stopped belonging
+     * to the loaded project — the same test the drag applies to its own queue.
+     */
+    private projectSessionGuard(): () => boolean {
+        const projectId = this.fileSystem.projectId();
+        const roots = this.fileSystem.initializedRoots();
+
+        return (): boolean => this.fileSystem.projectId() === projectId &&
+            roots !== null && this.fileSystem.initializedRoots() === roots;
+    }
+
     /**
      * Surface a failed mutation, except when the project changed while the request was
      * in flight: the store deliberately discards that result, and the server operation
@@ -1189,8 +1255,8 @@ export class ProjectDocuments {
         const isProtected = folder.accessLevel === FolderNodeResponseAccessLevelEnum.Protected;
         const isReadonly = this.isRightClickedFolderReadonly(folder);
         const multi = this.isMultiSelected(folder, source);
-        const mutateBlocked = root || locked || isProtected || isReadonly || multi;
-        const copyBlocked = root || locked || multi;
+        const mutateBlocked = root || locked || isProtected || isReadonly;
+        const copyBlocked = root || locked;
 
         return [
             this.menuItem('Open Folder', 'folder_open', 'pd-menu-open-folder', () => {
@@ -1199,7 +1265,7 @@ export class ProjectDocuments {
             { separator: true },
             this.menuItem('Rename Folder', 'edit', 'pd-menu-rename-folder', () => {
                 this.startInlineRename(folder, source);
-            }, mutateBlocked),
+            }, mutateBlocked || multi),
             this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
                 this.copyToClipboard(folder);
             }, copyBlocked),
@@ -1255,10 +1321,10 @@ export class ProjectDocuments {
             }, locked || isReadonly || multi),
             this.menuItem('Copy File', 'content_copy', 'pd-menu-copy-file', () => {
                 this.copyToClipboard(file);
-            }, locked || multi),
+            }, locked),
             this.menuItem('Delete File', 'delete', 'pd-menu-delete-file', () => {
                 this.requestDelete(file, source);
-            }, locked || isReadonly || multi),
+            }, locked || isReadonly),
             { separator: true },
             this.menuItem('Download File', 'download', 'pd-menu-download-file', () => {
                 this.downloadFile(file);
@@ -1414,9 +1480,9 @@ export class ProjectDocuments {
     }
 
     /**
-     * Whether a single-item action should stand down. Only drag acts on a selection
-     * today, so with several rows selected an action aimed at one of them would
-     * silently do less than the user asked for. The tree has no selection.
+     * Whether this row is part of a multi-selection. Delete and Copy act on the whole
+     * selection; Rename stays single-item, since renaming many at once means nothing.
+     * The tree has no selection.
      */
     private isMultiSelected(node: FileSystemNode, source: NodeSurface): boolean {
         const selected = this.navigation.selectedIds();
