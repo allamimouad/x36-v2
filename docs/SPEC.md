@@ -243,7 +243,17 @@ a single delete keeps its inline row buttons. Cut is move underneath, so it inhe
 the same rules as a drag move. Paste accepts any number of items and both clipboard
 modes; a cut clipboard is spent once pasted, a copy one survives for another paste.
 Cut rows render at 50% opacity until the paste lands. A paste is rejected as a whole
-if any item would land inside itself. Bulk download is deliberately absent: there is
+if any item would land inside itself, and opens the destination when the move carried
+off the folder being viewed.
+
+**Search results are maintained from what each operation returned, never by re-running
+the query** (2026-11-04). A result list is a snapshot of one search, and re-querying
+would charge the full search latency on every action to rediscover what the operation
+already told us. So: a delete or move drops the rows, a rename corrects the row in
+place, and a copy leaves the list untouched — the source is unchanged and the new copy
+was never part of the query. Pruning uses the operation's own source ids as well as
+whatever the cache removed, because a search hit is normally not cached and the cache
+reports nothing for it. Bulk download is deliberately absent: there is
 no zip endpoint, so it would mean one browser download per file.
 
 ### 3.9 Upload with progress

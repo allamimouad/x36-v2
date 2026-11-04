@@ -285,6 +285,43 @@ the list is untouched. The search is **not** re-run — it can take seconds, and
 it after every action was the thing to avoid. This also closes the stale-search gap for
 move and copy from the tree and table.
 
+## Review fixes, and one strategy change (2026-11-04)
+
+A review raised five issues; all five were real and all are fixed. One prompted a
+broader change the user asked for.
+
+**Search results are now maintained from operation results everywhere, never by
+re-running the query.** Previously rename, single delete, bulk delete and paste called
+`refreshActiveSearch()` while the drag pruned by id — two strategies, and the drag's
+had a hole: `removedSubtreeOf` only reports cached nodes, so an uncached search hit
+produced no ids and its row survived a successful delete. Rather than give the drag a
+refresh too, the pruning approach won everywhere: it costs no query, and it is *more*
+accurate than a refresh for a move, which a refresh would re-show at its new path
+inside a result set the user did not ask for. `refreshActiveSearch` is gone;
+`DocumentSearchService` gained `replaceResult` for rename, and pruning now includes the
+operation's own source ids. Only operations that take something away prune — a copy
+prunes nothing, or it would clear its own clipboard entry.
+
+The other four:
+
+- **A confirmation could outlive its project.** `requestBulkDelete` now captures the
+  session guard when the dialog opens, not when it is accepted, so confirming after a
+  project switch does nothing instead of sending the old project's nodes.
+- **The menu's session guard ignored component lifetime.** It now checks a `destroyed`
+  flag as the drag guard always did, so navigating away stops queued work.
+- **A cut-paste could leave the view on a removed folder.** `runPaste` now applies the
+  same affected-view handling as a drag: if the move took the viewed folder, the
+  destination opens.
+- **A finishing cut-paste could clear a newer clipboard.** It now clears only when the
+  clipboard still holds exactly what that paste consumed.
+
+## Verification (2026-11-04)
+
+- Full headless suite **226 passed**. Four of the five fixes have regression tests
+  confirmed to fail without them; the lifetime guard is covered by inspection, since a
+  test needs a different concurrency harness than this spec uses.
+- Production build, both TypeScript projects and repository lint pass.
+
 ## Verification (2026-11-03)
 
 - Full headless suite **216 passed**. Reverting the parent-check removal and the

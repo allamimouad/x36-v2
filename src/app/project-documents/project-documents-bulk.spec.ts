@@ -5,7 +5,7 @@ import { provideRouter } from '@angular/router';
 import type { MenuItem } from 'primeng/api';
 import { ContextMenu } from 'primeng/contextmenu';
 import { DialogService } from 'primeng/dynamicdialog';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { PopupService } from 'ibportal-web-ui-commons';
 import { FileSystemError } from './models/file-system-error.model';
 import { isFolder, type FileSystemNode, type FolderNode } from './models/file-system-node.model';
@@ -13,6 +13,7 @@ import { ProjectDocuments } from './project-documents';
 import { FileSystemApi } from './services/file-system/file-system-api';
 import { MOCK_CONFIG } from './services/mock/mock-config.token';
 import { ClipboardService } from './services/interaction/clipboard.service';
+import { DocumentSearchService } from './services/search/document-search.service';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore } from './stores/navigation.store';
 import { ProjectOverviewService } from '../../services/project-overview.service';
@@ -67,6 +68,37 @@ describe('ProjectDocuments bulk actions', () => {
         fixture.detectChanges();
         await fixture.whenStable();
         fixture.detectChanges();
+    }
+
+    /**
+     * Delete one node the way the search surface does — the row is not in the table, so
+     * the context menu is not reachable; this drives the same container entry point.
+     */
+    async function deleteThrough(node: FileSystemNode): Promise<void> {
+        const show = spyOn(TestBed.inject(PopupService), 'showPopup');
+        const component = fixture.componentInstance as unknown as {
+            requestDelete: (target: FileSystemNode, surface: 'table' | 'search') => void;
+        };
+        component.requestDelete(node, 'search');
+        if (show.calls.any()) {
+            await acceptPopup(show);
+
+            return;
+        }
+        // A single item arms the inline buttons instead of a dialog.
+        const component2 = fixture.componentInstance as unknown as {
+            confirmDelete: (target: FileSystemNode) => void;
+        };
+        component2.confirmDelete(node);
+        await flushTimers();
+        await render();
+    }
+
+    async function pasteThrough(target: FolderNode): Promise<void> {
+        const component = fixture.componentInstance as unknown as {
+            pasteInto: (folder: FolderNode) => Promise<void>;
+        };
+        await component.pasteInto(target);
     }
 
     function clipboard(): ClipboardService {
@@ -164,6 +196,17 @@ describe('ProjectDocuments bulk actions', () => {
         expect(store.entityMap()[second.id]).toBeDefined();
     });
 
+    /** Any row of the current folder that the given operation does not involve. */
+    function uninvolvedRow(exclude: FileSystemNode[]): FileSystemNode {
+        const excluded = new Set(exclude.map(({ id }) => id));
+        const rows = navigation.currentFolderChildren();
+        const row = [...rows.files, ...rows.folders]
+            .find((node) => !excluded.has(node.id) && (!isFolder(node) || !node.isRecycleBin));
+        if (!row) { throw new Error('Expected an uninvolved row'); }
+
+        return row;
+    }
+
     /** A folder of the current list that is not one of the selected rows. */
     function otherFolder(exclude: FileSystemNode[]): FolderNode {
         const excluded = new Set(exclude.map(({ id }) => id));
@@ -217,6 +260,100 @@ describe('ProjectDocuments bulk actions', () => {
         invoke(menuFor(chosen[0]), chosen[0].kind === 'folder' ? 'Cut Folder' : 'Cut File');
         fixture.detectChanges();
         expect(host().querySelectorAll('.pd-row-cut').length).toBe(2);
+    });
+
+    it('refuses a confirmation accepted after the project changed', async () => {
+        const show = spyOn(TestBed.inject(PopupService), 'showPopup');
+        const remove = spyOn(api, 'delete').and.returnValue(of(undefined));
+        const [first] = selectTwoRows();
+
+        invoke(menuFor(first), first.kind === 'folder' ? 'Delete Folder' : 'Delete File');
+        // The dialog outlives its project: the guard was taken when it opened.
+        await store.initialize('project');
+        await acceptPopup(show);
+
+        expect(remove).not.toHaveBeenCalled();
+    });
+
+    it('drops a search row for a hit the cache never held', async () => {
+        const scope = navigation.currentFolder();
+        if (!scope) { throw new Error('Expected a current folder'); }
+        const hit = { ...otherFolder([]), id: 'uncached-hit', name: 'Uncached' };
+        spyOn(api, 'searchDocuments').and.returnValue(of([hit]));
+        spyOn(api, 'delete').and.returnValue(of(undefined));
+        const search = fixture.debugElement.injector.get(DocumentSearchService);
+        search.search('project', scope, 'Uncached');
+        await flushTimers();
+        expect(search.results().length).toBe(1);
+
+        // Nothing is cached under this id, so the cache reports no removal at all.
+        await deleteThrough(hit);
+
+        expect(search.results().length).toBe(0);
+    });
+
+    it('keeps a clipboard copied while a cut-paste was still running', async () => {
+        const chosen = selectTwoRows();
+        const target = otherFolder(chosen);
+        // One subject per call: a single cold Observable would be re-subscribed per
+        // item and only the last subscriber reachable, so the paste would never finish.
+        const pending: Subject<FileSystemNode>[] = [];
+        spyOn(api, 'move').and.callFake(() => {
+            const response = new Subject<FileSystemNode>();
+            pending.push(response);
+
+            return response;
+        });
+
+        invoke(menuFor(chosen[0]), chosen[0].kind === 'folder' ? 'Cut Folder' : 'Cut File');
+        void pasteThrough(target);
+        await flushTimers();
+        // A newer intent arrives mid-paste and must survive the paste finishing. It has
+        // to be a row this paste does not touch: the target is locked while writing,
+        // and a cut row would legitimately be pruned when it moves.
+        const bystander = uninvolvedRow([...chosen, target]);
+        invoke(menuFor(bystander),
+            bystander.kind === 'folder' ? 'Copy Folder' : 'Copy File');
+        expect(pending.length).toBe(2);
+        for (const [index, response] of pending.entries()) {
+            response.next({ ...chosen[index], parentId: target.id });
+            response.complete();
+        }
+        await flushTimers();
+        await render();
+
+        expect(clipboard().isEmpty()).toBeFalse();
+        expect(clipboard().mode()).toBe('copy');
+    });
+
+    it('opens the paste target when a cut took the viewed folder with it', async () => {
+        // A folder with children, so moving it removes a cached descendant.
+        let parent: FolderNode | undefined;
+        let child: FileSystemNode | undefined;
+        for (const candidate of navigation.currentFolderChildren().folders) {
+            if (candidate.isRecycleBin) { continue; }
+            await store.loadChildren(candidate.id);
+            child = store.entities().find((node) => node.parentId === candidate.id);
+            if (child) { parent = candidate; break; }
+        }
+        if (!parent || !child) { throw new Error('Expected a folder with a child'); }
+        // Chosen before navigating away: a target inside `parent` would be a descendant
+        // paste, which is refused before the move is ever attempted.
+        const target = otherFolder([parent]);
+        navigation.navigateTo(child.id);
+        await render();
+        expect(navigation.currentFolderId()).toBe(child.id);
+        spyOn(api, 'move').and.callFake((_project, node, folder) =>
+            of({ ...node, parentId: folder.id }));
+
+        clipboard().cut([parent]);
+        await pasteThrough(target);
+        await flushTimers();
+        await render();
+
+        // The move re-inserts only the returned folder, so the viewed child is gone and
+        // the view has to land somewhere real.
+        expect(navigation.currentFolderId()).toBe(target.id);
     });
 
     it('keeps Rename single-item while a selection is active', () => {

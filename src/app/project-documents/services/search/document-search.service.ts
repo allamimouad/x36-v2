@@ -33,11 +33,16 @@ export class DocumentSearchService {
     }
 
     /**
-     * Drop results whose ids were removed (a moved or deleted subtree), mirroring the
-     * same method on `NavigationStore` and `ClipboardService`. Scoping by removed ids
-     * is right per operation on its own: a delete or move removes ids so the row goes,
-     * a copy removes none so the list is untouched. Re-running the search instead would
-     * make every action wait for a query that can take tens of seconds.
+     * Drop results by id, mirroring the same method on `NavigationStore` and
+     * `ClipboardService`.
+     *
+     * Results are a snapshot of one query, and every mutation already returns enough to
+     * update that snapshot, so the list is maintained from those results rather than by
+     * re-running the search — which would charge the user the full search latency on
+     * every action to rediscover what we already know.
+     *
+     * Callers must pass the operation's own source ids as well as whatever the cache
+     * removed: a search hit is usually not cached, so the cache reports nothing for it.
      */
     public pruneReferences(removedIds: Iterable<string>): void {
         const removed = new Set(removedIds);
@@ -45,6 +50,20 @@ export class DocumentSearchService {
         const current = this._results();
         const next = current.filter(({ id }) => !removed.has(id));
         if (next.length !== current.length) { this._results.set(next); }
+    }
+
+    /**
+     * Replace a result with its canonical form after an operation that kept it in the
+     * set — a rename, where only the name and path changed. Does nothing when the id is
+     * not among the current results.
+     */
+    public replaceResult(node: FileSystemNode): void {
+        const current = this._results();
+        const index = current.findIndex(({ id }) => id === node.id);
+        if (index === -1) { return; }
+        const next = [...current];
+        next[index] = node;
+        this._results.set(next);
     }
 
     public search(projectId: string, scope: FolderNode, query: string): void {

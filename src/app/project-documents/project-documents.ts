@@ -6,6 +6,7 @@ import {
     effect,
     ElementRef,
     HostListener,
+    DestroyRef,
     inject,
     input,
     signal,
@@ -384,6 +385,8 @@ export class ProjectDocuments {
 
     protected readonly bootstrapLoading = computed(() => this.fileSystem.isInitializing());
     private pendingFileTarget: FolderNode | null = null;
+    /** Set once this component is torn down, so queued batch work stops going out. */
+    private destroyed = false;
     private readonly popupService = inject(PopupService);
     private readonly bulk = inject(BulkOperationService);
     private readonly router = inject(Router);
@@ -408,6 +411,7 @@ export class ProjectDocuments {
         });
         this.observeSearchHistory();
         this.observeInitialFolderPath();
+        inject(DestroyRef).onDestroy(() => { this.destroyed = true; });
     }
 
     @HostListener('document:keydown.escape')
@@ -727,7 +731,8 @@ export class ProjectDocuments {
             const renamed = await this.fileSystem.rename(request.node, name);
             this.navigation.endRename();
             this.inlineRenameSurface.set(null);
-            this.refreshActiveSearch();
+            // The row survives a rename, so it is corrected rather than re-queried.
+            this.search.replaceResult(renamed);
             this.notifications.success(`“${request.node.name}” was renamed to “${renamed.name}”.`);
         } catch (error) {
             const fieldError = this.mutationFieldError(error);
@@ -781,10 +786,10 @@ export class ProjectDocuments {
         try {
             const removedIds = await this.fileSystem.delete(node);
             const removesCurrent = currentId !== null && removedIds.includes(currentId);
-            this.navigation.pruneReferences(removedIds);
-            this.clipboard.pruneReferences(removedIds);
+            // The node's own id is included explicitly: an uncached source — every
+            // search hit is one — contributes nothing to what the cache removed.
+            this.bulk.pruneReferences([...removedIds, node.id]);
             if (removesCurrent && parentId) { this.navigation.navigateTo(parentId); }
-            this.refreshActiveSearch();
             this.notifications.success(`“${node.name}” was deleted.`);
         } catch (error) {
             this.reportMutationFailure(error);
@@ -1041,6 +1046,8 @@ export class ProjectDocuments {
         cut: boolean
     ): Promise<void> {
         const isCurrent = this.projectSessionGuard();
+        const pasted = this.clipboard.ids();
+        const currentId = this.navigation.currentFolderId();
         const outcomes = await this.bulk.run({
             items: sources,
             isCurrent,
@@ -1050,19 +1057,37 @@ export class ProjectDocuments {
         });
         if (!isCurrent()) { return; }
         const settled = outcomes.filter((outcome) => outcome.abandoned !== true);
-        const removed = settled
-            .filter((outcome) => outcome.error === undefined)
-            .flatMap((outcome) => outcome.removed);
+        const done = settled.filter((outcome) => outcome.error === undefined);
+        // A copy takes nothing away, so it prunes nothing: its source still exists and
+        // its clipboard entry stays valid. A cut includes the source ids, because an
+        // uncached hit reports nothing through the cache.
+        const removed = cut
+            ? done.flatMap((outcome) => [...outcome.removed, outcome.node.id])
+            : [];
+        // Read before pruning, which drops the reference this depends on.
+        const viewTaken = currentId !== null && removed.includes(currentId);
         this.bulk.pruneReferences(removed);
-        this.refreshActiveSearch();
+        if (viewTaken) { this.navigation.navigateTo(target.id); }
         // Desktop convention: a cut clipboard is spent once pasted, a copy one is not.
-        // Pruning has already dropped whatever the move removed, so clear only the rest.
-        if (cut) { this.clipboard.clear(); }
+        // Only this paste's own clipboard is spent — anything copied while it ran is
+        // someone's newer intent and must survive.
+        if (cut && this.holdsSameClipboard(pasted)) { this.clipboard.clear(); }
         this.bulk.report(settled, cut ? 'moved' : 'copied', cut ? 'stayed in place' : 'failed');
+    }
+
+    /** Whether the clipboard still holds exactly what a paste consumed. */
+    private holdsSameClipboard(pasted: ReadonlySet<string>): boolean {
+        const current = this.clipboard.ids();
+
+        return current.size === pasted.size &&
+            [...pasted].every((id) => current.has(id));
     }
 
     private requestBulkDelete(nodes: FileSystemNode[]): void {
         if (nodes.length === 0) { return; }
+        // Captured now, not on acceptance: the dialog can outlive its project, and
+        // confirming afterwards would send these nodes against whatever is loaded then.
+        const isCurrent = this.projectSessionGuard();
         this.popupService.showPopup(
             ConfirmationPopup,
             { ...DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG, width: '28rem' },
@@ -1070,13 +1095,16 @@ export class ProjectDocuments {
                 confirmButtonText: 'Confirm',
                 declineButtonText: 'Cancel',
                 message: `Are you sure you want to delete ${nodes.length} items?`,
-                onAccept: () => void this.deleteNodes(nodes)
+                onAccept: () => void this.deleteNodes(nodes, isCurrent)
             }
         );
     }
 
-    private async deleteNodes(nodes: FileSystemNode[]): Promise<void> {
-        const isCurrent = this.projectSessionGuard();
+    private async deleteNodes(
+        nodes: FileSystemNode[],
+        isCurrent: () => boolean
+    ): Promise<void> {
+        if (!isCurrent()) { return; }
         const currentId = this.navigation.currentFolderId();
         for (const node of nodes) { this.setWriting(node.id, true); }
         try {
@@ -1088,12 +1116,12 @@ export class ProjectDocuments {
             if (!isCurrent()) { return; }
             const settled = outcomes.filter((outcome) => outcome.abandoned !== true);
             const done = settled.filter((outcome) => outcome.error === undefined);
-            const removed = done.flatMap((outcome) => outcome.removed);
+            // Source ids included: an uncached hit reports nothing through the cache.
+            const removed = done.flatMap((outcome) => [...outcome.removed, outcome.node.id]);
             // Decided once for the batch, and before pruning clears the reference.
             const remover = done.find((o) => o.removed.includes(currentId ?? ''));
             this.bulk.pruneReferences(removed);
             if (remover?.node.parentId) { this.navigation.navigateTo(remover.node.parentId); }
-            this.refreshActiveSearch();
             this.bulk.report(settled, 'deleted', 'were not deleted');
         } finally {
             for (const node of nodes) { this.setWriting(node.id, false); }
@@ -1115,7 +1143,10 @@ export class ProjectDocuments {
         const projectId = this.fileSystem.projectId();
         const roots = this.fileSystem.initializedRoots();
 
-        return (): boolean => this.fileSystem.projectId() === projectId &&
+        // `destroyed` matters as much as the project: navigating away must stop queued
+        // work from going out, which the drag guard has always checked and this did not.
+        return (): boolean => !this.destroyed &&
+            this.fileSystem.projectId() === projectId &&
             roots !== null && this.fileSystem.initializedRoots() === roots;
     }
 
@@ -1592,14 +1623,6 @@ export class ProjectDocuments {
             !this.clipboard.isEmpty() &&
             target.accessLevel !== FolderNodeResponseAccessLevelEnum.Readonly &&
             !this.navigation.isCurrentFolderReadonly();
-    }
-
-    private refreshActiveSearch(): void {
-        const entry = this.navigation.currentHistoryEntry();
-        const scope = this.navigation.currentFolder();
-        if (entry?.kind === 'search' && scope) {
-            this.search.search(this.id(), scope, entry.query);
-        }
     }
 
     private async uploadExternalDrop(

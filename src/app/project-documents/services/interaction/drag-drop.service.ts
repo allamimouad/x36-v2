@@ -421,7 +421,9 @@ export class DragDropService {
     ): void {
         const done = outcomes.filter((outcome) => outcome.error === undefined);
         if (done.length === 0) { return; }
-        const removed = done.flatMap((outcome) => outcome.removed);
+        // Source ids included: an uncached source — every search hit is one — reports
+        // nothing through the cache, so its result row would otherwise survive.
+        const removed = done.flatMap((outcome) => [...outcome.removed, outcome.node.id]);
         const currentId = this.navigation.currentFolderId();
         const affected = this.viewWasTaken(done, removed, view, currentId);
         this.bulk.pruneReferences(removed);

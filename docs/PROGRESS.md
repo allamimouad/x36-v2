@@ -6,8 +6,34 @@
 
 ## Current Status
 
-**Active work (2026-11-03): bulk delete, copy and cut.** Uncommitted beyond
-`5094136`.
+**Active work (2026-11-04): review fixes, and one search strategy change.** A review
+raised five issues; all five were real and all are fixed.
+
+The substantive one changed a strategy. Rename, single delete, bulk delete and paste
+re-ran the search after mutating (`refreshActiveSearch`, your colleague's convention
+from the search work), while the drag pruned by id instead — and the drag's version had
+a hole: `removedSubtreeOf` reports only cached nodes, so an uncached search hit produced
+no ids and its row survived a successful delete. Since a search hit is *never* cached,
+that was every drag from search. Rather than give the drag a refresh, pruning won
+everywhere: it costs no query, and it is more accurate than a refresh for a move, which
+would otherwise re-show the item at its new path in a result set nobody asked for.
+`refreshActiveSearch` is removed, `DocumentSearchService` gained `replaceResult` for
+rename, and pruning now includes each operation's own source ids. Only operations that
+take something away prune — a copy prunes nothing, or it clears its own clipboard entry.
+
+The other four: a bulk-delete confirmation could outlive its project (the guard is now
+captured when the dialog opens, not when it is accepted); the menu's session guard
+ignored component lifetime (it now checks `destroyed`, as the drag guard always did); a
+cut-paste could leave the view on a removed folder (it now opens the destination, like a
+drag); and a finishing cut-paste could clear a newer clipboard (it clears only when the
+clipboard still holds what that paste consumed).
+
+**Verification (2026-11-04):** full headless suite **226/226**, production build, both
+TypeScript projects and repository lint pass. Four of the five fixes have regression
+tests confirmed to fail without them; the lifetime guard is covered by inspection
+because a test needs a different concurrency harness than that spec uses.
+
+**Earlier record (2026-11-03): bulk delete, copy and cut.**
 
 The drag already had the batch machinery — bounded queue, per-item failure isolation,
 combined pruning, one summary — but inside `DragDropService`. It is now
