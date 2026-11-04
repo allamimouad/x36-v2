@@ -732,7 +732,7 @@ export class ProjectDocuments {
             this.navigation.endRename();
             this.inlineRenameSurface.set(null);
             // The row survives a rename, so it is corrected rather than re-queried.
-            this.search.replaceResult(renamed);
+            this.search.applyRename(request.node, renamed);
             this.notifications.success(`“${request.node.name}” was renamed to “${renamed.name}”.`);
         } catch (error) {
             const fieldError = this.mutationFieldError(error);
@@ -788,7 +788,7 @@ export class ProjectDocuments {
             const removesCurrent = currentId !== null && removedIds.includes(currentId);
             // The node's own id is included explicitly: an uncached source — every
             // search hit is one — contributes nothing to what the cache removed.
-            this.bulk.pruneReferences([...removedIds, node.id]);
+            this.bulk.pruneReferences([...removedIds, node.id], [node]);
             if (removesCurrent && parentId) { this.navigation.navigateTo(parentId); }
             this.notifications.success(`“${node.name}” was deleted.`);
         } catch (error) {
@@ -1046,8 +1046,6 @@ export class ProjectDocuments {
         cut: boolean
     ): Promise<void> {
         const isCurrent = this.projectSessionGuard();
-        const pasted = this.clipboard.ids();
-        const currentId = this.navigation.currentFolderId();
         const outcomes = await this.bulk.run({
             items: sources,
             isCurrent,
@@ -1064,23 +1062,17 @@ export class ProjectDocuments {
         const removed = cut
             ? done.flatMap((outcome) => [...outcome.removed, outcome.node.id])
             : [];
-        // Read before pruning, which drops the reference this depends on.
+        // Read now, not when the paste began: opening a child of a moving folder while
+        // the move runs makes that child the one that disappears. The move already
+        // resolves its removals at completion, so such a child is in `removed`.
+        const currentId = this.navigation.currentFolderId();
         const viewTaken = currentId !== null && removed.includes(currentId);
-        this.bulk.pruneReferences(removed);
+        this.bulk.pruneReferences(removed, done.map((outcome) => outcome.node));
         if (viewTaken) { this.navigation.navigateTo(target.id); }
-        // Desktop convention: a cut clipboard is spent once pasted, a copy one is not.
-        // Only this paste's own clipboard is spent — anything copied while it ran is
-        // someone's newer intent and must survive.
-        if (cut && this.holdsSameClipboard(pasted)) { this.clipboard.clear(); }
+        // No explicit clear: pruning above already drops whatever actually moved, so a
+        // full cut empties the clipboard, a partial one keeps exactly the failures for
+        // a retry, and a clipboard taken while this paste ran is left alone.
         this.bulk.report(settled, cut ? 'moved' : 'copied', cut ? 'stayed in place' : 'failed');
-    }
-
-    /** Whether the clipboard still holds exactly what a paste consumed. */
-    private holdsSameClipboard(pasted: ReadonlySet<string>): boolean {
-        const current = this.clipboard.ids();
-
-        return current.size === pasted.size &&
-            [...pasted].every((id) => current.has(id));
     }
 
     private requestBulkDelete(nodes: FileSystemNode[]): void {
@@ -1120,7 +1112,7 @@ export class ProjectDocuments {
             const removed = done.flatMap((outcome) => [...outcome.removed, outcome.node.id]);
             // Decided once for the batch, and before pruning clears the reference.
             const remover = done.find((o) => o.removed.includes(currentId ?? ''));
-            this.bulk.pruneReferences(removed);
+            this.bulk.pruneReferences(removed, done.map((outcome) => outcome.node));
             if (remover?.node.parentId) { this.navigation.navigateTo(remover.node.parentId); }
             this.bulk.report(settled, 'deleted', 'were not deleted');
         } finally {

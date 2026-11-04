@@ -1,7 +1,9 @@
 import { DestroyRef, inject, Injectable, signal, type Signal } from '@angular/core';
 import type { Subscription } from 'rxjs';
 import { FileSystemError } from '../../models/file-system-error.model';
-import type { FileSystemNode, FolderNode } from '../../models/file-system-node.model';
+import {
+    type FileSystemNode, type FolderNode, isFolder
+} from '../../models/file-system-node.model';
 import { FileSystemApi } from '../file-system/file-system-api';
 
 /** Component-scoped state for one submitted recursive document search. */
@@ -44,26 +46,47 @@ export class DocumentSearchService {
      * Callers must pass the operation's own source ids as well as whatever the cache
      * removed: a search hit is usually not cached, so the cache reports nothing for it.
      */
-    public pruneReferences(removedIds: Iterable<string>): void {
+    public pruneReferences(
+        removedIds: Iterable<string>,
+        removedRoots: readonly FileSystemNode[] = []
+    ): void {
         const removed = new Set(removedIds);
-        if (removed.size === 0) { return; }
+        if (removed.size === 0 && removedRoots.length === 0) { return; }
+        // A result's descendants are results too, and just as uncached, so an id is not
+        // enough to relate them to an operation on their ancestor: the path is.
+        const prefixes = removedRoots
+            .filter((root) => isFolder(root))
+            .map((root) => `${root.path}/`);
         const current = this._results();
-        const next = current.filter(({ id }) => !removed.has(id));
+        const next = current.filter((result) => !removed.has(result.id) &&
+            !prefixes.some((prefix) => result.path.startsWith(prefix)));
         if (next.length !== current.length) { this._results.set(next); }
     }
 
     /**
-     * Replace a result with its canonical form after an operation that kept it in the
-     * set — a rename, where only the name and path changed. Does nothing when the id is
-     * not among the current results.
+     * Apply a rename to the results: the renamed row takes its canonical form, and any
+     * result beneath it has its path prefix rewritten. Renaming a folder changes its
+     * descendants' paths too, and those descendants are uncached results of their own —
+     * the store does the same for what it has cached in `_updateCachedSubtreePaths`.
+     * A stale path here is not cosmetic: "Open File Location" navigates by it.
      */
-    public replaceResult(node: FileSystemNode): void {
+    public applyRename(previous: FileSystemNode, renamed: FileSystemNode): void {
+        const oldPrefix = `${previous.path}/`;
+        const newPrefix = `${renamed.path}/`;
         const current = this._results();
-        const index = current.findIndex(({ id }) => id === node.id);
-        if (index === -1) { return; }
-        const next = [...current];
-        next[index] = node;
-        this._results.set(next);
+        let changed = false;
+        const next = current.map((result) => {
+            if (result.id === renamed.id) {
+                changed = true;
+
+                return renamed;
+            }
+            if (!result.path.startsWith(oldPrefix)) { return result; }
+            changed = true;
+
+            return { ...result, path: `${newPrefix}${result.path.slice(oldPrefix.length)}` };
+        });
+        if (changed) { this._results.set(next); }
     }
 
     public search(projectId: string, scope: FolderNode, query: string): void {

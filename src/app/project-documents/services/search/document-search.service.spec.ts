@@ -61,7 +61,45 @@ describe('DocumentSearchService', () => {
         service.pruneReferences(['not-a-result']);
         expect(service.results().map(({ id }) => id)).toEqual(['kept']);
     }));
+
+    it('drops results beneath a removed folder, which carry no removed id', fakeAsync(() => {
+        spyOn(api, 'searchDocuments').and.returnValue(of([
+            { ...response('inside')[0], path: '/execution/A/inside.pdf' },
+            { ...response('outside')[0], path: '/execution/B/outside.pdf' }
+        ]));
+        service.search('project', scope, 'anything');
+        tick();
+
+        // The folder itself was never a result, and nothing under it was cached, so an
+        // id-only prune has nothing to match on.
+        service.pruneReferences([], [folderNode('A', '/execution/A')]);
+
+        expect(service.results().map(({ id }) => id)).toEqual(['outside']);
+    }));
+
+    it('rewrites the paths of results beneath a renamed folder', fakeAsync(() => {
+        spyOn(api, 'searchDocuments').and.returnValue(of([
+            { ...response('child')[0], path: '/execution/A/child.pdf' },
+            { ...response('elsewhere')[0], path: '/execution/B/elsewhere.pdf' }
+        ]));
+        service.search('project', scope, 'anything');
+        tick();
+
+        service.applyRename(
+            folderNode('folder-a', '/execution/A'),
+            folderNode('folder-a', '/execution/B-renamed')
+        );
+
+        // A stale path is not cosmetic: "Open File Location" navigates by it.
+        expect(service.results().map(({ path }) => path)).toEqual([
+            '/execution/B-renamed/child.pdf', '/execution/B/elsewhere.pdf'
+        ]);
+    }));
 });
+
+function folderNode(id: string, path: string): FolderNode {
+    return { ...scope, id, path, name: id };
+}
 
 function response(query: string): FileSystemNode[] {
     return [{

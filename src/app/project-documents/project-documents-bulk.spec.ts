@@ -356,6 +356,59 @@ describe('ProjectDocuments bulk actions', () => {
         expect(navigation.currentFolderId()).toBe(target.id);
     });
 
+    it('navigates when the folder opened during a cut-paste is the one removed', async () => {
+        let parent: FolderNode | undefined;
+        let child: FileSystemNode | undefined;
+        for (const candidate of navigation.currentFolderChildren().folders) {
+            if (candidate.isRecycleBin) { continue; }
+            await store.loadChildren(candidate.id);
+            child = store.entities().find((node) => node.parentId === candidate.id);
+            if (child) { parent = candidate; break; }
+        }
+        if (!parent || !child) { throw new Error('Expected a folder with a child'); }
+        const target = otherFolder([parent]);
+        const pending: Subject<FileSystemNode>[] = [];
+        spyOn(api, 'move').and.callFake(() => {
+            const response = new Subject<FileSystemNode>();
+            pending.push(response);
+
+            return response;
+        });
+
+        clipboard().cut([parent]);
+        void pasteThrough(target);
+        await flushTimers();
+        // The view changes *after* the paste began, to a folder the move will remove.
+        navigation.navigateTo(child.id);
+        await render();
+        expect(navigation.currentFolderId()).toBe(child.id);
+        pending[0]?.next({ ...parent, parentId: target.id });
+        pending[0]?.complete();
+        await flushTimers();
+        await render();
+
+        expect(navigation.currentFolderId()).toBe(target.id);
+    });
+
+    it('leaves a failed cut on the clipboard for a retry', async () => {
+        const chosen = selectTwoRows();
+        const target = otherFolder(chosen);
+        spyOn(api, 'move').and.callFake((_project, node, folder) =>
+            node.id === chosen[1].id
+                ? throwError(() => new FileSystemError('network', 'Offline'))
+                : of({ ...node, parentId: folder.id }));
+
+        invoke(menuFor(chosen[0]), chosen[0].kind === 'folder' ? 'Cut Folder' : 'Cut File');
+        await pasteThrough(target);
+        await flushTimers();
+        await render();
+
+        // Pruning removes only what actually moved, so the failure stays to be retried
+        // rather than being cleared along with it.
+        expect(clipboard().ids().has(chosen[1].id)).toBeTrue();
+        expect(clipboard().ids().has(chosen[0].id)).toBeFalse();
+    });
+
     it('keeps Rename single-item while a selection is active', () => {
         const [first] = selectTwoRows();
         const items = menuFor(first);

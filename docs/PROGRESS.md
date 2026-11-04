@@ -28,10 +28,27 @@ cut-paste could leave the view on a removed folder (it now opens the destination
 drag); and a finishing cut-paste could clear a newer clipboard (it clears only when the
 clipboard still holds what that paste consumed).
 
-**Verification (2026-11-04):** full headless suite **226/226**, production build, both
-TypeScript projects and repository lint pass. Four of the five fixes have regression
-tests confirmed to fail without them; the lifetime guard is covered by inspection
-because a test needs a different concurrency harness than that spec uses.
+A follow-up round found four more, all real and all fixed. Two shared one gap: a search
+result's **descendants** are uncached results of their own, and nothing related them to
+an operation on their ancestor. Deleting a folder therefore left its children's rows,
+and renaming one left their paths stale — which matters because "Open File Location"
+navigates by that path. Pruning now matches by path as well as by id, and
+`replaceResult` became `applyRename`, rewriting the prefix beneath the renamed folder as
+the store already does for cached nodes.
+
+The other two: a cut-paste read the viewed folder from when it started, so opening a
+child of the moving folder mid-paste left the view on something removed — the move
+already resolves removals at completion, so the view is now read there too. And the
+clipboard guard compared ids, so re-copying a file that was mid-cut passed it; the
+explicit clear and its comparison are **deleted** rather than replaced with version
+tracking, because pruning already drops what actually moved. That also makes a partly
+failed cut keep exactly its failures for a retry instead of clearing them.
+
+**Verification (2026-11-04):** full headless suite **230/230**, production build, both
+TypeScript projects and repository lint pass. Every fix from both rounds has a
+regression test confirmed to fail without it, except the component-lifetime guard, which
+is covered by inspection because testing it needs a different concurrency harness than
+that spec uses.
 
 **Earlier record (2026-11-03): bulk delete, copy and cut.**
 

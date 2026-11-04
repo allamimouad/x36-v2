@@ -253,8 +253,13 @@ already told us. So: a delete or move drops the rows, a rename corrects the row 
 place, and a copy leaves the list untouched — the source is unchanged and the new copy
 was never part of the query. Pruning uses the operation's own source ids as well as
 whatever the cache removed, because a search hit is normally not cached and the cache
-reports nothing for it. Bulk download is deliberately absent: there is
-no zip endpoint, so it would mean one browser download per file.
+reports nothing for it — and matches **by path** as well, since a result's descendants
+are uncached results too and no id relates them to an operation on their ancestor. A
+rename likewise rewrites the path prefix of results beneath the renamed folder: a stale
+path is not cosmetic, because "Open File Location" navigates by it.
+
+Bulk download is deliberately absent: there is no zip endpoint, so it would mean one
+browser download per file.
 
 ### 3.9 Upload with progress
 

@@ -315,11 +315,32 @@ The other four:
 - **A finishing cut-paste could clear a newer clipboard.** It now clears only when the
   clipboard still holds exactly what that paste consumed.
 
+### Follow-up round (2026-11-04)
+
+Four more findings, all real, all fixed. Two shared one missing capability: a search
+result's **descendants** are uncached results of their own, and nothing related them to
+an operation on their ancestor.
+
+- Deleting a folder left its children's rows, because an uncached folder contributes no
+  removed ids and only its own id was pruned. `pruneReferences` now also takes the nodes
+  the operation acted on and drops results whose path sits beneath them.
+- Renaming a folder left its children's paths stale, which "Open File Location" then
+  navigated by. `replaceResult` became `applyRename`, rewriting the path prefix of
+  results underneath, mirroring the store's `_updateCachedSubtreePaths`.
+- A cut-paste read the viewed folder from when it *started*. Opening a child of a moving
+  folder mid-paste made that child the one removed, and the stale check missed it. The
+  move already resolves removals at completion, so reading the view there is enough.
+- The clipboard guard compared ids, so re-copying a file that was mid-cut passed it. The
+  explicit clear and its comparison are **deleted** rather than replaced with version
+  tracking: `ClipboardService.pruneReferences` already drops what actually moved, so a
+  full cut empties the clipboard, a partial one keeps exactly the failures for a retry —
+  better than clearing — and a clipboard taken during the paste is untouched.
+
 ## Verification (2026-11-04)
 
-- Full headless suite **226 passed**. Four of the five fixes have regression tests
-  confirmed to fail without them; the lifetime guard is covered by inspection, since a
-  test needs a different concurrency harness than this spec uses.
+- Full headless suite **230 passed**. Every fix from both rounds has a regression test
+  confirmed to fail without it, except the component-lifetime guard, which is covered by
+  inspection: testing it needs a different concurrency harness than that spec uses.
 - Production build, both TypeScript projects and repository lint pass.
 
 ## Verification (2026-11-03)

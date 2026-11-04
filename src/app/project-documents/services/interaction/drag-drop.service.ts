@@ -426,7 +426,7 @@ export class DragDropService {
         const removed = done.flatMap((outcome) => [...outcome.removed, outcome.node.id]);
         const currentId = this.navigation.currentFolderId();
         const affected = this.viewWasTaken(done, removed, view, currentId);
-        this.bulk.pruneReferences(removed);
+        this.bulk.pruneReferences(removed, done.map((outcome) => outcome.node));
         if (!affected) { return; }
         const destination = intent === 'delete'
             ? this.parentOfRemover(done, currentId)
