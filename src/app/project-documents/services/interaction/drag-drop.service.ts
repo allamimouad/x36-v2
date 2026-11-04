@@ -96,11 +96,18 @@ export class DragDropService {
     }
 
     /**
-     * Whether `node` could start a drag. `draggableIds` only enumerates the cache, so a
-     * search result — which never enters it — has to be asked about directly.
+     * Which of `nodes` could start a drag. `draggableIds` only enumerates the cache, so
+     * nodes that never enter it — every search result — have to be asked about here.
+     *
+     * Takes the whole list on purpose: `policy()` scans every cached entity, so asking
+     * per node made this O(nodes x entities) and rebuilt the policy on each row.
      */
-    public canDrag(node: FileSystemNode): boolean {
-        return canStartDrag(node, this.policy());
+    public draggableAmong(nodes: readonly FileSystemNode[]): ReadonlySet<string> {
+        const policy = this.policy();
+
+        return new Set(nodes
+            .filter((node) => canStartDrag(node, policy))
+            .map(({ id }) => id));
     }
 
     public handles(event: DragEvent): boolean {

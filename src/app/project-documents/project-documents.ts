@@ -215,9 +215,7 @@ export class ProjectDocuments {
      * result is asked about directly.
      */
     protected readonly draggableSearchResultIds = computed(
-        () => new Set(this.search.results()
-            .filter((result) => this.dragDrop.canDrag(result))
-            .map((result) => result.id))
+        () => this.dragDrop.draggableAmong(this.search.results())
     );
     /** Ids on the clipboard as a cut; empty for a copy, which leaves rows untouched. */
     protected readonly cutIds = computed<ReadonlySet<string>>(

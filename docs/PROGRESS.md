@@ -44,11 +44,20 @@ explicit clear and its comparison are **deleted** rather than replaced with vers
 tracking, because pruning already drops what actually moved. That also makes a partly
 failed cut keep exactly its failures for a retry instead of clearing them.
 
-**Verification (2026-11-04):** full headless suite **230/230**, production build, both
+One performance fix came out of asking what the search path costs per operation.
+Pruning is cheap by design — once per operation, one pass, and it writes only when
+something changed. But marking search rows draggable called a per-node `canDrag`, and
+`policy()` scans every cached entity, so it was O(results x entities) and rebuilt on
+every signal the policy reads — including `pending`, so on every drag start and end.
+`canDrag` is now `draggableAmong`, which takes the list and builds the policy once, as
+`draggableIds` always did for the tree and table. A test counts `entityMap` reads to
+keep the per-row form from coming back.
+
+**Verification (2026-11-04):** full headless suite **231/231**, production build, both
 TypeScript projects and repository lint pass. Every fix from both rounds has a
 regression test confirmed to fail without it, except the component-lifetime guard, which
 is covered by inspection because testing it needs a different concurrency harness than
-that spec uses.
+that spec uses. Reverting the policy change failed its test too.
 
 **Earlier record (2026-11-03): bulk delete, copy and cut.**
 

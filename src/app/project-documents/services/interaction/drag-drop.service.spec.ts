@@ -328,6 +328,20 @@ describe('DragDropService native session and mutations', () => {
             node.name === uncached.name && node.parentId === destination.id)).toBeTrue();
     });
 
+    it('builds the drag policy once for a whole list of candidates', () => {
+        // `entityMap` is the policy's most expensive input: it is scanned in full to
+        // find the recycle bins. Reading it once per candidate made marking search
+        // results draggable cost O(results x cached entities).
+        const reads = spyOn(store, 'entityMap').and.callThrough();
+        const candidates = [source, ...siblingsOf(source, 2)];
+
+        reads.calls.reset();
+        const draggable = service.draggableAmong(candidates);
+
+        expect(draggable.size).toBeGreaterThan(0);
+        expect(reads.calls.count()).toBeLessThan(candidates.length);
+    });
+
     it('does not inspect protected payload data during dragover', () => {
         start();
         const read = spyOn(data, 'getData').and.throwError('Protected drag data');

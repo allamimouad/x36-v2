@@ -336,9 +336,25 @@ an operation on their ancestor.
   full cut empties the clipboard, a partial one keeps exactly the failures for a retry —
   better than clearing — and a clipboard taken during the paste is untouched.
 
+### Cost of maintaining results (2026-11-04)
+
+Prompted by asking what the search path now costs per operation.
+
+Pruning is cheap and deliberately so: it runs **once per operation**, not per item — a
+single pass doing a `Set` lookup plus one prefix compare per folder in the batch, and it
+writes the signal only when something changed, since a write re-renders the table.
+
+Marking search rows draggable was not. `draggableSearchResultIds` called a per-node
+`canDrag`, and `policy()` scans every cached entity to find the recycle bins — so it was
+O(results x entities), rebuilt on every signal `policy()` reads, which includes
+`pending` and therefore **every drag start and end**. `canDrag` is now `draggableAmong`,
+taking the whole list and building the policy once, as `draggableIds` always did for the
+tree and table. A test pins that intent by counting `entityMap` reads, because nothing
+else would stop the per-row form returning.
+
 ## Verification (2026-11-04)
 
-- Full headless suite **230 passed**. Every fix from both rounds has a regression test
+- Full headless suite **231 passed**. Every fix from both rounds has a regression test
   confirmed to fail without it, except the component-lifetime guard, which is covered by
   inspection: testing it needs a different concurrency harness than that spec uses.
 - Production build, both TypeScript projects and repository lint pass.
