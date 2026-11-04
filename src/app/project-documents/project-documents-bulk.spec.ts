@@ -279,7 +279,9 @@ describe('ProjectDocuments bulk actions', () => {
         const scope = navigation.currentFolder();
         if (!scope) { throw new Error('Expected a current folder'); }
         const hit = { ...otherFolder([]), id: 'uncached-hit', name: 'Uncached' };
-        spyOn(api, 'searchDocuments').and.returnValue(of([hit]));
+        // First call returns the hit; the reconciling refresh after the delete asks
+        // again, and by then the server no longer matches it.
+        const searchCalls = spyOn(api, 'searchDocuments').and.returnValue(of([hit]));
         spyOn(api, 'delete').and.returnValue(of(undefined));
         const search = fixture.debugElement.injector.get(DocumentSearchService);
         search.search('project', scope, 'Uncached');
@@ -287,9 +289,11 @@ describe('ProjectDocuments bulk actions', () => {
         expect(search.results().length).toBe(1);
 
         // Nothing is cached under this id, so the cache reports no removal at all.
+        searchCalls.and.returnValue(of([]));
         await deleteThrough(hit);
 
         expect(search.results().length).toBe(0);
+        expect(searchCalls).toHaveBeenCalledTimes(2);
     });
 
     it('keeps a clipboard copied while a cut-paste was still running', async () => {

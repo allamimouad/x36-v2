@@ -44,6 +44,20 @@ explicit clear and its comparison are **deleted** rather than replaced with vers
 tracking, because pruning already drops what actually moved. That also makes a partly
 failed cut keep exactly its failures for a retry instead of clearing them.
 
+**Search reconciliation was then revised.** The 30-second search is an edge case rather
+than the norm, so one request per mutation is affordable. The premise that prompted the
+change was wrong and worth recording — the local maintenance was never expensive, once
+per operation at a `Set` lookup plus a prefix compare per folder; the costly thing was
+the per-row drag policy below. The real argument is defect density: local maintenance
+produced four defects across three review rounds, where a refresh has one failure mode.
+So `DocumentSearchService.refresh()` re-runs the last submitted search after every
+mutation, and the path-prefix matching is deleted — ids-only pruning, an id-only
+`replaceResult`, and no `removedRoots` plumbing. Those two stay for instant feedback on
+the row the user touched. `refresh` deliberately does not blank the list, or a slow query
+would trade one stale row for an empty table. No container seam was needed: the service
+remembers its own project id, scope and query, so the drag service calls it directly,
+which also dissolves the seam problem recorded earlier as a blocker.
+
 One performance fix came out of asking what the search path costs per operation.
 Pruning is cheap by design — once per operation, one pass, and it writes only when
 something changed. But marking search rows draggable called a per-node `canDrag`, and

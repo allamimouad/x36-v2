@@ -62,44 +62,36 @@ describe('DocumentSearchService', () => {
         expect(service.results().map(({ id }) => id)).toEqual(['kept']);
     }));
 
-    it('drops results beneath a removed folder, which carry no removed id', fakeAsync(() => {
-        spyOn(api, 'searchDocuments').and.returnValue(of([
-            { ...response('inside')[0], path: '/execution/A/inside.pdf' },
-            { ...response('outside')[0], path: '/execution/B/outside.pdf' }
-        ]));
-        service.search('project', scope, 'anything');
-        tick();
-
-        // The folder itself was never a result, and nothing under it was cached, so an
-        // id-only prune has nothing to match on.
-        service.pruneReferences([], [folderNode('A', '/execution/A')]);
-
-        expect(service.results().map(({ id }) => id)).toEqual(['outside']);
-    }));
-
-    it('rewrites the paths of results beneath a renamed folder', fakeAsync(() => {
-        spyOn(api, 'searchDocuments').and.returnValue(of([
-            { ...response('child')[0], path: '/execution/A/child.pdf' },
-            { ...response('elsewhere')[0], path: '/execution/B/elsewhere.pdf' }
-        ]));
-        service.search('project', scope, 'anything');
-        tick();
-
-        service.applyRename(
-            folderNode('folder-a', '/execution/A'),
-            folderNode('folder-a', '/execution/B-renamed')
+    it('re-runs the last search without emptying the list first', fakeAsync(() => {
+        const search = spyOn(api, 'searchDocuments').and.returnValue(
+            of(response('first')).pipe(delay(5))
         );
+        service.search('project', scope, 'term');
+        tick(5);
+        expect(service.results().length).toBe(1);
 
-        // A stale path is not cosmetic: "Open File Location" navigates by it.
-        expect(service.results().map(({ path }) => path)).toEqual([
-            '/execution/B-renamed/child.pdf', '/execution/B/elsewhere.pdf'
-        ]);
+        search.and.returnValue(of(response('second')).pipe(delay(5)));
+        service.refresh();
+
+        // Still showing the old rows: clearing them would trade one stale row for an
+        // empty table for as long as the query takes.
+        expect(service.results()[0]?.id).toBe('first');
+        tick(5);
+        expect(service.results()[0]?.id).toBe('second');
+        expect(search).toHaveBeenCalledTimes(2);
+        expect(search.calls.mostRecent().args).toEqual(['project', scope, 'term']);
     }));
+
+    it('does nothing on refresh when no search was submitted', () => {
+        const search = spyOn(api, 'searchDocuments');
+
+        service.refresh();
+
+        expect(search).not.toHaveBeenCalled();
+    });
+
 });
 
-function folderNode(id: string, path: string): FolderNode {
-    return { ...scope, id, path, name: id };
-}
 
 function response(query: string): FileSystemNode[] {
     return [{

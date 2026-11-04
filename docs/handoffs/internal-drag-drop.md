@@ -336,6 +336,36 @@ an operation on their ancestor.
   full cut empties the clipboard, a partial one keeps exactly the failures for a retry —
   better than clearing — and a clipboard taken during the paste is untouched.
 
+### Search reconciliation, revised (2026-11-04)
+
+The 30-second search turned out to be an edge case rather than the norm, so one request
+per mutation is affordable — which changes the calculus behind the local-only strategy
+below.
+
+The premise that prompted the change was wrong, and worth recording: the local
+maintenance was *not* expensive. It ran once per operation at a `Set` lookup plus one
+prefix compare per folder. The costly thing was the per-row drag policy, unrelated and
+already fixed.
+
+The real argument is **defect density**. Local maintenance produced four defects across
+three review rounds — uncached sources contributing no ids, uncached descendants missed,
+rename leaving descendant paths stale, and source ids in the shared prune clearing a
+copy's own clipboard. A refresh has one failure mode, latency.
+
+So `DocumentSearchService.refresh()` re-runs the last submitted search after every
+mutation, and the path-prefix matching is **deleted**: `pruneReferences` is ids-only
+again, `applyRename` is back to an id-only `replaceResult`, and the `removedRoots`
+plumbing is gone from `BulkOperationService` and its callers. The id prune and
+`replaceResult` stay because they are two lines each and give instant feedback on the
+row the user touched.
+
+Two details that matter. `refresh` must **not** blank the list — `search()` does
+`_results.set([])` up front, and doing that on a refresh would trade one stale row for
+an empty table for the length of the query; both paths now share a private `run` with a
+`reset` flag. And no container seam was needed after all: the service remembers its own
+project id, scope and query, so the drag service — which already injects it — calls
+`refresh()` directly, dissolving the seam problem recorded earlier as a blocker.
+
 ### Cost of maintaining results (2026-11-04)
 
 Prompted by asking what the search path now costs per operation.
@@ -354,7 +384,8 @@ else would stop the per-row form returning.
 
 ## Verification (2026-11-04)
 
-- Full headless suite **231 passed**. Every fix from both rounds has a regression test
+- Full headless suite **231 passed**, with two path-matching tests replaced by refresh
+  ones. Every fix from both rounds has a regression test
   confirmed to fail without it, except the component-lifetime guard, which is covered by
   inspection: testing it needs a different concurrency harness than that spec uses.
 - Production build, both TypeScript projects and repository lint pass.

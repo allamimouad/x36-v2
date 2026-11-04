@@ -246,17 +246,19 @@ Cut rows render at 50% opacity until the paste lands. A paste is rejected as a w
 if any item would land inside itself, and opens the destination when the move carried
 off the folder being viewed.
 
-**Search results are maintained from what each operation returned, never by re-running
-the query** (2026-11-04). A result list is a snapshot of one search, and re-querying
-would charge the full search latency on every action to rediscover what the operation
-already told us. So: a delete or move drops the rows, a rename corrects the row in
-place, and a copy leaves the list untouched — the source is unchanged and the new copy
-was never part of the query. Pruning uses the operation's own source ids as well as
-whatever the cache removed, because a search hit is normally not cached and the cache
-reports nothing for it — and matches **by path** as well, since a result's descendants
-are uncached results too and no id relates them to an operation on their ancestor. A
-rename likewise rewrites the path prefix of results beneath the renamed folder: a stale
-path is not cosmetic, because "Open File Location" navigates by it.
+**Search results are reconciled by re-running the search after a mutation, with an
+instant local touch-up first** (revised 2026-11-04). Every mutation prunes the rows it
+removed by id, and a rename corrects its own row, so what the user acted on responds
+immediately. Everything a mutation implies beyond that — uncached descendants of a
+deleted folder, paths beneath a renamed one — is left to
+`DocumentSearchService.refresh`, which re-runs the last submitted search.
+
+The refresh deliberately **keeps the current rows on screen** until the response lands:
+clearing them, as a user-submitted search does, would replace one stale row with an
+empty table for as long as the query takes. An earlier version maintained the list
+entirely locally, matching descendants by path prefix; that is removed. Re-querying
+costs a request but is correct about descendants and paths by construction, where the
+local version produced four separate defects.
 
 Bulk download is deliberately absent: there is no zip endpoint, so it would mean one
 browser download per file.

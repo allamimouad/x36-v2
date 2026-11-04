@@ -730,7 +730,9 @@ export class ProjectDocuments {
             this.navigation.endRename();
             this.inlineRenameSurface.set(null);
             // The row survives a rename, so it is corrected rather than re-queried.
-            this.search.applyRename(request.node, renamed);
+            // Corrects the row now; the refresh below reconciles its descendants.
+            this.search.replaceResult(renamed);
+            this.search.refresh();
             this.notifications.success(`“${request.node.name}” was renamed to “${renamed.name}”.`);
         } catch (error) {
             const fieldError = this.mutationFieldError(error);
@@ -786,7 +788,7 @@ export class ProjectDocuments {
             const removesCurrent = currentId !== null && removedIds.includes(currentId);
             // The node's own id is included explicitly: an uncached source — every
             // search hit is one — contributes nothing to what the cache removed.
-            this.bulk.pruneReferences([...removedIds, node.id], [node]);
+            this.bulk.pruneReferences([...removedIds, node.id]);
             if (removesCurrent && parentId) { this.navigation.navigateTo(parentId); }
             this.notifications.success(`“${node.name}” was deleted.`);
         } catch (error) {
@@ -1065,7 +1067,7 @@ export class ProjectDocuments {
         // resolves its removals at completion, so such a child is in `removed`.
         const currentId = this.navigation.currentFolderId();
         const viewTaken = currentId !== null && removed.includes(currentId);
-        this.bulk.pruneReferences(removed, done.map((outcome) => outcome.node));
+        this.bulk.pruneReferences(removed);
         if (viewTaken) { this.navigation.navigateTo(target.id); }
         // No explicit clear: pruning above already drops whatever actually moved, so a
         // full cut empties the clipboard, a partial one keeps exactly the failures for
@@ -1110,7 +1112,7 @@ export class ProjectDocuments {
             const removed = done.flatMap((outcome) => [...outcome.removed, outcome.node.id]);
             // Decided once for the batch, and before pruning clears the reference.
             const remover = done.find((o) => o.removed.includes(currentId ?? ''));
-            this.bulk.pruneReferences(removed, done.map((outcome) => outcome.node));
+            this.bulk.pruneReferences(removed);
             if (remover?.node.parentId) { this.navigation.navigateTo(remover.node.parentId); }
             this.bulk.report(settled, 'deleted', 'were not deleted');
         } finally {

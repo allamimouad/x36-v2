@@ -50,21 +50,18 @@ export class BulkOperationService {
     }
 
     /**
-     * Drop every reference to what the batch removed, in one pass.
+     * Drop every reference to what the batch removed, then reconcile the search.
      *
-     * `removedRoots` are the nodes the operation acted on. Search needs them as well as
-     * the ids: it lists uncached descendants that no id can identify, and only their
-     * path relates them to an ancestor that was deleted or moved. Navigation and the
-     * clipboard hold references rather than a listing, so ids are enough for them.
+     * The ids give instant feedback on the rows the user acted on. Everything else a
+     * mutation implies — uncached descendants, paths beneath a renamed folder — is left
+     * to `refresh`, which is right about them by construction rather than by matching
+     * paths, and does nothing when no search is active.
      */
-    public pruneReferences(
-        removedIds: readonly string[],
-        removedRoots: readonly FileSystemNode[] = []
-    ): void {
+    public pruneReferences(removedIds: readonly string[]): void {
         this.navigation.pruneReferences(removedIds);
         this.clipboard.pruneReferences(removedIds);
-        // Results are a snapshot: a moved or deleted hit leaves, a copied one stays.
-        this.search.pruneReferences(removedIds, removedRoots);
+        this.search.pruneReferences(removedIds);
+        this.search.refresh();
     }
 
     /**

@@ -1,9 +1,7 @@
 import { DestroyRef, inject, Injectable, signal, type Signal } from '@angular/core';
 import type { Subscription } from 'rxjs';
 import { FileSystemError } from '../../models/file-system-error.model';
-import {
-    type FileSystemNode, type FolderNode, isFolder
-} from '../../models/file-system-node.model';
+import type { FileSystemNode, FolderNode } from '../../models/file-system-node.model';
 import { FileSystemApi } from '../file-system/file-system-api';
 
 /** Component-scoped state for one submitted recursive document search. */
@@ -24,6 +22,8 @@ export class DocumentSearchService {
     private readonly _activeScopeId = signal<string | null>(null);
     private request: Subscription | null = null;
     private requestVersion = 0;
+    /** The last submitted search, kept so `refresh` can re-run it. */
+    private lastSubmitted: { projectId: string; scope: FolderNode; query: string } | null = null;
 
     constructor() {
         this.results = this._results.asReadonly();
@@ -46,55 +46,68 @@ export class DocumentSearchService {
      * Callers must pass the operation's own source ids as well as whatever the cache
      * removed: a search hit is usually not cached, so the cache reports nothing for it.
      */
-    public pruneReferences(
-        removedIds: Iterable<string>,
-        removedRoots: readonly FileSystemNode[] = []
-    ): void {
+    public pruneReferences(removedIds: Iterable<string>): void {
         const removed = new Set(removedIds);
-        if (removed.size === 0 && removedRoots.length === 0) { return; }
-        // A result's descendants are results too, and just as uncached, so an id is not
-        // enough to relate them to an operation on their ancestor: the path is.
-        const prefixes = removedRoots
-            .filter((root) => isFolder(root))
-            .map((root) => `${root.path}/`);
+        if (removed.size === 0) { return; }
         const current = this._results();
-        const next = current.filter((result) => !removed.has(result.id) &&
-            !prefixes.some((prefix) => result.path.startsWith(prefix)));
+        const next = current.filter(({ id }) => !removed.has(id));
         if (next.length !== current.length) { this._results.set(next); }
     }
 
     /**
-     * Apply a rename to the results: the renamed row takes its canonical form, and any
-     * result beneath it has its path prefix rewritten. Renaming a folder changes its
-     * descendants' paths too, and those descendants are uncached results of their own —
-     * the store does the same for what it has cached in `_updateCachedSubtreePaths`.
-     * A stale path here is not cosmetic: "Open File Location" navigates by it.
+     * Correct the renamed row immediately, so it does not read as its old name while the
+     * refresh runs. Descendants are left to that refresh: rewriting their paths here is
+     * what repeatedly went wrong, and re-querying is right about them by construction.
      */
-    public applyRename(previous: FileSystemNode, renamed: FileSystemNode): void {
-        const oldPrefix = `${previous.path}/`;
-        const newPrefix = `${renamed.path}/`;
+    public replaceResult(node: FileSystemNode): void {
         const current = this._results();
-        let changed = false;
-        const next = current.map((result) => {
-            if (result.id === renamed.id) {
-                changed = true;
-
-                return renamed;
-            }
-            if (!result.path.startsWith(oldPrefix)) { return result; }
-            changed = true;
-
-            return { ...result, path: `${newPrefix}${result.path.slice(oldPrefix.length)}` };
-        });
-        if (changed) { this._results.set(next); }
+        const index = current.findIndex(({ id }) => id === node.id);
+        if (index === -1) { return; }
+        const next = [...current];
+        next[index] = node;
+        this._results.set(next);
     }
 
     public search(projectId: string, scope: FolderNode, query: string): void {
-        const normalizedQuery = query.trim();
+        this.run(projectId, scope, query.trim(), true);
+    }
+
+    /**
+     * Re-run the last submitted search, to reconcile the list with the server after a
+     * mutation. Does nothing when no search is active.
+     *
+     * Unlike `search`, this keeps the current rows on screen until the response lands:
+     * clearing them would replace one stale row with an empty table for however long
+     * the query takes, which is the opposite of the intent.
+     */
+    public refresh(): void {
+        const last = this.lastSubmitted;
+        if (!last) { return; }
+        this.run(last.projectId, last.scope, last.query, false);
+    }
+
+    public clear(): void {
+        this.requestVersion++;
+        this.request?.unsubscribe();
+        this.request = null;
+        this._activeQuery.set(null);
+        this._results.set([]);
+        this._error.set(null);
+        this._activeScopeId.set(null);
+        this._isSearching.set(false);
+    }
+
+    private run(
+        projectId: string,
+        scope: FolderNode,
+        normalizedQuery: string,
+        reset: boolean
+    ): void {
         const version = ++this.requestVersion;
         this.request?.unsubscribe();
+        this.lastSubmitted = { projectId, scope, query: normalizedQuery };
         this._activeQuery.set(normalizedQuery);
-        this._results.set([]);
+        if (reset) { this._results.set([]); }
         this._error.set(null);
         this._activeScopeId.set(scope.id);
         this._isSearching.set(true);
@@ -117,16 +130,5 @@ export class DocumentSearchService {
                 if (version === this.requestVersion) { this._isSearching.set(false); }
             }
         });
-    }
-
-    public clear(): void {
-        this.requestVersion++;
-        this.request?.unsubscribe();
-        this.request = null;
-        this._activeQuery.set(null);
-        this._results.set([]);
-        this._error.set(null);
-        this._activeScopeId.set(null);
-        this._isSearching.set(false);
     }
 }
