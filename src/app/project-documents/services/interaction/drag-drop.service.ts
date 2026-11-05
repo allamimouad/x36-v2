@@ -14,7 +14,9 @@ import { NavigationStore } from '../../stores/navigation.store';
 import { ClipboardService } from './clipboard.service';
 import { NotificationService } from './notification.service';
 import { containsNode, topMostNodes } from '../../utils/node-containment.utils';
-import { type BulkOutcome, BulkOperationService } from './bulk-operation.service';
+import {
+    type BulkOutcome, BulkOperationService, type DoneOutcome, doneOf
+} from './bulk-operation.service';
 import { canDropItem, canStartDrag, type DragPolicy } from './drag-drop-policy';
 
 /**
@@ -393,11 +395,8 @@ export class DragDropService {
             run: (node) => this.runOne(node, targetId, intent)
         });
         if (!this.isCurrentProject(session.projectId, roots)) { return; }
-        // Items that never ran are neither done nor failed, and must not be counted as
-        // either: both helpers below read a missing error as success.
-        const settled = outcomes.filter((outcome) => outcome.abandoned !== true);
-        this.finishBatch(intent, settled, view, targetId);
-        this.bulk.report(settled, PAST_TENSE[intent], SHORTFALL[intent]);
+        this.finishBatch(intent, outcomes, view, targetId);
+        this.bulk.report(outcomes, PAST_TENSE[intent], SHORTFALL[intent]);
     }
 
     /** Runs one item. Isolation and the staleness guard belong to the bulk runner. */
@@ -433,11 +432,11 @@ export class DragDropService {
      */
     private finishBatch(
         intent: DropIntent,
-        outcomes: BulkOutcome[],
+        outcomes: readonly BulkOutcome[],
         view: FolderNode | null,
         targetId: string
     ): void {
-        const done = outcomes.filter((outcome) => outcome.error === undefined);
+        const done = doneOf(outcomes);
         if (done.length === 0) { return; }
         // Source ids included for anything that removes: an uncached source — every
         // search hit is one — reports nothing through the cache, so its result row would
@@ -462,7 +461,7 @@ export class DragDropService {
 
     /** Whether the batch carried off the folder currently being viewed. */
     private viewWasTaken(
-        done: BulkOutcome[],
+        done: readonly DoneOutcome[],
         removed: string[],
         view: FolderNode | null,
         currentId: string | null
@@ -479,7 +478,7 @@ export class DragDropService {
      * open, so fall back to the parent of whichever item removed the view — the same
      * destination the context-menu delete uses.
      */
-    private parentOfRemover(done: BulkOutcome[], currentId: string | null): string | null {
+    private parentOfRemover(done: readonly DoneOutcome[], currentId: string | null): string | null {
         const remover = done.find(
             (outcome) => outcome.removed.includes(currentId ?? '')
         ) ?? done[0];

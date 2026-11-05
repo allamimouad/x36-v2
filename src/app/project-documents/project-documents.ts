@@ -44,7 +44,7 @@ import { FileSystemError } from './models/file-system-error.model';
 import type { SelectionRequest } from './models/selection-request.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
 import { DragDropService } from './services/interaction/drag-drop.service';
-import { BulkOperationService } from './services/interaction/bulk-operation.service';
+import { BulkOperationService, doneOf } from './services/interaction/bulk-operation.service';
 import {
     type ClipboardMode, ClipboardService
 } from './services/interaction/clipboard.service';
@@ -1071,8 +1071,7 @@ export class ProjectDocuments {
                 : this.fileSystem.copy(node, target.id).then(() => [])
         });
         if (!isCurrent()) { return; }
-        const settled = outcomes.filter((outcome) => outcome.abandoned !== true);
-        const done = settled.filter((outcome) => outcome.error === undefined);
+        const done = doneOf(outcomes);
         // A copy takes nothing away, so it prunes nothing: its source still exists and
         // its clipboard entry stays valid. A cut includes the source ids, because an
         // uncached hit reports nothing through the cache.
@@ -1089,7 +1088,7 @@ export class ProjectDocuments {
         // No explicit clear: pruning above already drops whatever actually moved, so a
         // full cut empties the clipboard, a partial one keeps exactly the failures for
         // a retry, and a clipboard taken while this paste ran is left alone.
-        this.bulk.report(settled, cut ? 'moved' : 'copied', cut ? 'stayed in place' : 'failed');
+        this.bulk.report(outcomes, cut ? 'moved' : 'copied', cut ? 'stayed in place' : 'failed');
     }
 
     private requestBulkDelete(nodes: FileSystemNode[]): void {
@@ -1127,15 +1126,14 @@ export class ProjectDocuments {
                 run: (node) => this.fileSystem.delete(node)
             });
             if (!isCurrent()) { return; }
-            const settled = outcomes.filter((outcome) => outcome.abandoned !== true);
-            const done = settled.filter((outcome) => outcome.error === undefined);
+            const done = doneOf(outcomes);
             // Source ids included: an uncached hit reports nothing through the cache.
             const removed = done.flatMap((outcome) => [...outcome.removed, outcome.node.id]);
             // Decided once for the batch, and before pruning clears the reference.
             const remover = done.find((o) => o.removed.includes(currentId ?? ''));
             this.bulk.reconcileAfterBatch(removed);
             if (remover?.node.parentId) { this.navigation.navigateTo(remover.node.parentId); }
-            this.bulk.report(settled, 'deleted', 'were not deleted');
+            this.bulk.report(outcomes, 'deleted', 'were not deleted');
         } finally {
             for (const node of nodes) { this.setWriting(node.id, false); }
         }

@@ -7,14 +7,37 @@ import { DocumentSearchService } from '../search/document-search.service';
 import { ClipboardService } from './clipboard.service';
 import { NotificationService } from './notification.service';
 
-/** What one item of a batch produced. */
-export interface BulkOutcome {
-    node: FileSystemNode;
-    /** Cache ids the operation removed; empty when it removed nothing. */
-    removed: string[];
-    error?: unknown;
-    /** Set when the batch went stale before this item left the queue, so it never ran. */
-    abandoned?: boolean;
+/**
+ * What one item of a batch produced.
+ *
+ * A discriminated union rather than optional `error`/`abandoned` flags, because the
+ * rules were only expressible as a convention: a missing error meant success, and every
+ * caller had to strip skipped items first or count them among the successes. Naming the
+ * status makes both impossible to forget — `removed` exists only where it means
+ * something, and `error` only where there is one.
+ */
+export type BulkOutcome =
+    | {
+        status: 'done';
+        node: FileSystemNode;
+        /** Cache ids the operation removed; empty when it removed nothing. */
+        removed: string[];
+    }
+    | { status: 'failed'; node: FileSystemNode; error: unknown }
+    /** The batch went stale before this item left the queue, so it never ran. */
+    | { status: 'skipped'; node: FileSystemNode };
+
+/** An item the batch carried out — the only status carrying `removed`. */
+export type DoneOutcome = Extract<BulkOutcome, { status: 'done' }>;
+
+/** An item the batch attempted and lost — the only status carrying `error`. */
+export type FailedOutcome = Extract<BulkOutcome, { status: 'failed' }>;
+
+/** The items a batch actually carried out, which is what every caller acts on. */
+export function doneOf(outcomes: readonly BulkOutcome[]): DoneOutcome[] {
+    return outcomes.filter(
+        (outcome): outcome is DoneOutcome => outcome.status === 'done'
+    );
 }
 
 export interface BulkRequest {
@@ -75,24 +98,30 @@ export class BulkOperationService {
      * `shortfall` names what the failures did instead — "stayed in place" for a move,
      * since a partly-failed batch leaves the selection split.
      */
-    public report(outcomes: BulkOutcome[], verb: string, shortfall: string): void {
-        if (outcomes.length === 0) { return; }
-        const failed = outcomes.filter((outcome) => outcome.error !== undefined);
-        if (failed.length === outcomes.length) {
+    public report(outcomes: readonly BulkOutcome[], verb: string, shortfall: string): void {
+        // Skipped items are dropped here rather than by each caller. They are neither
+        // done nor failed — nothing was attempted — and counting them either way
+        // reported work that never happened.
+        const settled = outcomes.filter((outcome) => outcome.status !== 'skipped');
+        if (settled.length === 0) { return; }
+        const failed = settled.filter(
+            (outcome): outcome is FailedOutcome => outcome.status === 'failed'
+        );
+        if (failed.length === settled.length) {
             this.notifications.error(failed[0].error);
 
             return;
         }
         if (failed.length === 0) {
-            this.notifications.success(outcomes.length === 1
-                ? `${outcomes[0].node.name} was ${verb}.`
-                : `${outcomes.length} items were ${verb}.`);
+            this.notifications.success(settled.length === 1
+                ? `${settled[0].node.name} was ${verb}.`
+                : `${settled.length} items were ${verb}.`);
 
             return;
         }
         const names = failed.map((outcome) => outcome.node.name).join(', ');
         this.notifications.warning(
-            `${outcomes.length - failed.length} of ${outcomes.length} items ${verb}. ` +
+            `${settled.length - failed.length} of ${settled.length} items ${verb}. ` +
             `${failed.length} ${shortfall}: ${names}.`
         );
     }
@@ -104,11 +133,11 @@ export class BulkOperationService {
      * store's connection revision discards their results instead.
      */
     private async runOne(request: BulkRequest, node: FileSystemNode): Promise<BulkOutcome> {
-        if (!request.isCurrent()) { return { node, removed: [], abandoned: true }; }
+        if (!request.isCurrent()) { return { status: 'skipped', node }; }
         try {
-            return { node, removed: await request.run(node) };
+            return { status: 'done', node, removed: await request.run(node) };
         } catch (error) {
-            return { node, removed: [], error };
+            return { status: 'failed', node, error };
         }
     }
 }

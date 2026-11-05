@@ -691,10 +691,62 @@ Still open from the earlier passes: the tests reach into protected members five 
 the catch-all for everything container-level, and every test there pays `settle()`'s
 three-round render loop — a workaround for item 8.
 
+### Second quality round (2026-11-05)
+
+A further four suggestions came back. Three were right and are applied; one was half
+right.
+
+**`BulkOutcome` is now a discriminated union** — `done | failed | skipped`, replacing
+optional `error`/`abandoned` flags. The old shape was only expressible as a convention:
+a missing error meant success, and every caller had to strip skipped items first or count
+them among the successes. The pair
+
+```
+const settled = outcomes.filter((o) => o.abandoned !== true);
+const done = settled.filter((o) => o.error === undefined);
+```
+
+appeared three times across two files, and `report` filtered on `error` alone, trusting
+the caller to have done the first half — forget it and a batch where nothing ran reports
+"3 items were deleted". The comment that used to sit above it ("both helpers below read a
+missing error as success") was a comment compensating for a weak type.
+
+`report` now drops skipped items itself, `doneOf` is the one way to get the items that
+ran, and `removed`/`error` exist only on the statuses where they mean something. The
+compiler flagged every site that had relied on the convention. **No test changes were
+needed**, which is the evidence that the union is behaviour-preserving.
+
+**`naming.utils.ts` had no spec at all.** `validateName` and `resolveNameCollision` were
+never covered, and the previous commit added three more functions to that file *and*
+changed trailing-dot behaviour while noting "no test covered it either way" — then did
+not add one. Sixteen tests now cover extensions, dotfiles, trailing dots, blank rename
+input, the validation reasons and collision suffixing. Reverting the trailing-dot rule
+fails exactly its own test.
+
+**The container's batch-lifetime guard is no longer covered by inspection.** A new
+`project-documents-lifetime.spec.ts` pins `bulkOpConcurrency` to 1 — the default is 4, so
+a two-item batch in the existing spec issues both at once and leaves no window to observe
+— destroys the fixture between the two items, and asserts the second delete never goes
+out. Removing `!this.destroyed` from `projectSessionGuard` fails it. It is a new file
+rather than more of `project-documents-bulk.spec.ts`, which had become the catch-all.
+
+**Half right: the "two comments describing deleted helpers".** The stray trailing blank
+line in `path.utils.ts` was real and is removed. The two comments could not be
+substantiated: every backticked identifier in the feature's comments was cross-checked
+against a real definition and nothing dangles. The only mention of a renamed thing is the
+deliberate rationale on `reconcileAfterBatch`, and `pruneReferences` still exists on three
+services.
+
+**Still deferred, with reasons unchanged**: splitting the container (`docs/TODO.md` item
+10) waits for its own branch; replacing the bulk specs' timer flushing with explicit
+completion signals waits on item 8, since the flushing exists to absorb the double
+initialization.
+
 ## Verification (2026-11-05)
 
-- Full headless suite **258 passed**, unchanged across the quality pass, which edited
-  no tests by design (237 plus 10 for search multi-select, 2 for the
+- Full headless suite **275 passed** — 258 through the first quality pass, which edited
+  no tests by design, plus 16 for `naming.utils` and 1 for the container's batch
+  lifetime. The `BulkOutcome` union needed no test changes either (237 plus 10 for search multi-select, 2 for the
   focus/selection paint fix, 6 for the case-insensitive descendant guard, and 3 for the
   two findings above). Reverting each fix failed exactly its own tests: the paint fix one,
   the clear-focus one, the case-sensitive compare three, and the collapse, the selection

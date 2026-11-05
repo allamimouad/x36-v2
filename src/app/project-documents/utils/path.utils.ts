@@ -43,4 +43,3 @@ export function basename(path: string): string {
 
     return idx < 0 ? path : path.slice(idx + 1);
 }
-

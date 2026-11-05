@@ -194,7 +194,30 @@ Declined and recorded as `docs/TODO.md` item 10: splitting `project-documents.ts
 effective lines behind an eslint waiver, which this branch grew by ~150. The seam is the
 ten context-menu builders; doing it here would bury fifteen commits of behaviour change.
 
-**Verification (2026-11-05):** full headless suite **258/258**, production build, both
+**A second quality round applied three of four further suggestions.** `BulkOutcome` is a
+discriminated union now (`done | failed | skipped`) instead of optional `error`/
+`abandoned` flags: the old shape was a convention, the filter pair appeared three times
+across two files, and `report` trusted callers to have stripped skipped items — forget it
+and a batch where nothing ran claimed success. `report` drops them itself now, and the
+compiler found every site that had relied on the convention. No test changes were needed,
+which is the evidence it preserved behaviour.
+
+`naming.utils.ts` had **no spec at all** — `validateName` and `resolveNameCollision` were
+never covered, and the previous commit added three functions and changed trailing-dot
+behaviour without a test, having said in its own message that none existed. Sixteen tests
+now cover it. And the container's batch-lifetime guard, which the handoff admitted was
+"covered by inspection", has a real test in a new `project-documents-lifetime.spec.ts`
+that pins concurrency to 1 to create the window at all.
+
+Half right was the fourth: the stray blank line in `path.utils.ts` was mine and is gone,
+but the "two comments describing deleted helpers" could not be substantiated — every
+backticked identifier in the feature's comments resolves to a real definition.
+
+Still deferred for stated reasons: the container split (`docs/TODO.md` item 10) wants its
+own branch, and replacing the bulk specs' timer flushing waits on item 8, since the
+flushing exists to absorb the double initialization.
+
+**Verification (2026-11-05):** full headless suite **275/275**, production build, both
 TypeScript projects and repository lint pass. Reverting each of the four fourth-round
 fixes failed exactly one test apiece, as did reverting `openSearch`'s clear and each of
 the three multi-select fallbacks. **Not yet verified in a real browser** — Ctrl/Shift
