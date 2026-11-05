@@ -208,6 +208,16 @@ describe('ProjectDocuments bulk actions', () => {
     }
 
     /** A folder of the current list that is not one of the selected rows. */
+    /** Two sibling hits, neither inside the other, with distinct paths as real ones have. */
+    function searchHits(): FolderNode[] {
+        const base = otherFolder([]);
+
+        return [
+            { ...base, id: 'hit-a', name: 'Hit A', path: `${base.path}/Hit A` },
+            { ...base, id: 'hit-b', name: 'Hit B', path: `${base.path}/Hit B` }
+        ];
+    }
+
     function otherFolder(exclude: FileSystemNode[]): FolderNode {
         const excluded = new Set(exclude.map(({ id }) => id));
         const folder = navigation.currentFolderChildren().folders
@@ -297,24 +307,20 @@ describe('ProjectDocuments bulk actions', () => {
     });
 
     it('deletes a whole selection of search rows the cache never held', async () => {
-        const scope = navigation.currentFolder();
-        if (!scope) { throw new Error('Expected a current folder'); }
-        const hits = [
-            { ...otherFolder([]), id: 'hit-a', name: 'Hit A' },
-            { ...otherFolder([]), id: 'hit-b', name: 'Hit B' }
-        ];
+        const hits = searchHits();
         const searchCalls = spyOn(api, 'searchDocuments').and.returnValue(of(hits));
         const remove = spyOn(api, 'delete').and.returnValue(of(undefined));
         const search = fixture.debugElement.injector.get(DocumentSearchService);
-        search.search('project', scope, 'Hit');
-        await flushTimers();
+        // Through the history, not the service directly: the selection only resolves
+        // from the surface that is showing, and search rows are only selectable while
+        // that surface is up.
+        navigation.openSearch('Hit');
+        await settle();
         for (const hit of hits) {
             expect(store.entityMap()[hit.id]).toBeUndefined();
         }
 
-        // Select both rows, then delete through one of them. Resolving these ids
-        // through the cache yields nothing, so before the surface fallback this
-        // silently deleted nothing at all.
+        // Selected after opening the search, because entering one clears the selection.
         navigation.setSelection(hits.map(({ id }) => id), hits[0].id);
         searchCalls.and.returnValue(of([]));
         const show = spyOn(TestBed.inject(PopupService), 'showPopup');
@@ -325,6 +331,67 @@ describe('ProjectDocuments bulk actions', () => {
 
         expect(remove).toHaveBeenCalledTimes(2);
         expect(search.results()).toEqual([]);
+    });
+
+    it('acts once on a folder when its own child is selected too', async () => {
+        // Only a search can show both: the right-pane table lists one folder's children,
+        // so a parent and its child are never rows together there.
+        const parent = otherFolder([]);
+        const child: FileSystemNode = {
+            kind: 'file',
+            listKey: parent.listKey,
+            id: 'child-hit',
+            name: 'report.docx',
+            path: `${parent.path}/report.docx`,
+            parentId: parent.id,
+            createdAt: parent.createdAt,
+            modifiedAt: parent.modifiedAt
+        };
+        const hits: FileSystemNode[] = [parent, child];
+        spyOn(api, 'searchDocuments').and.returnValue(of(hits));
+        const remove = spyOn(api, 'delete').and.returnValue(of(undefined));
+        navigation.openSearch('report');
+        await settle();
+        navigation.setSelection(hits.map(({ id }) => id), parent.id);
+
+        const show = spyOn(TestBed.inject(PopupService), 'showPopup');
+        (fixture.componentInstance as unknown as {
+            requestDelete: (target: FileSystemNode, surface: 'table' | 'search') => void;
+        }).requestDelete(parent, 'search');
+
+        // Collapsed to the folder alone. Acting on both would delete the child twice —
+        // and for a cut it would pull the file out of the folder it travelled with.
+        expect(show.calls.mostRecent().args[2])
+            .toEqual(jasmine.objectContaining({
+                message: `Are you sure you want to delete “${parent.name}”?`
+            }));
+
+        await acceptPopup(show);
+
+        expect(remove).toHaveBeenCalledTimes(1);
+        expect(remove.calls.mostRecent().args[1]).toEqual(jasmine.objectContaining({
+            id: parent.id
+        }));
+    });
+
+    it('drops a selected search row the refresh no longer returns', async () => {
+        const hits = searchHits();
+        const searchCalls = spyOn(api, 'searchDocuments').and.returnValue(of(hits));
+        navigation.openSearch('Hit');
+        await settle();
+        navigation.setSelection(hits.map(({ id }) => id), hits[1].id);
+        expect(navigation.selectedIds().size).toBe(2);
+
+        // A re-query drops the second row — renaming it so it stops matching is the
+        // easiest way in, but any refresh can. Its id must not stay selected with
+        // nothing on screen, or a bulk action would reach it through the cache.
+        searchCalls.and.returnValue(of([hits[0]]));
+        fixture.debugElement.injector.get(DocumentSearchService).refresh();
+        await settle();
+
+        expect([...navigation.selectedIds()]).toEqual([hits[0].id]);
+        // The anchor went with it, rather than pointing at a row that is gone.
+        expect(navigation.selectionAnchorId()).toBeNull();
     });
 
     it('keeps the search rows rendered while the reconciling refresh is in flight',

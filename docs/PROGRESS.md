@@ -149,7 +149,28 @@ one helper now, `pathContainsOrEquals`, shared by `containsNode`'s fallback,
 `/Contracts` or `/contracts`. I deliberately did **not** map the 500 to
 `descendant-move`: that would relabel every server-side copy failure.
 
-**Verification (2026-11-05):** full headless suite **255/255**, production build, both
+**Two consequences of search multi-select, both found by review and both fixed.** A bulk
+action treated a folder and its own child as two items (P1): `topMostNodes` existed but
+was used only by the drag, and only a search can put a parent and child in one selection,
+since table rows are always siblings. A cut therefore pulled the file out of the folder it
+travelled with, a copy duplicated it, and a delete failed on the second item. The drag had
+always collapsed, so the same selection behaved differently by gesture. Collapsing now
+happens in `selectedNodes` rather than inside the batch runner, so each caller's count and
+confirmation text still describe what will run — which is why the delete dialog gained a
+singular form.
+
+And a selected search row could survive its own disappearance (P2): a re-query drops a row
+that stops matching, but its id stayed selected and a cached node behind it let bulk
+actions and drags reach something invisible. Three overlapping guards now, because it is a
+class of bug rather than one path: the container reconciles the selection against the
+current result ids, `selectedNodes` resolves from the active surface only instead of
+merging cache-then-results, and the search surface reports only the ids it is showing when
+a drag starts.
+
+One of my own tests was wrong rather than merely inconvenient and had to be repaired: it
+drove the search service directly without opening a search, a state the app cannot produce.
+
+**Verification (2026-11-05):** full headless suite **258/258**, production build, both
 TypeScript projects and repository lint pass. Reverting each of the four fourth-round
 fixes failed exactly one test apiece, as did reverting `openSearch`'s clear and each of
 the three multi-select fallbacks. **Not yet verified in a real browser** — Ctrl/Shift

@@ -592,12 +592,57 @@ The store-level test is the one worth keeping in mind: it moves an **uncached** 
 because that is the only shape where the cached-subtree check finds nothing and the path
 comparison is the sole guard — which is exactly a dragged search result.
 
+### Two consequences of search multi-select (2026-11-05)
+
+Both found by review, both real, and both reachable only because search rows became
+selectable in `51b7392`.
+
+**A bulk action treated a folder and its own child as two items (P1).** `topMostNodes`
+existed and was used in exactly one place — `dragSet`. `selectedNodes` never collapsed,
+and it feeds bulk delete, copy and cut. Until search multi-select this could not happen:
+the right-pane table lists one folder's children, so its rows are always siblings. A
+result set is recursive, so `A` and `A/report.pdf` can both be rows. A cut then moved
+both independently and pulled the file out of the folder it was travelling with; a copy
+duplicated it, since the server copy of `A` is already recursive; a delete removed the
+subtree and then failed on the child, reporting "1 of 2 items deleted". The telling part
+is that the **drag already collapsed**, so the same selection behaved differently
+depending on the gesture.
+
+Collapsing now happens in `selectedNodes`, not inside `BulkOperationService.run` — the
+other candidate chokepoint. Callers build their counts and confirmation text from their
+own list, so collapsing below them would make the summary disagree with what ran. One
+consequence to keep in mind: `requestBulkDelete` is only reached with more than one row
+selected, but after a collapse its list can hold one, so it needed a singular message.
+
+**A selected row could survive its own disappearance (P2).** A re-query drops a row that
+no longer matches; its id stayed in `selectedIds`, and if the node was cached — renaming
+through the tree caches it — both `selectedNodes` and `dragSet` resolved it happily. The
+user acted on something not on screen. Rename is just the easiest repro; any refresh does
+it.
+
+Three changes, deliberately overlapping, because this is a class of bug rather than one
+path: the container reconciles the selection against the current result ids
+(`observeSearchSelection`); `selectedNodes` resolves from the **active surface only**
+instead of merging cache-then-results, which makes a hidden row unresolvable rather than
+absent (and the merge only ever covered a selection spanning both surfaces, which cannot
+happen since `9804667` clears it on entering and leaving a search); and the search surface
+reports only the ids it is showing when a drag starts.
+
+**One of my own tests had to be repaired, and it was wrong rather than inconvenient.**
+`deletes a whole selection of search rows the cache never held` drove
+`DocumentSearchService.search` directly without opening a search through navigation, so
+`searchActive()` was false — a state the app cannot produce, since search rows are only
+selectable while that surface is up. It now goes through `navigation.openSearch` and
+selects afterwards, because entering a search clears the selection. Its two hits also
+shared one path; they are proper siblings now.
+
 ## Verification (2026-11-05)
 
-- Full headless suite **255 passed** (237 plus 10 for search multi-select, 2 for the
-  focus/selection paint fix, and 6 for the case-insensitive descendant guard). Reverting
-  each of those fixes failed exactly its own tests: the paint fix one, the clear-focus
-  one, and the case-sensitive compare three. Reverting
+- Full headless suite **258 passed** (237 plus 10 for search multi-select, 2 for the
+  focus/selection paint fix, 6 for the case-insensitive descendant guard, and 3 for the
+  two findings above). Reverting each fix failed exactly its own tests: the paint fix one,
+  the clear-focus one, the case-sensitive compare three, and the collapse, the selection
+  reconciliation and the drag's visible-ids report one apiece. Reverting
   each of the four fourth-round fixes failed exactly one test: the `clear` line, the
   drag-copy call site, the container's `loading` binding, and the copy guard on the
   navigation decision. Reverting `openSearch`'s clear failed its test; `exitSearch`'s is

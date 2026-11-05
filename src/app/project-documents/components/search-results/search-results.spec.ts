@@ -204,6 +204,27 @@ describe('SearchResults', () => {
                 .toEqual([result.id, second.id].sort());
         });
 
+        it('reports only the rows it is showing, not every selected id', () => {
+            const started = jasmine.createSpy('started');
+            fixture.componentInstance.dragStarted.subscribe(started);
+            fixture.componentRef.setInput('draggableIds', new Set([result.id]));
+            // 'gone' was selected before a re-query dropped its row. It is still a
+            // cached node, so handing its id over would let the drag resolve it and
+            // carry something invisible along.
+            fixture.componentRef.setInput('results', [result]);
+            fixture.componentRef.setInput('selectedIds', new Set([result.id, 'gone']));
+            fixture.detectChanges();
+
+            row(result.id).dispatchEvent(new DragEvent('dragstart', { bubbles: true }));
+
+            const request = started.calls.mostRecent().args[0] as {
+                selectedIds?: ReadonlySet<string>;
+                selectedNodes?: readonly FileSystemNode[];
+            };
+            expect([...request.selectedIds ?? []]).toEqual([result.id]);
+            expect((request.selectedNodes ?? []).map(({ id }) => id)).toEqual([result.id]);
+        });
+
         function row(id: string): HTMLElement {
             const element = host().querySelector<HTMLElement>(
                 `[data-testid="pd-search-result-${id}"]`

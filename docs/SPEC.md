@@ -284,6 +284,24 @@ handlers, and a Shift-range has to follow the rendered order, which column sorti
 changes. The table therefore resolves the whole next selection itself and reports it;
 the store only stores it.
 
+**A bulk selection collapses to top-most ancestors**, exactly as a drag always has
+(`topMostNodes`). Only a search can put a folder and something inside it in the same
+selection — the right-pane table lists one folder's children, so its rows are always
+siblings. Acting on both would pull the child out of the folder it is travelling with on
+a cut, duplicate it on a copy, and delete it twice. Collapsing happens in
+`selectedNodes`, not inside the batch runner, so each caller's own count and confirmation
+text describe what will actually run (which is why the delete dialog needs a singular
+form: collapsing two rows can leave one).
+
+**A search selection never outlives its rows.** A re-query can drop a row that was
+selected — renaming it so it stops matching is the easiest way, but any refresh can — and
+the node behind it may still be cached, so a bulk action or drag could reach something
+invisible. Two things prevent it: the container reconciles the selection against the
+current result ids, and `selectedNodes` resolves from the **active surface only** (search
+results while searching, the cache otherwise) rather than merging both, which makes a
+hidden row unresolvable rather than merely absent. The search surface likewise reports
+only the ids it is showing when a drag starts.
+
 Drives drag-and-drop of several items, plus bulk delete, copy and cut (2026-11-03).
 Delete and Copy/Cut act on the whole selection; **Rename stays single-item**, since
 renaming many at once means nothing, and is the only action still disabled on a

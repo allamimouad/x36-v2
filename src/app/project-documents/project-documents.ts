@@ -72,7 +72,7 @@ import type {
     SearchResultContextMenuRequest
 } from './models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
-import { pathContainsOrEquals } from './utils/node-containment.utils';
+import { pathContainsOrEquals, topMostNodes } from './utils/node-containment.utils';
 import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
 import { ProjectOverviewService } from '../../services/project-overview.service';
@@ -409,6 +409,7 @@ export class ProjectDocuments {
             this.projectLabel.set(this.projectOverviewService.projectDTO()?.name ?? '');
         });
         this.observeSearchHistory();
+        this.observeSearchSelection();
         this.observeInitialFolderPath();
         inject(DestroyRef).onDestroy(() => { this.destroyed = true; });
     }
@@ -1095,7 +1096,11 @@ export class ProjectDocuments {
             {
                 confirmButtonText: 'Confirm',
                 declineButtonText: 'Cancel',
-                message: `Are you sure you want to delete ${nodes.length} items?`,
+                // Singular is reachable even though this dialog needs more than one row
+                // selected: collapsing a folder and its own child leaves one item.
+                message: nodes.length === 1
+                    ? `Are you sure you want to delete “${nodes[0].name}”?`
+                    : `Are you sure you want to delete ${nodes.length} items?`,
                 onAccept: () => void this.deleteNodes(nodes, isCurrent)
             }
         );
@@ -1130,27 +1135,29 @@ export class ProjectDocuments {
     }
 
     /**
-     * The selected rows as nodes, cache first and the search results after.
+     * The selected rows as nodes, resolved from whichever surface is showing them and
+     * collapsed to top-most ancestors.
      *
-     * A search hit is never cached — results come straight from the search endpoint and
-     * nothing inserts them, deliberately, because the table derives a folder's children
-     * from whatever entity claims it as a parent and would then show a partial listing
-     * as a complete one. So the cache cannot resolve a search selection, and the
-     * surface's own rows stand in for it, as they do for a dragged search result.
+     * Resolved from the active surface, never both: a search hit is not in the cache
+     * (results come straight from the endpoint and nothing inserts them, because the
+     * table derives a folder's children from whatever entity claims it as a parent and
+     * would present a partial listing as a complete one), while a table row always is.
+     * A selection cannot span the two, since it is cleared on entering and leaving a
+     * search — so asking only the visible surface makes a row the user cannot see
+     * impossible to act on, rather than merely absent from the list.
+     *
+     * Collapsed because a result set is recursive: a folder and something inside it can
+     * both be rows, and acting on both pulls the child out of the parent it is travelling
+     * with — the same reason a drag has always collapsed its own set.
      */
     private selectedNodes(): FileSystemNode[] {
         const selected = this.navigation.selectedIds();
-        const resolved = new Map(this.fileSystem.entities()
-            .filter((node) => selected.has(node.id))
-            .map((node) => [node.id, node]));
-        if (resolved.size === selected.size) { return [...resolved.values()]; }
-        for (const result of this.search.results()) {
-            if (selected.has(result.id) && !resolved.has(result.id)) {
-                resolved.set(result.id, result);
-            }
-        }
+        const visible = this.searchActive() ? this.search.results() : this.fileSystem.entities();
 
-        return [...resolved.values()];
+        return topMostNodes(
+            visible.filter((node) => selected.has(node.id)),
+            this.fileSystem.entityMap()
+        );
     }
 
     /**
@@ -1249,6 +1256,35 @@ export class ProjectDocuments {
                     );
                     this.notifications.error(readError, retry);
                 }
+            });
+        });
+    }
+
+    /**
+     * Keep the selection within the rows the search is actually showing.
+     *
+     * A re-query can drop a row the user had selected — renaming it so it stops
+     * matching is the easiest way, but any refresh can. The id would otherwise stay
+     * selected with nothing on screen, and a cached node behind it, so a bulk action or
+     * a drag would act on something invisible.
+     *
+     * Only while a search is active: the table's selection is not derived from results
+     * and must not be measured against them.
+     */
+    private observeSearchSelection(): void {
+        effect(() => {
+            if (!this.searchActive()) { return; }
+            const visible = new Set(this.search.results().map(({ id }) => id));
+            untracked(() => {
+                const selected = this.navigation.selectedIds();
+                const remaining = [...selected].filter((id) => visible.has(id));
+                if (remaining.length === selected.size) { return; }
+                const anchorId = this.navigation.selectionAnchorId();
+
+                this.navigation.setSelection(
+                    remaining,
+                    anchorId !== null && visible.has(anchorId) ? anchorId : null
+                );
             });
         });
     }

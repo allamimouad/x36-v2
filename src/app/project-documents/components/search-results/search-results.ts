@@ -123,12 +123,17 @@ export class SearchResults {
         }
         // The rows travel with the ids: a search result is never cached, so the drag
         // could not resolve this selection from the cache alone.
-        const selectedIds = this.selectedIds();
+        //
+        // Only the rows on screen are reported, ids included. A re-query can drop a row
+        // whose id is still selected, and the drag would otherwise resolve that one
+        // through the cache and carry something invisible along.
+        const selected = this.selectedIds();
+        const selectedNodes = this.results().filter(({ id }) => selected.has(id));
         this.dragStarted.emit({
             event,
             node: result,
-            selectedIds,
-            selectedNodes: this.results().filter(({ id }) => selectedIds.has(id))
+            selectedIds: new Set(selectedNodes.map(({ id }) => id)),
+            selectedNodes
         });
     }
 
