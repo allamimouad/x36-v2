@@ -227,6 +227,17 @@ the recycle bin does not take part.
 - Clicking the space below the rows, changing the viewed folder, or Escape clears it.
 - Enter/Space on a focused row selects it, matching a plain click.
 
+**Any change of view starts with a fresh selection**, with no exceptions — a folder
+navigation, Back/Forward, Up, a typed path, a project load, and **entering or leaving a
+search**. It is enforced in one place, `_clearedSelection()`, which returns a new `Set`
+each call so two patches cannot share one instance. Reloading the *current* folder is
+not a change of view and deliberately keeps the selection.
+
+The search table is single-item: it has no click-selection handler, and `isMultiSelected`
+is table-only, so every search action acts on the row that was used. Extending selection
+there would first need `selectedNodes` to stop resolving ids through the cache — a search
+hit is never cached, so a search selection resolves to nothing today.
+
 Selection is **not** wired through PrimeNG's `selectionMode="multiple"`. The rows own
 native drag listeners whose propagation is deliberately stopped before PrimeNG's own
 handlers, and a Shift-range has to follow the rendered order, which column sorting

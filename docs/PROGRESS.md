@@ -94,9 +94,21 @@ The lesson from that last one is the one to keep: the covering test asserted
 while the screen was blank. A claim about what the user sees needs an assertion at the
 rendered level.
 
-**Verification (2026-11-05):** full headless suite **236/236**, production build, both
+**One question about the search table closed a gap in the selection rule.** Search has
+no multi-selection because it was scoped out when selection was built — the table had no
+bulk actions then either — and because `selectedNodes` resolves ids through the cache
+while a search hit is never cached, so a search selection would resolve to zero nodes in
+every bulk action. That stands as recorded, not built. But the rule underneath it —
+every change of view starts with a fresh selection — had two holes, both on the search
+boundary: `openSearch` and `exitSearch`'s in-place branch did not clear. Invisible today
+because nothing in the search view reads the selection, and a live bug the moment one
+does. `exitSearch`'s branch turns out to be unreachable (index 0 is always a folder
+entry), so it is clear-for-consistency with no test; `openSearch` is reachable and has
+one.
+
+**Verification (2026-11-05):** full headless suite **237/237**, production build, both
 TypeScript projects and repository lint pass. Reverting each of the four fourth-round
-fixes failed exactly one test apiece. Every fix from the earlier rounds has a regression
+fixes failed exactly one test apiece, as did reverting `openSearch`'s clear. Every fix from the earlier rounds has a regression
 test confirmed to fail without it, except the component-lifetime guard, which is covered
 by inspection because testing it needs a different concurrency harness than that spec
 uses.

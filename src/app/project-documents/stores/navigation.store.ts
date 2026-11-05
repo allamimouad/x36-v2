@@ -310,10 +310,15 @@ export const NavigationStore = signalStore(
             const history = currentEntry.kind === 'search'
                 ? [...store.history().slice(0, idx), searchEntry]
                 : [...store.history().slice(0, idx + 1), searchEntry];
+            // A search is a change of view, so it starts with a fresh selection like
+            // every folder navigation does. Leaving one behind would keep rows selected
+            // that the new view does not show, and arm the multi-item actions against
+            // them.
             patchState(store, {
                 history,
                 currentHistoryIndex: currentEntry.kind === 'search' ? idx : history.length - 1,
-                navigationError: null
+                navigationError: null,
+                ..._clearedSelection()
             });
         };
 
@@ -327,11 +332,13 @@ export const NavigationStore = signalStore(
 
                 return;
             }
+            // The branch above clears through `_goToHistory`; this one replaces the
+            // search entry in place and so must clear for itself.
             const replacement = folderEntry(currentEntry.scope);
             const history = store.history().map((entry, index) =>
                 index === idx ? replacement : entry
             );
-            patchState(store, { history });
+            patchState(store, { history, ..._clearedSelection() });
         };
 
         const initialize = (args: { currentFolderId: string; expandedRootIds: string[] }): void => {

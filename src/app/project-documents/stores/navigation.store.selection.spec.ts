@@ -82,6 +82,24 @@ describe('NavigationStore selection', () => {
         expect(nav.selectionAnchorId()).toBeNull();
     });
 
+    it('clears the selection on entering and on leaving a search', () => {
+        nav.setSelection([first.id, second.id], first.id);
+
+        nav.openSearch('report');
+
+        // A search is a change of view, so it starts fresh like a folder navigation:
+        // the results do not show these rows, and the multi-item actions must not be
+        // armed against them.
+        expect(nav.selectedIds().size).toBe(0);
+        expect(nav.selectionAnchorId()).toBeNull();
+
+        nav.setSelection([first.id], first.id);
+        nav.exitSearch();
+
+        expect(nav.selectedIds().size).toBe(0);
+        expect(nav.selectionAnchorId()).toBeNull();
+    });
+
     it('drops pruned ids from the selection and the anchor', () => {
         nav.setSelection([first.id, second.id], second.id);
 

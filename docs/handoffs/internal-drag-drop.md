@@ -447,11 +447,38 @@ level, so the covering test for this one submits a search, deletes a row, holds 
 re-query open and asserts the surviving row is still in the DOM
 (`project-documents-bulk.spec.ts`).
 
+### Selection cleared on the search boundary (2026-11-05)
+
+Prompted by asking why the search table has no multi-selection. It has none because it
+was scoped out when selection was built — at that point even the table had no bulk
+actions — and because `selectedNodes` resolves ids through `fileSystem.entities()` while
+a search hit is never cached, so a search selection would resolve to zero nodes in every
+bulk action. That is recorded, not fixed.
+
+What was fixed is the rule underneath it. Every change of view starts with a fresh
+selection, enforced in `_clearedSelection()`, and every folder path honoured it —
+`navigateTo`, `up`, `back`/`forward` via `_goToHistory`, `openResolvedFolder`,
+`initialize`. Two paths skipped it, both on the search boundary: `openSearch` patched
+history, index and error but not the selection, and `exitSearch`'s in-place branch
+patched only history. Invisible today because nothing in the search view reads the
+selection, and a live bug the moment one does.
+
+Note on the second one: `exitSearch`'s in-place branch is **unreachable** through the
+public API. Index 0 is always a folder entry — `initialize` writes one, `navigateTo` and
+`openResolvedFolder` append folder entries after a truncation, `openSearch` appends after
+a folder entry or replaces at an index above 0 — so `exitSearch` always finds a previous
+entry and goes through `_goToHistory`. The clear is added there for consistency and
+carries no test, because none can be written without reaching past the store's API. The
+new test covers `openSearch`, which is reachable, and pins `exitSearch`'s reachable
+branch alongside it.
+
 ## Verification (2026-11-05)
 
-- Full headless suite **236 passed** (231 plus 5 for the fourth round). Reverting each
-  of the four fixes failed exactly one test: the `clear` line, the drag-copy call site,
-  the container's `loading` binding, and the copy guard on the navigation decision.
+- Full headless suite **237 passed** (231 plus 5 for the fourth round, plus 1 for the
+  search-boundary selection clear). Reverting each of the four fourth-round fixes failed
+  exactly one test: the `clear` line, the drag-copy call site, the container's `loading`
+  binding, and the copy guard on the navigation decision. Reverting `openSearch`'s clear
+  failed its test; `exitSearch`'s is unreachable and has no control.
 - Production build, both TypeScript projects and repository lint pass (the two
   pre-existing `path-bar` template warnings only).
 
