@@ -878,6 +878,13 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
 
 _Things noticed during implementation but not fixed in the current phase. Review before starting the next phase._
 
+- **A renamed folder's search results are briefly stale** (2026-11-05, review finding):
+  a result beneath the renamed folder keeps its old path and its Open / Download URLs
+  until the reconciling search returns. Left to `refresh()` on purpose — the local
+  alternative is the path-prefix rewriting deleted in `e8a1dc6`. No worse than the
+  behaviour it replaced, which showed the new path with the old URLs. Detail:
+  `docs/TODO.md` item 9.
+
 - **A missed `dragend` can leave a drag session latched** (2026-10-27, unproven): the
   next external file drag would be routed as internal and silently lost. The MIME token
   prevents a wrong mutation and `Escape` recovers it. Reproduce before adding a

@@ -2,7 +2,8 @@
 
 > Open findings from the ongoing working-tree reviews. Findings 1–2 came from
 > the 2026-07-06 partial document-root / `ProjectDocuments` review; findings
-> 3–6 came from the 2026-07-31 copy/paste reviews. These are deliberately left for
+> 3–6 came from the 2026-07-31 copy/paste reviews; findings 7–9 came from the
+> 2026-11 internal drag-and-drop reviews. These are deliberately left for
 > later and are also tracked in `PROGRESS.md` → "Deferred / Known Issues".
 > This file carries the full detail. Remove entries here (and in PROGRESS.md)
 > as they are fixed.
@@ -303,6 +304,32 @@
   extra emission.
 - **Priority**: P2 — invisible today, but it makes mutations abort unpredictably and
   doubles startup reads.
+
+## 9. A renamed folder's search results keep their old path and launch URLs briefly
+
+- **Where**: `src/app/project-documents/services/search/document-search.service.ts` —
+  `replaceResult`, and the `refresh()` that follows it in `project-documents.ts`'s
+  inline rename.
+- **Problem**: `replaceResult` corrects only the renamed row, from the server's own
+  node. A search result *beneath* that folder keeps its old `path` and its old
+  `onlineUrl` / `desktopUrl` / `downloadUrl` until the reconciling search returns —
+  the full search latency, which is seconds and occasionally much worse. "Open File
+  Location" navigates by that path, and Open / Download use those URLs, so both act on
+  a location the rename has already invalidated.
+- **Why it is this way**: descendants are deliberately left to `refresh()`. The local
+  alternative is a path-prefix rewrite over the results, which existed and was deleted
+  in `e8a1dc6` after producing four defects across three review rounds — including one
+  that rewrote results from an unrelated document list, because the prefix test never
+  compared `listKey` and the paths are server-relative.
+- **Why it is not a regression**: before the deletion, those rows showed the *new* path
+  with the *old* URLs, so the links were equally broken and additionally looked
+  correct. The window is now self-consistent and self-healing.
+- **Suggested fix**: ideally a rename response that names the affected descendants, so
+  no client-side matching is needed. Failing that, blank `onlineUrl` / `desktopUrl` /
+  `downloadUrl` on results beneath the renamed node — which disables the launch actions
+  rather than pointing them somewhere wrong, and needs the `listKey` guard the deleted
+  code lacked. Worth doing only if the window is observed to matter.
+- **Priority**: P3 — bounded, self-healing, and no worse than the behaviour it replaced.
 
 > (Two former items were resolved: `initialize`'s reduce-with-spread pipeline —
 > 2026-07-06, by the reactive `connectProject` refactor — and the duplicated

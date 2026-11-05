@@ -382,6 +382,31 @@ taking the whole list and building the policy once, as `draggableIds` always did
 tree and table. A test pins that intent by counting `entityMap` reads, because nothing
 else would stop the per-row form returning.
 
+### Third review round, retired by the deletion (2026-11-05)
+
+A further three findings arrived from the other session, written against `76101fa` —
+the commit that introduced the path matching. All three were verified real against that
+commit, and all three are gone as of `e8a1dc6`, which deleted the construct they live in
+rather than fixing them one by one:
+
+- a copy pruned the source folder's children from the results, because the paste handed
+  its source nodes to `pruneReferences` as removed roots unconditionally, even though it
+  correctly passed an empty `removed` array;
+- `applyRename` rewrote a descendant's `path` but left its `onlineUrl` / `desktopUrl` /
+  `downloadUrl`, while the store clears exactly those three for the same case in
+  `_updateCachedSubtreePaths`;
+- neither prefix test compared `listKey`, and the paths are server-relative, so two
+  document lists with identically-named trees would prune or rewrite each other's rows.
+
+That makes four review rounds and seven defects attributable to maintaining the result
+set locally, which is the record the deletion was argued from.
+
+One residual is recorded rather than fixed, as `docs/TODO.md` item 9: between a rename
+landing and the refresh landing, a descendant row shows its old path and old launch
+URLs. Not a regression — it previously showed the *new* path with the *old* URLs, so the
+links were equally broken and better disguised — and the only local fix is the
+path-prefix sweep just deleted, including the `listKey` guard it lacked.
+
 ## Verification (2026-11-04)
 
 - Full headless suite **231 passed**, with two path-matching tests replaced by refresh
