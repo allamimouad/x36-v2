@@ -28,7 +28,7 @@ import {
     setEntity,
     withEntities
 } from '@ngrx/signals/entities';
-import { containsNode } from '../utils/node-containment.utils';
+import { containsNode, pathContainsOrEquals } from '../utils/node-containment.utils';
 import type { DocumentListing } from '../models/document-listing.model';
 import type {
     DocumentListRoots,
@@ -73,8 +73,7 @@ function targetsOwnSubtree(
 
     return cachedSubtreeIds.includes(targetParent.id) ||
         source.listKey === targetParent.listKey &&
-        (targetParent.path === source.path ||
-            targetParent.path.startsWith(`${source.path}/`));
+        pathContainsOrEquals(source.path, targetParent.path);
 }
 
 /** One in-flight children load, boxed so its cleanup can verify it still owns the id. */

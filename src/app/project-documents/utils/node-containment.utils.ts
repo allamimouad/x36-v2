@@ -2,6 +2,25 @@ import {
     type FileSystemNode, isFolder
 } from '../models/file-system-node.model';
 
+/**
+ * Whether `candidatePath` is `ancestorPath` or sits beneath it.
+ *
+ * Case-insensitive, because SharePoint server-relative URLs are: the same folder can be
+ * addressed as `/Contracts` or `/contracts`, and an exact compare would let a
+ * differently-cased destination past every guard built on this. Only the comparison is
+ * normalized — a stored path is never rewritten, since a guard that edits identity can
+ * end up disagreeing with the server about which folder it is talking about.
+ *
+ * The trailing slash is what keeps `/Contracts2` from reading as a child of
+ * `/Contracts`.
+ */
+export function pathContainsOrEquals(ancestorPath: string, candidatePath: string): boolean {
+    const ancestor = ancestorPath.toLowerCase();
+    const candidate = candidatePath.toLowerCase();
+
+    return candidate === ancestor || candidate.startsWith(`${ancestor}/`);
+}
+
 export function containsNode(
     ancestor: FileSystemNode,
     candidate: FileSystemNode,
@@ -16,7 +35,10 @@ export function containsNode(
         current = current.parentId === null ? undefined : entities[current.parentId];
     }
 
-    return isFolder(ancestor) && candidate.path.startsWith(`${ancestor.path}/`);
+    // Strictly beneath: an equal path would mean the ancestor itself, which the id walk
+    // above has already settled.
+    return isFolder(ancestor) && candidate.path.toLowerCase()
+        .startsWith(`${ancestor.path.toLowerCase()}/`);
 }
 
 /**

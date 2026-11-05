@@ -555,10 +555,49 @@ the comparison passes for the wrong reason.
 The search table never had this: it has no focused class, and its hover colour
 (`#f0f1f2`) is plainly distinct from the selection fill (`#e8f4ef`).
 
+### Descendant guard made case-insensitive, and item 6 answered (2026-11-05)
+
+You tested the real API by hand through Postman: copying a folder into its own
+descendant returns **HTTP 500** and **creates nothing**. That closes `docs/TODO.md`
+item 6, which had been open since July, and closes it in the "the backend does not
+reject explicitly" direction.
+
+Two conclusions, one of them a reversal of what I had planned.
+
+**No mapper change.** I was going to add a `descendant-move` case to
+`sharepoint-error.mapper.ts`. There is nothing deterministic to key on: a 500 carries no
+descendant signal, and keying the code off it would relabel every server-side copy
+failure as a descendant problem — worse than the generic message it would replace. For
+the record, `isNetworkFailure` classifies `>= 500` as `network`, so such a response
+surfaces as "We could not complete this action. Try again later.", which is a safe
+fallback.
+
+**The frontend guard is therefore the only thing that can ever produce the specific
+message, so its remaining hole mattered.** The path comparison was case-sensitive, and
+SharePoint addresses the same folder as `/Contracts` or `/contracts`. It is now one
+helper, `pathContainsOrEquals` in `utils/node-containment.utils.ts`, used by
+`containsNode`'s path fallback (which feeds the drag policy's drop decisions),
+`FileSystemStore.targetsOwnSubtree` and `ProjectDocuments.isNodeAncestorOrSelf`. Only
+the comparison is normalized; a stored path is never rewritten, because a guard that
+edits identity can end up disagreeing with the server about which folder it means. The
+trailing slash stays — it is what keeps `/Contracts2` from reading as a child of
+`/Contracts`.
+
+Item 6 also carried two stale claims, now removed: that both frontend guards were
+cache-only. They have compared paths since the drag work, so the typed-path scenario the
+item was written about was already covered — the casing was the only part still open,
+and the item had itself predicted it by asking for normalized casing.
+
+The store-level test is the one worth keeping in mind: it moves an **uncached** source,
+because that is the only shape where the cached-subtree check finds nothing and the path
+comparison is the sole guard — which is exactly a dragged search result.
+
 ## Verification (2026-11-05)
 
-- Full headless suite **249 passed** (237 plus 10 for search multi-select, plus 2 for
-  the focus/selection paint fix; reverting either of those failed exactly its own test). Reverting
+- Full headless suite **255 passed** (237 plus 10 for search multi-select, 2 for the
+  focus/selection paint fix, and 6 for the case-insensitive descendant guard). Reverting
+  each of those fixes failed exactly its own tests: the paint fix one, the clear-focus
+  one, and the case-sensitive compare three. Reverting
   each of the four fourth-round fixes failed exactly one test: the `clear` line, the
   drag-copy call site, the container's `loading` binding, and the copy guard on the
   navigation decision. Reverting `openSearch`'s clear failed its test; `exitSearch`'s is

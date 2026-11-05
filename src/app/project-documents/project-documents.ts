@@ -72,6 +72,7 @@ import type {
     SearchResultContextMenuRequest
 } from './models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
+import { pathContainsOrEquals } from './utils/node-containment.utils';
 import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
 import { ProjectOverviewService } from '../../services/project-overview.service';
@@ -1829,7 +1830,7 @@ export class ProjectDocuments {
         if (this.isAncestorOrSelf(source.id, target.id)) { return true; }
 
         return source.listKey === target.listKey &&
-            (target.path === source.path || target.path.startsWith(`${source.path}/`));
+            pathContainsOrEquals(source.path, target.path);
     }
 
     private getFoldersLengthDependingOnIfRootFolder(folders: FolderNode[]): number {

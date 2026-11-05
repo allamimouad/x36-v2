@@ -139,7 +139,17 @@ combined rule already used, and `clearSelection` clears focus too — which also
 asymmetry, since right-clicking the empty space already did. The search table never had
 this: no focused class, and a hover colour plainly distinct from the selection fill.
 
-**Verification (2026-11-05):** full headless suite **249/249**, production build, both
+**The descendant guard is now case-insensitive, and item 6 is answered.** You tested the
+real API through Postman: copying a folder into its own descendant returns HTTP 500 and
+creates nothing, so it fails safely and is no longer a potential P1. That also means the
+backend cannot report the specific problem, which makes the frontend guard the only
+source of the right message — so its last hole was worth closing. The path comparison is
+one helper now, `pathContainsOrEquals`, shared by `containsNode`'s fallback,
+`targetsOwnSubtree` and `isNodeAncestorOrSelf`; SharePoint addresses the same folder as
+`/Contracts` or `/contracts`. I deliberately did **not** map the 500 to
+`descendant-move`: that would relabel every server-side copy failure.
+
+**Verification (2026-11-05):** full headless suite **255/255**, production build, both
 TypeScript projects and repository lint pass. Reverting each of the four fourth-round
 fixes failed exactly one test apiece, as did reverting `openSearch`'s clear and each of
 the three multi-select fallbacks. **Not yet verified in a real browser** — Ctrl/Shift
@@ -966,13 +976,13 @@ _Things noticed during implementation but not fixed in the current phase. Review
   prevents a wrong mutation and `Escape` recovers it. Reproduce before adding a
   document-level fallback. Detail: `docs/TODO.md` item 7.
 
-- **Real descendant-copy rejection needs verification** (2026-07-31, review finding):
-  the mock rejects copying a folder into itself or a descendant, but the existing real
-  copy service has not yet been confirmed. Frontend guards are cache-based and can
-  miss a deep descendant opened through typed-path resolution. Test the disposable
-  `Contracts/Vendors/2026` scenario against the real API on 2026-08-01, capture the
-  response, and confirm that no partial copy is created. Potential P1 if the backend
-  does not reject safely. Full procedure: `docs/TODO.md` item 6.
+- **Real descendant-copy rejection: verified 2026-11-05** (raised 2026-07-31): tested by
+  hand through Postman against real SharePoint — the API returns **HTTP 500** and
+  **creates nothing**, so it fails safely. No longer a potential P1. What is left is
+  message quality and it belongs to the backend: a 500 carries no descendant signal, so
+  nothing can be mapped to `descendant-move`, and keying it off a 500 would relabel every
+  server-side copy failure. The frontend guard is therefore the only source of the
+  specific message, and is now case-insensitive. Detail: `docs/TODO.md` item 6.
 - **Stale async results after a project switch** (2026-07-31, review finding;
   **store half fixed 2026-11-02**): every `FileSystemStore` mutation now captures
   `connectionRevision` and checks it after its request (`move`/`copy` already did;

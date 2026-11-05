@@ -170,6 +170,20 @@ The authorized single-item scenarios are implemented below; multi-selection rema
 | 6 | Right-pane multi-selection | Any folder | Deferred | Not part of current authorization |
 | 6a | Right pane (folder or file) | Unused right-pane space | Ctrl-copy into current folder | Same-parent move is rejected |
 | 7 | External OS files/folders | Right pane (folder row) | Upload into that folder | — |
+
+**The descendant guard is frontend-only, by necessity.** It lives in one place,
+`pathContainsOrEquals` (`utils/node-containment.utils.ts`), used by `containsNode`'s
+path fallback, `FileSystemStore.targetsOwnSubtree` and
+`ProjectDocuments.isNodeAncestorOrSelf`. It is **case-insensitive**, because SharePoint
+addresses the same folder as `/Contracts` or `/contracts`; the trailing slash in the
+prefix test is what keeps `/Contracts2` from reading as a child of `/Contracts`. Only the
+comparison is normalized — a stored path is never rewritten.
+
+It cannot be delegated to the backend: the real API answers a descendant copy with a
+generic **HTTP 500** and creates nothing (verified 2026-11-05). That is safe but carries
+no descendant signal, so nothing in the response can be mapped to `descendant-move`, and
+mapping a 500 to it would relabel every server-side copy failure. See `docs/TODO.md`
+item 6.
 | 8 | External OS files/folders | Unused right-pane space below rows | Upload to current folder | — |
 | 9 | External OS files/folders | Tree folder node | Upload into that folder | — |
 

@@ -230,42 +230,37 @@
 - **Status / priority**: unresolved backend authorization boundary (P0). The
   frontend permission to copy across lists does not close this item.
 
-## 6. Confirm the real API rejects descendant folder copies
+## 6. The real API answers a descendant copy with a generic 500
 
-- **Where**:
-  - `ProjectDocuments.isAncestorOrSelf` walks through the frontend entity cache;
-  - `FileSystemStore.copy` enumerates only cached descendants;
-  - `docs/backend-operations/copy.md` does not currently confirm that the existing
-    backend copy service performs an authoritative descendant check.
-- **Why verification is needed**: the normal tree flow usually has enough ancestors
-  cached for the frontend to block the operation. Typed-path resolution intentionally
-  returns only the target listing, however, so an intermediate ancestor may be absent
-  from the cache. Both frontend guards can then miss that the destination is beneath
-  the copied folder. `MockFileSystemApi` still rejects the operation because it owns
-  the complete in-memory tree; the existing real backend behavior is unconfirmed.
-- **Manual real-API check planned for 2026-08-01**:
-  1. Create or use a disposable hierarchy such as `Contracts/Vendors/2026`.
-  2. Copy `Contracts`.
-  3. Open `2026` through the typed address path so the test does not depend on a fully
-     expanded frontend tree.
-  4. Attempt to paste `Contracts` into `2026`.
-  5. Capture the HTTP status and public error body.
-  6. Confirm that no folder or partial recursive copy was created anywhere.
-- **Expected result**: the backend rejects the request before starting the copy and
-  returns a deterministic error that Angular can map to `descendant-move`. A generic
-  SharePoint failure is safe only if the copy definitely did not start.
-- **If the backend already rejects it explicitly**: record the controller/service
-  location, add backend coverage, and update `docs/backend-operations/copy.md` with the
-  guard and error mapping. No frontend change is required for correctness, although
-  the cache guards remain useful for immediate feedback.
-- **If it does not reject it explicitly**: add an authoritative backend guard using
-  normalized, separator-aware paths. Let `sourceFolderPath` be
-  `sourceParentPath + sourceName`; reject when `targetParentPath` equals that path or
-  begins with `sourceFolderPath + '/'`. Normalize casing and separators according to
-  the existing SharePoint path rules so `/Contracts2` is not treated as a descendant
-  of `/Contracts`.
-- **Status / priority**: verification pending; potential P1 if the real backend does
-  not reject the operation safely.
+- **Verified 2026-11-05** against real SharePoint, by hand through Postman: the request
+  returns **HTTP 500**, and **nothing is created** — no folder, no partial recursive
+  copy. The question this item was opened for is answered.
+- **No longer a P1.** It carried that only because an unverified generic failure might
+  have left a half-finished copy behind. It does not.
+- **What remains is message quality, and it is the backend's to fix.** A 500 carries no
+  descendant signal, so nothing in the response can be mapped to `descendant-move`.
+  `sharepoint-error.mapper.ts` classifies `>= 500` as `network`, so a request that did
+  reach the server would surface as "We could not complete this action. Try again
+  later." — a safe fallback, but not the truth.
+  - **Deliberately not mapped in the frontend**: keying `descendant-move` off a 500
+    would relabel every server-side copy failure as a descendant problem, which is
+    worse than the generic message. Revisit only if the API starts returning something
+    deterministic.
+- **So the frontend guard is the only source of the specific message**, which is why it
+  is now **case-insensitive** (`pathContainsOrEquals` in
+  `utils/node-containment.utils.ts`, used by `containsNode`'s fallback,
+  `FileSystemStore.targetsOwnSubtree` and `ProjectDocuments.isNodeAncestorOrSelf`).
+  SharePoint addresses the same folder as `/Contracts` or `/contracts`, and the previous
+  exact compare would have let a differently-cased destination past every guard.
+- **Recipe for whoever adds the backend guard** (unchanged, still wanted so the API
+  answers deterministically rather than with a 500): let `sourceFolderPath` be
+  `sourceParentPath + sourceName`; reject when `targetParentPath` equals it or begins
+  with `sourceFolderPath + '/'`. Normalize casing and separators per the existing
+  SharePoint path rules, so `/Contracts2` is not treated as a descendant of
+  `/Contracts`. Then record the controller location and update
+  `docs/backend-operations/copy.md`.
+- **Status / priority**: frontend side closed. Backend improvement open, P3 — the
+  current behaviour is safe, only poorly worded.
 
 ## 7. A missed `dragend` can leave a drag session latched
 
