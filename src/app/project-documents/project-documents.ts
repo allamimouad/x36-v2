@@ -72,7 +72,7 @@ import type {
     SearchResultContextMenuRequest
 } from './models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
-import { pathContainsOrEquals, topMostNodes } from './utils/node-containment.utils';
+import { containsNode, topMostNodes } from './utils/node-containment.utils';
 import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
 import { ProjectOverviewService } from '../../services/project-overview.service';
@@ -798,7 +798,7 @@ export class ProjectDocuments {
             const removesCurrent = currentId !== null && removedIds.includes(currentId);
             // The node's own id is included explicitly: an uncached source — every
             // search hit is one — contributes nothing to what the cache removed.
-            this.bulk.pruneReferences([...removedIds, node.id]);
+            this.bulk.reconcileAfterBatch([...removedIds, node.id]);
             if (removesCurrent && parentId) { this.navigation.navigateTo(parentId); }
             this.notifications.success(`“${node.name}” was deleted.`);
         } catch (error) {
@@ -829,7 +829,14 @@ export class ProjectDocuments {
         }
         // Rejected as a set, like a drag: pasting part of what is on the clipboard
         // would do less than the user asked without saying so.
-        if (sources.some((node) => isFolder(node) && this.isNodeAncestorOrSelf(node, target))) {
+        //
+        // `containsNode` is the same test the drag policy applies, rather than a second
+        // walk of its own: it checks the list, walks parent ids with a cycle guard, and
+        // falls back to a case-insensitive path prefix for a source the cache never held.
+        // It reports a node as containing itself only by id, which is the only way two
+        // nodes can share a path anyway.
+        const entities = this.fileSystem.entityMap();
+        if (sources.some((node) => isFolder(node) && containsNode(node, target, entities))) {
             this.notifications.warning(
                 `A folder cannot be ${cut ? 'moved' : 'copied'} inside itself ` +
                 'or one of its subfolders.'
@@ -1077,7 +1084,7 @@ export class ProjectDocuments {
         // resolves its removals at completion, so such a child is in `removed`.
         const currentId = this.navigation.currentFolderId();
         const viewTaken = currentId !== null && removed.includes(currentId);
-        this.bulk.pruneReferences(removed);
+        this.bulk.reconcileAfterBatch(removed);
         if (viewTaken) { this.navigation.navigateTo(target.id); }
         // No explicit clear: pruning above already drops whatever actually moved, so a
         // full cut empties the clipboard, a partial one keeps exactly the failures for
@@ -1126,7 +1133,7 @@ export class ProjectDocuments {
             const removed = done.flatMap((outcome) => [...outcome.removed, outcome.node.id]);
             // Decided once for the batch, and before pruning clears the reference.
             const remover = done.find((o) => o.removed.includes(currentId ?? ''));
-            this.bulk.pruneReferences(removed);
+            this.bulk.reconcileAfterBatch(removed);
             if (remover?.node.parentId) { this.navigation.navigateTo(remover.node.parentId); }
             this.bulk.report(settled, 'deleted', 'were not deleted');
         } finally {
@@ -1851,24 +1858,6 @@ export class ProjectDocuments {
     }
 
     /** Walk up from `candidateId` via parentId; true if `ancestorId` is hit (or is it). */
-    private isAncestorOrSelf(ancestorId: string, candidateId: string): boolean {
-        const map = this.fileSystem.entityMap();
-        let cursor: string | null = candidateId;
-        while (cursor) {
-            if (cursor === ancestorId) { return true; }
-            cursor = map[cursor]?.parentId ?? null;
-        }
-
-        return false;
-    }
-
-    private isNodeAncestorOrSelf(source: FolderNode, target: FolderNode): boolean {
-        if (this.isAncestorOrSelf(source.id, target.id)) { return true; }
-
-        return source.listKey === target.listKey &&
-            pathContainsOrEquals(source.path, target.path);
-    }
-
     private getFoldersLengthDependingOnIfRootFolder(folders: FolderNode[]): number {
         // Remove recycle bin folder from count if current folder is the root folder.
         return this.navigation.parentId() === null ? folders.length - 1 : folders.length;

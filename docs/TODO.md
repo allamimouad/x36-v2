@@ -2,8 +2,8 @@
 
 > Open findings from the ongoing working-tree reviews. Findings 1–2 came from
 > the 2026-07-06 partial document-root / `ProjectDocuments` review; findings
-> 3–6 came from the 2026-07-31 copy/paste reviews; findings 7–9 came from the
-> 2026-11 internal drag-and-drop reviews. These are deliberately left for
+> 3–6 came from the 2026-07-31 copy/paste reviews; findings 7–10 came from the
+> 2026-11 internal drag-and-drop reviews, item 10 from its quality pass. These are deliberately left for
 > later and are also tracked in `PROGRESS.md` → "Deferred / Known Issues".
 > This file carries the full detail. Remove entries here (and in PROGRESS.md)
 > as they are fixed.
@@ -325,6 +325,30 @@
   rather than pointing them somewhere wrong, and needs the `listKey` guard the deleted
   code lacked. Worth doing only if the window is observed to matter.
 - **Priority**: P3 — bounded, self-healing, and no worse than the behaviour it replaced.
+
+## 10. `ProjectDocuments` is 1,548 effective lines behind an eslint waiver
+
+- **Where**: `src/app/project-documents/project-documents.ts:1`, which opens with
+  `/* eslint-disable max-lines -- Existing orchestration container; split by
+  responsibility later. */` against a repository limit of 500.
+- **Problem**: it is the only file in the feature with no size discipline, and the
+  internal drag-and-drop work added roughly 150 lines to it — selection resolution,
+  bulk orchestration, the search-selection reconciliation — without paying any of it
+  back. Everything in it is reachable from everything else, so each addition is cheap to
+  make and the file is progressively harder to read.
+- **The seam that is already clean**: the ten context-menu builders, `getContextMenu`
+  through `showContextMenu` (around lines 1380–1660, roughly 300 lines). They take a
+  node and a surface and return `MenuItem[]`; they depend on the stores and a handful of
+  predicates, not on the container's own state machine. A `ProjectDocumentsMenus`
+  service, or a plain module of builder functions taking an explicit context, would move
+  them out without touching behaviour.
+- **Why it was not done with the drag work**: that branch carries fifteen-plus commits of
+  behaviour change that someone has to review. Burying a 300-line move inside it makes
+  that review harder, not easier, and a refactor whose diff is indistinguishable from the
+  feature it travels with is the kind nobody checks. It wants its own branch and its own
+  "no test edits" rule, the same one the 2026-11-05 quality pass used.
+- **Priority**: P3 — no defect, pure maintainability, but it compounds with every feature
+  added to the container.
 
 > (Two former items were resolved: `initialize`'s reduce-with-spread pipeline —
 > 2026-07-06, by the reactive `connectProject` refactor — and the duplicated

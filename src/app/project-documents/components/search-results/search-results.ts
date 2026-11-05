@@ -21,6 +21,7 @@ import type { ItemDragRequest } from '../../models/drag-state.model';
 import type { FileSystemNode } from '../../models/file-system-node.model';
 import type { SelectionRequest } from '../../models/selection-request.model';
 import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
+import { editableName, submittedName } from '../../utils/naming.utils';
 import { parentOfRelativePath, relativePathFromRoot } from '../../utils/path.utils';
 import { resolveSelection } from '../../utils/selection.utils';
 
@@ -71,11 +72,7 @@ export class SearchResults {
     constructor() {
         effect(() => {
             const result = this.results().find(({ id }) => id === this.renamingId());
-            if (result) {
-                this.inlineRenameValue.set(
-                    result.kind === 'file' ? fileNameParts(result.name).base : result.name
-                );
-            }
+            if (result) { this.inlineRenameValue.set(editableName(result)); }
             const inputElement = this.inlineRenameInput()?.nativeElement;
             if (inputElement) {
                 inputElement.focus();
@@ -124,9 +121,10 @@ export class SearchResults {
         // The rows travel with the ids: a search result is never cached, so the drag
         // could not resolve this selection from the cache alone.
         //
-        // Only the rows on screen are reported, ids included. A re-query can drop a row
-        // whose id is still selected, and the drag would otherwise resolve that one
-        // through the cache and carry something invisible along.
+        // Reported ids are intersected with the rows on screen. The container already
+        // reconciles the selection against each new result set, so this is not what
+        // keeps an invisible row out of a drag — it is so this component never forwards
+        // an input it can see is stale, which is its own business either way.
         const selected = this.selectedIds();
         const selectedNodes = this.results().filter(({ id }) => selected.has(id));
         this.dragStarted.emit({
@@ -208,16 +206,10 @@ export class SearchResults {
     }
 
     private submitInlineRename(result: FileSystemNode): void {
-        const editedName = this.inlineRenameValue();
-        if (result.kind === 'folder') {
-            this.renameSubmitted.emit({ node: result, name: editedName });
-
-            return;
-        }
-        const { ext } = fileNameParts(result.name);
-        const trimmedBase = editedName.trim();
-        const completeName = ext && trimmedBase ? `${trimmedBase}.${ext}` : editedName;
-        this.renameSubmitted.emit({ node: result, name: completeName });
+        this.renameSubmitted.emit({
+            node: result,
+            name: submittedName(result, this.inlineRenameValue())
+        });
     }
 
     /** Row ids in the order the table currently renders them, which sorting changes. */
@@ -226,11 +218,4 @@ export class SearchResults {
 
         return (rendered ?? []).map(({ id }) => id);
     }
-}
-
-function fileNameParts(name: string): { base: string; ext: string } {
-    const dot = name.lastIndexOf('.');
-    if (dot <= 0) { return { base: name, ext: '' }; }
-
-    return { base: name.slice(0, dot), ext: name.slice(dot + 1) };
 }

@@ -50,14 +50,18 @@ export class BulkOperationService {
     }
 
     /**
-     * Drop every reference to what the batch removed, then reconcile the search.
+     * Settle everything a finished batch implies: drop references to what it removed,
+     * then reconcile the search against the server.
+     *
+     * Named for the whole job rather than the pruning, because the last line issues a
+     * request — a caller reading `pruneReferences` would expect cache bookkeeping only.
      *
      * The ids give instant feedback on the rows the user acted on. Everything else a
      * mutation implies — uncached descendants, paths beneath a renamed folder — is left
      * to `refresh`, which is right about them by construction rather than by matching
      * paths, and does nothing when no search is active.
      */
-    public pruneReferences(removedIds: readonly string[]): void {
+    public reconcileAfterBatch(removedIds: readonly string[]): void {
         this.navigation.pruneReferences(removedIds);
         this.clipboard.pruneReferences(removedIds);
         this.search.pruneReferences(removedIds);

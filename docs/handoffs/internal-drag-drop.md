@@ -636,9 +636,65 @@ selectable while that surface is up. It now goes through `navigation.openSearch`
 selects afterwards, because entering a search clears the selection. Its two hits also
 shared one path; they are proper siblings now.
 
+### Quality pass (2026-11-05)
+
+Asked for a quality review rather than a bug hunt, since the other reviews only looked
+for defects. Six findings, two of them mine from this branch. Behaviour unchanged: the
+suite stayed at **258 with no test edits**, which was the condition set in advance — a
+refactor needing its tests rewritten has changed behaviour.
+
+**The duplication I had walked past.** `file-table.ts` and `search-results.ts` carried
+`fileNameParts` **byte-identically** (`diff` confirmed), while `naming.utils.ts` already
+had a private `splitExtension` splitting a filename a third time. Earlier the same day I
+had extracted `resolveSelection` into a shared util on the explicit reasoning that both
+tables need identical behaviour — and left the larger duplication beside it.
+
+Now one `splitFileName` in `naming.utils.ts`, plus `editableName` and `submittedName` for
+the two pieces of the inline-rename block that carry logic. The rest of that block — the
+`viewChild`s, the focus effects, the three-line emitters — stays duplicated **on
+purpose**: `viewChild` and `effect` belong to the component owning the elements, and
+extracting thin emitters buys indirection rather than meaning. Of ~70 duplicated lines,
+about 20 were worth sharing.
+
+One behavioural consequence, stated rather than smuggled: the unified split treats a
+trailing dot as part of the name, so inline-renaming a file called `report.` keeps its
+dot instead of silently dropping it. `resolveNameCollision` already behaved this way.
+
+**Three ancestry implementations became one.** `isAncestorOrSelf` in `path.utils.ts` was
+exported and imported by nobody — deleted. The container's private `isAncestorOrSelf` and
+`isNodeAncestorOrSelf` reimplemented `containsNode` and more weakly: no cycle guard,
+where `containsNode` keeps a `visited` set. The paste guard now calls `containsNode`
+directly, and both private helpers are gone. The one semantic difference —
+`containsNode`'s path fallback is strictly beneath, since equality is settled by the id
+walk — is unreachable, because two nodes cannot share a path, and that is recorded at
+the call site rather than papered over.
+
+**`BulkOperationService.pruneReferences` → `reconcileAfterBatch`.** It pruned three
+caches *and issued a search request*; the old name promised cache bookkeeping. Four call
+sites.
+
+**One finding settled against my own preference.** I had shipped three overlapping
+guards for the hidden-row invariant and called it defence-in-depth. Removing the drag's
+visible-ids intersection failed only the test I had written for it — circular evidence,
+so it is not load-bearing given the reconciliation effect. It is kept, but the comment now
+says the honest reason: a component should not forward an input it can see is stale. It is
+no longer claimed to be closing a gap.
+
+**Declined, and recorded as `docs/TODO.md` item 10.** `project-documents.ts` is 1,548
+effective lines behind an eslint waiver that says "split by responsibility later", and
+this branch added ~150 of them. The clean seam is the ten context-menu builders, ~300
+lines. Doing it here would bury fifteen commits of behaviour change under a move nobody
+could review separately.
+
+Still open from the earlier passes: the tests reach into protected members five times via
+`as unknown as` in `project-documents-bulk.spec.ts`, which is now 416 effective lines and
+the catch-all for everything container-level, and every test there pays `settle()`'s
+three-round render loop — a workaround for item 8.
+
 ## Verification (2026-11-05)
 
-- Full headless suite **258 passed** (237 plus 10 for search multi-select, 2 for the
+- Full headless suite **258 passed**, unchanged across the quality pass, which edited
+  no tests by design (237 plus 10 for search multi-select, 2 for the
   focus/selection paint fix, 6 for the case-insensitive descendant guard, and 3 for the
   two findings above). Reverting each fix failed exactly its own tests: the paint fix one,
   the clear-focus one, the case-sensitive compare three, and the collapse, the selection

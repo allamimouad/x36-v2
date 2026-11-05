@@ -452,7 +452,7 @@ export class DragDropService {
         // navigate away from it for no reason.
         const affected = intent !== 'copy' &&
             this.viewWasTaken(done, removed, view, currentId);
-        this.bulk.pruneReferences(removed);
+        this.bulk.reconcileAfterBatch(removed);
         if (!affected) { return; }
         const destination = intent === 'delete'
             ? this.parentOfRemover(done, currentId)

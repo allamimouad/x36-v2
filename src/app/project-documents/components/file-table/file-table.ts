@@ -31,6 +31,9 @@ import {
     hasInternalDragType, type ItemDragRequest, type ItemDropRequest
 } from '../../models/drag-state.model';
 import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
+import {
+    editableName, splitFileName, submittedName
+} from '../../utils/naming.utils';
 import { resolveSelection } from '../../utils/selection.utils';
 import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 
@@ -129,7 +132,7 @@ export class FileTable {
             });
         }
         for (const f of this.files()) {
-            const { base, ext } = fileNameParts(f.name);
+            const { base, ext } = splitFileName(f.name);
             out.push({
                 id: f.id,
                 name: base,
@@ -165,12 +168,7 @@ export class FileTable {
         effect(() => {
             const renamingId = this.renamingId();
             const row = this.rows().find((candidate) => candidate.id === renamingId);
-            if (row) {
-                const editableName = row.kind === 'file'
-                    ? fileNameParts(row.node.name).base
-                    : row.node.name;
-                this.inlineRenameValue.set(editableName);
-            }
+            if (row) { this.inlineRenameValue.set(editableName(row.node)); }
             const inputElement = this.inlineRenameInput()?.nativeElement;
             if (inputElement) {
                 inputElement.focus();
@@ -372,17 +370,10 @@ export class FileTable {
     }
 
     private submitInlineRename(row: RowVm): void {
-        const editedName = this.inlineRenameValue();
-        if (row.kind === 'folder') {
-            this.renameSubmitted.emit({ node: row.node, name: editedName });
-
-            return;
-        }
-
-        const { ext } = fileNameParts(row.node.name);
-        const trimmedBase = editedName.trim();
-        const completeName = ext && trimmedBase ? `${trimmedBase}.${ext}` : editedName;
-        this.renameSubmitted.emit({ node: row.node, name: completeName });
+        this.renameSubmitted.emit({
+            node: row.node,
+            name: submittedName(row.node, this.inlineRenameValue())
+        });
     }
 
     // Input format: sites/{siteName}/{listName}/remainingPath
@@ -421,12 +412,5 @@ function formatSize(bytes: number | undefined): string {
 }
 
 /** Split a file name into its display base and extension (no leading-dot files). */
-function fileNameParts(name: string): { base: string; ext: string } {
-    const dot = name.lastIndexOf('.');
-    if (dot <= 0) { return { base: name, ext: '' }; }
-
-    return { base: name.slice(0, dot), ext: name.slice(dot + 1) };
-}
-
 // Make isFolder available to template via export indirection if needed later.
 export { isFolder };

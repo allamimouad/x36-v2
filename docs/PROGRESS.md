@@ -170,6 +170,30 @@ a drag starts.
 One of my own tests was wrong rather than merely inconvenient and had to be repaired: it
 drove the search service directly without opening a search, a state the app cannot produce.
 
+**A quality pass followed, since the reviews had only hunted defects.** Behaviour
+unchanged, with the suite held at 258 and **no test edits** — the condition set in
+advance, because a refactor needing its tests rewritten has changed behaviour.
+
+Worst finding was mine: `fileNameParts` was byte-identical in both table components while
+`naming.utils.ts` already split filenames a third way, and I had extracted
+`resolveSelection` earlier the same day on exactly the "both tables need this" reasoning
+while leaving the bigger duplication beside it. Now one `splitFileName`, plus
+`editableName`/`submittedName` for the parts of the inline-rename block that carry logic;
+the `viewChild`s, focus effects and thin emitters stay duplicated on purpose. Three
+ancestry implementations became one — a dead export in `path.utils.ts` deleted, and the
+container's two private walks replaced by `containsNode`, which unlike them has a cycle
+guard. `BulkOperationService.pruneReferences` became `reconcileAfterBatch`, since it also
+issues a request.
+
+One finding went against my own preference: removing the drag's visible-ids intersection
+failed only the test I wrote for it, which is circular evidence, so it is not load-bearing
+given the reconciliation effect. Kept, with the comment corrected to say the real reason
+rather than claim it closes a gap.
+
+Declined and recorded as `docs/TODO.md` item 10: splitting `project-documents.ts`, 1,548
+effective lines behind an eslint waiver, which this branch grew by ~150. The seam is the
+ten context-menu builders; doing it here would bury fifteen commits of behaviour change.
+
 **Verification (2026-11-05):** full headless suite **258/258**, production build, both
 TypeScript projects and repository lint pass. Reverting each of the four fourth-round
 fixes failed exactly one test apiece, as did reverting `openSearch`'s clear and each of

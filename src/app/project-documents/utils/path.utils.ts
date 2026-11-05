@@ -1,4 +1,3 @@
-import type { FolderNode } from '../models/file-system-node.model';
 
 export const ROOT_PATH = '/';
 
@@ -45,18 +44,3 @@ export function basename(path: string): string {
     return idx < 0 ? path : path.slice(idx + 1);
 }
 
-export function isAncestorOrSelf(
-    ancestorId: string,
-    candidateId: string,
-    allFolders: ReadonlyMap<string, FolderNode>
-): boolean {
-    let current: string | null = candidateId;
-    while (current !== null) {
-        if (current === ancestorId) { return true; }
-        const node = allFolders.get(current);
-        if (!node) { return false; }
-        current = node.parentId;
-    }
-
-    return false;
-}
