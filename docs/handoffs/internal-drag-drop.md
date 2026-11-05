@@ -407,6 +407,54 @@ URLs. Not a regression — it previously showed the *new* path with the *old* UR
 links were equally broken and better disguised — and the only local fix is the
 path-prefix sweep just deleted, including the `listKey` guard it lacked.
 
+### Fourth review round: three real bugs in the refresh itself (2026-11-05)
+
+The round that retired the path matching introduced three of its own, all confirmed in
+code and all fixed.
+
+**`clear` kept the submitted search.** It unsubscribed but left `lastSubmitted`, and
+`clear` runs on every navigation away from a search (`observeSearchHistory` →
+`resetSearchState`), so the dead query was retained constantly. A later mutation's
+refresh then re-ran it — against the previous project's id after a switch, since the
+service outlives one project. The sharp part is downstream: the revived `activeQuery`
+and `activeScopeId` are exactly the two fields the container's `alreadyLoaded` check
+compares (`project-documents.ts:1240`), so re-entering the same search on the same
+folder was **skipped** and those rows were shown instead — another project's documents
+rendered as this one's results. One line: `clear` now forgets the search.
+
+**Drag-copy never reconciled.** `perform` guarded `if (intent !== 'copy')` around
+`finishBatch`, which is the only caller of `bulk.pruneReferences` and therefore of
+`refresh`. Paste-copy called it with an empty array and did refresh, so the two copy
+paths had diverged. Copy now goes through `finishBatch` like everything else, with
+`removed` computed as `[]` for a copy — pruning its sources would drop the rows of the
+items it just duplicated, which is the previous round's first finding reintroduced. Two
+things had to move with it: `viewWasTaken`'s containment clause fires for a view inside
+a *copied* folder, since the source survives, so a copy is excluded from the navigation
+decision outright.
+
+**The refresh hid the results anyway.** `[loading]="search.isSearching()"` fed a
+template that replaces the whole table with "Searching…", so `reset: false` preserved an
+array nothing rendered — the user saw precisely the empty table the flag existed to
+prevent, for the full query. The service now exposes `isRefreshing` alongside
+`isSearching`; `loading` is bound for the initial run only, and a refresh renders a
+non-blocking "Updating results…" line above the live table with `aria-busy` set.
+`searchStatusText` had the same conflation and keeps its result count during a refresh.
+
+**The lesson worth keeping.** The test covering the previous round asserted
+`service.results()` stayed populated. Right property, wrong layer: it passed while the
+screen was blank. A claim about what the user sees needs an assertion at the rendered
+level, so the covering test for this one submits a search, deletes a row, holds the
+re-query open and asserts the surviving row is still in the DOM
+(`project-documents-bulk.spec.ts`).
+
+## Verification (2026-11-05)
+
+- Full headless suite **236 passed** (231 plus 5 for the fourth round). Reverting each
+  of the four fixes failed exactly one test: the `clear` line, the drag-copy call site,
+  the container's `loading` binding, and the copy guard on the navigation decision.
+- Production build, both TypeScript projects and repository lint pass (the two
+  pre-existing `path-bar` template warnings only).
+
 ## Verification (2026-11-04)
 
 - Full headless suite **231 passed**, with two path-matching tests replaced by refresh

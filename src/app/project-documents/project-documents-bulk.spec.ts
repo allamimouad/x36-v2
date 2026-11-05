@@ -296,6 +296,36 @@ describe('ProjectDocuments bulk actions', () => {
         expect(searchCalls).toHaveBeenCalledTimes(2);
     });
 
+    it('keeps the search rows rendered while the reconciling refresh is in flight',
+        async () => {
+            const scope = navigation.currentFolder();
+            if (!scope) { throw new Error('Expected a current folder'); }
+            const doomed = { ...otherFolder([]), id: 'hit-doomed', name: 'Doomed' };
+            const kept = { ...otherFolder([]), id: 'hit-kept', name: 'Kept' };
+            spyOn(api, 'searchDocuments').and.returnValue(of([doomed, kept]));
+            spyOn(api, 'delete').and.returnValue(of(undefined));
+            // The refresh never lands, so the assertions below see the window the user
+            // sees: a slow re-query with rows already on screen.
+            const refreshed = new Subject<FileSystemNode[]>();
+            navigation.openSearch('Hit');
+            await settle();
+            expect(host().querySelector(`[data-testid="pd-search-result-${kept.id}"]`))
+                .not.toBeNull();
+
+            (api.searchDocuments as jasmine.Spy).and.returnValue(refreshed);
+            await deleteThrough(doomed);
+            await render();
+
+            // The service preserving its results array is not enough: the view must also
+            // not swap the table for its loading state. This is the assertion the
+            // service-level test could not make.
+            expect(host().querySelector(`[data-testid="pd-search-result-${kept.id}"]`))
+                .not.toBeNull();
+            expect(host().textContent).toContain('Updating results…');
+            expect(host().textContent).not.toContain('Searching…');
+            refreshed.complete();
+        });
+
     it('keeps a clipboard copied while a cut-paste was still running', async () => {
         const chosen = selectTwoRows();
         const target = otherFolder(chosen);

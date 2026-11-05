@@ -291,22 +291,43 @@ describe('DragDropService native session and mutations', () => {
         expect(clipboard.isEmpty()).toBeTrue();
     });
 
-    it('prunes search results for what a move removed, and not for a copy', async () => {
-        const prune = spyOn(TestBed.inject(DocumentSearchService), 'pruneReferences');
+    it('prunes for what a move removed, and reconciles without pruning for a copy',
+        async () => {
+            const search = TestBed.inject(DocumentSearchService);
+            const prune = spyOn(search, 'pruneReferences');
+            const refresh = spyOn(search, 'refresh');
 
-        start();
-        await service.drop(event('drop'), destination.id);
+            start();
+            await service.drop(event('drop'), destination.id);
 
-        expect(prune).toHaveBeenCalled();
-        expect([...prune.calls.mostRecent().args[0]]).toContain(source.id);
+            expect(prune).toHaveBeenCalled();
+            expect([...prune.calls.mostRecent().args[0]]).toContain(source.id);
 
-        // A copy removes nothing, so the result list must be left alone entirely.
-        prune.calls.reset();
-        const sibling = siblingsOf(source, 1)[0];
-        service.startDrag({ event: event('dragstart', true), node: sibling });
+            // A copy contributes no ids: pruning its sources would drop the rows of the
+            // items it just duplicated. It must still reconcile, because a copy made
+            // inside the searched scope is a new match — this is what drag-copy skipped
+            // while paste-copy did it.
+            prune.calls.reset();
+            refresh.calls.reset();
+            const sibling = siblingsOf(source, 1)[0];
+            service.startDrag({ event: event('dragstart', true), node: sibling });
+            await service.drop(event('drop', true), destination.id);
+
+            expect([...prune.calls.mostRecent().args[0]]).toEqual([]);
+            expect(refresh).toHaveBeenCalled();
+        });
+
+    it('keeps the view where it is after copying the folder being viewed', async () => {
+        navigation.initialize({ currentFolderId: source.id, expandedRootIds: [] });
+        TestBed.tick();
+
+        service.startDrag({ event: event('dragstart', true), node: source });
         await service.drop(event('drop', true), destination.id);
 
-        expect(prune).not.toHaveBeenCalled();
+        // The source survives a copy, so the containment test that follows a move must
+        // not run: it would see the viewed folder inside a "carried off" node and open
+        // the copy's destination instead.
+        expect(navigation.currentFolderId()).toBe(source.id);
     });
 
     it('moves a dragged node that was never cached', async () => {

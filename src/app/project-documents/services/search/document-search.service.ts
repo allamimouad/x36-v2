@@ -10,6 +10,13 @@ export class DocumentSearchService {
     public readonly results: Signal<FileSystemNode[]>;
     public readonly activeQuery: Signal<string | null>;
     public readonly isSearching: Signal<boolean>;
+    /**
+     * True while a reconciling `refresh` is in flight, as opposed to a search the user
+     * submitted. The two cannot share one flag: a submitted search has nothing to show
+     * and must replace the table, while a refresh has the previous rows up and must
+     * leave them there.
+     */
+    public readonly isRefreshing: Signal<boolean>;
     public readonly error: Signal<FileSystemError | null>;
     public readonly activeScopeId: Signal<string | null>;
 
@@ -18,6 +25,7 @@ export class DocumentSearchService {
     private readonly _results = signal<FileSystemNode[]>([]);
     private readonly _activeQuery = signal<string | null>(null);
     private readonly _isSearching = signal(false);
+    private readonly _isRefreshing = signal(false);
     private readonly _error = signal<FileSystemError | null>(null);
     private readonly _activeScopeId = signal<string | null>(null);
     private request: Subscription | null = null;
@@ -29,6 +37,7 @@ export class DocumentSearchService {
         this.results = this._results.asReadonly();
         this.activeQuery = this._activeQuery.asReadonly();
         this.isSearching = this._isSearching.asReadonly();
+        this.isRefreshing = this._isRefreshing.asReadonly();
         this.error = this._error.asReadonly();
         this.activeScopeId = this._activeScopeId.asReadonly();
         this.destroyRef.onDestroy(() => this.request?.unsubscribe());
@@ -76,9 +85,11 @@ export class DocumentSearchService {
      * Re-run the last submitted search, to reconcile the list with the server after a
      * mutation. Does nothing when no search is active.
      *
-     * Unlike `search`, this keeps the current rows on screen until the response lands:
-     * clearing them would replace one stale row with an empty table for however long
-     * the query takes, which is the opposite of the intent.
+     * Unlike `search`, this keeps the current rows until the response lands: clearing
+     * them would replace one stale row with an empty table for however long the query
+     * takes, which is the opposite of the intent. Keeping the array is only half of
+     * that — `isRefreshing` is what stops the view swapping the table for its loading
+     * state, so both are needed for a row to actually stay on screen.
      */
     public refresh(): void {
         const last = this.lastSubmitted;
@@ -90,11 +101,19 @@ export class DocumentSearchService {
         this.requestVersion++;
         this.request?.unsubscribe();
         this.request = null;
+        // Forgotten, not just unsubscribed. `clear` runs on every navigation away from a
+        // search, so a retained query would let a later mutation's `refresh` re-run a
+        // search the user has left — against the previous project after a switch, since
+        // this service outlives one project. Worse, that revived `activeQuery` and
+        // `activeScopeId` make the container's `alreadyLoaded` check skip the next real
+        // search and show those rows instead.
+        this.lastSubmitted = null;
         this._activeQuery.set(null);
         this._results.set([]);
         this._error.set(null);
         this._activeScopeId.set(null);
         this._isSearching.set(false);
+        this._isRefreshing.set(false);
     }
 
     private run(
@@ -111,6 +130,7 @@ export class DocumentSearchService {
         this._error.set(null);
         this._activeScopeId.set(scope.id);
         this._isSearching.set(true);
+        this._isRefreshing.set(!reset);
 
         this.request = this.api.searchDocuments(projectId, scope, normalizedQuery).subscribe({
             next: (results) => {
@@ -124,11 +144,16 @@ export class DocumentSearchService {
                         ? error
                         : new FileSystemError('unknown', 'Document search failed', error)
                 );
-                this._isSearching.set(false);
+                this.settle();
             },
             complete: () => {
-                if (version === this.requestVersion) { this._isSearching.set(false); }
+                if (version === this.requestVersion) { this.settle(); }
             }
         });
+    }
+
+    private settle(): void {
+        this._isSearching.set(false);
+        this._isRefreshing.set(false);
     }
 }

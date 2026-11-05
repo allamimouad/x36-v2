@@ -6,8 +6,9 @@
 
 ## Current Status
 
-**Active work (2026-11-04): review fixes, and one search strategy change.** A review
-raised five issues; all five were real and all are fixed.
+**Active work (2026-11-05): four review rounds on internal drag-and-drop, and one
+search strategy change.** The first round raised five issues; all five were real and all
+are fixed.
 
 The substantive one changed a strategy. Rename, single delete, bulk delete and paste
 re-ran the search after mutating (`refreshActiveSearch`, your colleague's convention
@@ -67,11 +68,38 @@ every signal the policy reads — including `pending`, so on every drag start an
 `draggableIds` always did for the tree and table. A test counts `entityMap` reads to
 keep the per-row form from coming back.
 
-**Verification (2026-11-04):** full headless suite **231/231**, production build, both
-TypeScript projects and repository lint pass. Every fix from both rounds has a
-regression test confirmed to fail without it, except the component-lifetime guard, which
-is covered by inspection because testing it needs a different concurrency harness than
-that spec uses. Reverting the policy change failed its test too.
+**A third round found three more findings, and all three were already gone** — they were
+written against the path-matching commit, so the deletion retired them rather than any
+individual fix. All three were verified real against that commit first: a copy pruned
+its source folder's children, `applyRename` rewrote a descendant's path but left its
+Open/Download URLs, and neither prefix test compared `listKey`. One residual is recorded
+as `docs/TODO.md` item 9 rather than fixed, because the only local fix is the sweep that
+was just deleted.
+
+**A fourth round then found three real bugs in the refresh itself**, all fixed.
+`clear` unsubscribed but kept `lastSubmitted`, and it runs on every navigation away from
+a search — so a later mutation's refresh re-ran a dead query, against the previous
+project after a switch, and the revived `activeQuery`/`activeScopeId` made the
+container's `alreadyLoaded` check skip the user's next real search and show those rows
+instead. Drag-copy never reconciled, because `perform` guarded `finishBatch` behind
+`intent !== 'copy'` and that is the only path to `refresh`; copy now goes through it with
+`removed` as `[]`, and is excluded from the navigation decision since its source
+survives and the containment test would otherwise move the view. And the refresh hid the
+results anyway: `[loading]="isSearching()"` fed a template that replaces the whole table,
+so `reset: false` preserved an array nothing rendered. `isRefreshing` now separates the
+two, and a refresh shows a non-blocking line above the live rows.
+
+The lesson from that last one is the one to keep: the covering test asserted
+`service.results()` stayed populated — the right property at the wrong layer, passing
+while the screen was blank. A claim about what the user sees needs an assertion at the
+rendered level.
+
+**Verification (2026-11-05):** full headless suite **236/236**, production build, both
+TypeScript projects and repository lint pass. Reverting each of the four fourth-round
+fixes failed exactly one test apiece. Every fix from the earlier rounds has a regression
+test confirmed to fail without it, except the component-lifetime guard, which is covered
+by inspection because testing it needs a different concurrency harness than that spec
+uses.
 
 **Earlier record (2026-11-03): bulk delete, copy and cut.**
 

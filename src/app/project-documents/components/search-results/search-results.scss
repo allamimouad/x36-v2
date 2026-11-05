@@ -46,6 +46,22 @@
   height: 28px;
 }
 
+// Sits above the live table rather than replacing it: a reconciling re-query runs
+// after the user has already acted, so the rows they are looking at must stay put.
+.pd-search-refreshing {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--pd-text-muted);
+}
+
+:host ::ng-deep .pd-search-refresh-spinner {
+  width: 14px;
+  height: 14px;
+}
+
 :host ::ng-deep .pd-search-table {
   .p-datatable-table {
     table-layout: fixed;

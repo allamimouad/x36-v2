@@ -390,7 +390,7 @@ export class DragDropService {
         // Items that never ran are neither done nor failed, and must not be counted as
         // either: both helpers below read a missing error as success.
         const settled = outcomes.filter((outcome) => outcome.abandoned !== true);
-        if (intent !== 'copy') { this.finishBatch(intent, settled, view, targetId); }
+        this.finishBatch(intent, settled, view, targetId);
         this.bulk.report(settled, PAST_TENSE[intent], SHORTFALL[intent]);
     }
 
@@ -419,6 +419,11 @@ export class DragDropService {
     /**
      * Prune what the successful items removed and, when the viewed folder went with
      * them, open somewhere valid — decided once for the batch rather than per item.
+     *
+     * A copy comes through here too, removing nothing. It has no rows to prune and no
+     * view to follow, but it still needs the search reconciled: a copy made inside the
+     * searched scope is a new match, and skipping this is how drag-copy came to behave
+     * differently from paste-copy.
      */
     private finishBatch(
         intent: DropIntent,
@@ -428,11 +433,19 @@ export class DragDropService {
     ): void {
         const done = outcomes.filter((outcome) => outcome.error === undefined);
         if (done.length === 0) { return; }
-        // Source ids included: an uncached source — every search hit is one — reports
-        // nothing through the cache, so its result row would otherwise survive.
-        const removed = done.flatMap((outcome) => [...outcome.removed, outcome.node.id]);
+        // Source ids included for anything that removes: an uncached source — every
+        // search hit is one — reports nothing through the cache, so its result row would
+        // otherwise survive. A copy must contribute none of this, or it would prune the
+        // rows of the very items it just duplicated.
+        const removed = intent === 'copy'
+            ? []
+            : done.flatMap((outcome) => [...outcome.removed, outcome.node.id]);
         const currentId = this.navigation.currentFolderId();
-        const affected = this.viewWasTaken(done, removed, view, currentId);
+        // A copy never takes the view: its source survives, so `viewWasTaken`'s
+        // containment clause would otherwise fire for a view inside a copied folder and
+        // navigate away from it for no reason.
+        const affected = intent !== 'copy' &&
+            this.viewWasTaken(done, removed, view, currentId);
         this.bulk.pruneReferences(removed);
         if (!affected) { return; }
         const destination = intent === 'delete'

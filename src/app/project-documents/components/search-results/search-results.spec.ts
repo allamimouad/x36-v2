@@ -112,6 +112,28 @@ describe('SearchResults', () => {
         expect(confirmed).toHaveBeenCalledOnceWith(result);
     });
 
+    it('replaces the table while loading, but keeps the rows while refreshing', () => {
+        const row = `[data-testid="pd-search-result-${result.id}"]`;
+
+        fixture.componentRef.setInput('loading', true);
+        fixture.detectChanges();
+
+        // A submitted search has nothing to show yet, so the table gives way.
+        expect(host().querySelector(row)).toBeNull();
+        expect(host().textContent).toContain('Searching…');
+
+        fixture.componentRef.setInput('loading', false);
+        fixture.componentRef.setInput('refreshing', true);
+        fixture.detectChanges();
+
+        // A reconciling re-query runs after the user has acted on a row, so the rows
+        // stay and the wait is only indicated. Preserving the results array is not
+        // enough on its own — this is the assertion that proves it reaches the screen.
+        expect(host().querySelector(row)).not.toBeNull();
+        expect(host().textContent).toContain('Updating results…');
+        expect(host().textContent).not.toContain('Searching…');
+    });
+
     function host(): HTMLElement {
         const element: unknown = fixture.nativeElement;
         if (!(element instanceof HTMLElement)) { throw new Error('Expected component host'); }

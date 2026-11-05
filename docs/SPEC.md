@@ -255,10 +255,25 @@ deleted folder, paths beneath a renamed one — is left to
 
 The refresh deliberately **keeps the current rows on screen** until the response lands:
 clearing them, as a user-submitted search does, would replace one stale row with an
-empty table for as long as the query takes. An earlier version maintained the list
-entirely locally, matching descendants by path prefix; that is removed. Re-querying
-costs a request but is correct about descendants and paths by construction, where the
-local version produced four separate defects.
+empty table for as long as the query takes. That takes two things, and the service can
+only do one of them — it keeps its results array, while `isRefreshing` is what stops the
+view swapping the table for its loading state. A submitted search sets `isSearching`
+alone and may replace the table; a refresh sets both, and the view shows a non-blocking
+"Updating results…" line above the live rows.
+
+Every path that mutates reconciles, including a **copy**, which removes nothing and so
+prunes no ids: a copy made inside the searched scope is a new match. Drag-copy and
+paste-copy go through the same completion path for exactly that reason.
+
+`clear` **forgets** the submitted search as well as unsubscribing. It runs on every
+navigation away from a search, so a retained query would let a later mutation's refresh
+re-run a search the user has left — against the previous project, since the service
+outlives one project — and the revived `activeQuery`/`activeScopeId` would make the
+container's `alreadyLoaded` check skip the next real search and show those rows.
+
+An earlier version maintained the list entirely locally, matching descendants by path
+prefix; that is removed. Re-querying costs a request but is correct about descendants
+and paths by construction, where the local version produced four separate defects.
 
 Bulk download is deliberately absent: there is no zip endpoint, so it would mean one
 browser download per file.

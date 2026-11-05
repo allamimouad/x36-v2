@@ -1180,7 +1180,10 @@ export class ProjectDocuments {
     }
 
     private searchStatusText(): string {
-        if (this.search.isSearching()) { return 'Searching…'; }
+        // A refresh is excluded on purpose: the counted rows are still on screen, so
+        // reporting "Searching…" would contradict them. The count below goes stale for
+        // the length of the re-query, which the table's own indicator accounts for.
+        if (this.search.isSearching() && !this.search.isRefreshing()) { return 'Searching…'; }
         const searchError = this.searchError();
         if (searchError) { return searchError; }
         const count = this.search.results().length;

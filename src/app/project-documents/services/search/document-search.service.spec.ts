@@ -90,6 +90,45 @@ describe('DocumentSearchService', () => {
         expect(search).not.toHaveBeenCalled();
     });
 
+    it('forgets the search on clear, so a later refresh cannot revive it', fakeAsync(() => {
+        const search = spyOn(api, 'searchDocuments').and.returnValue(of(response('first')));
+        service.search('project', scope, 'term');
+        tick();
+
+        service.clear();
+        service.refresh();
+
+        // No request, and nothing restored: a revived activeQuery and activeScopeId
+        // make the container's alreadyLoaded check skip the user's next real search
+        // and show these rows instead — from the previous project, after a switch.
+        expect(search).toHaveBeenCalledTimes(1);
+        expect(service.activeQuery()).toBeNull();
+        expect(service.activeScopeId()).toBeNull();
+        expect(service.results()).toEqual([]);
+    }));
+
+    it('flags a refresh as refreshing, and a submitted search as searching', fakeAsync(() => {
+        const search = spyOn(api, 'searchDocuments').and.returnValue(
+            of(response('first')).pipe(delay(5))
+        );
+        service.search('project', scope, 'term');
+
+        expect(service.isSearching()).toBeTrue();
+        expect(service.isRefreshing()).toBeFalse();
+        tick(5);
+        expect(service.isRefreshing()).toBeFalse();
+
+        search.and.returnValue(of(response('second')).pipe(delay(5)));
+        service.refresh();
+
+        // The view distinguishes the two: only a submitted search may replace the table.
+        expect(service.isSearching()).toBeTrue();
+        expect(service.isRefreshing()).toBeTrue();
+        tick(5);
+        expect(service.isSearching()).toBeFalse();
+        expect(service.isRefreshing()).toBeFalse();
+    }));
+
 });
 
 

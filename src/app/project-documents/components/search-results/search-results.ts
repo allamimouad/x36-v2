@@ -34,6 +34,8 @@ export class SearchResults {
     public readonly rootPath = input.required<string>();
     public readonly query = input.required<string>();
     public readonly loading = input(false);
+    /** A reconciling re-query with rows already up: indicated, never blocking. */
+    public readonly refreshing = input(false);
     public readonly error = input<string | null>(null);
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);

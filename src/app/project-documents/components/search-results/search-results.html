@@ -14,7 +14,18 @@
       <span>{{ message }}</span>
     </div>
   } @else {
-    <p-table [value]="results()" dataKey="id" styleClass="pd-search-table">
+    @if (refreshing()) {
+      <div class="pd-search-refreshing" role="status">
+        <p-progressSpinner styleClass="pd-search-refresh-spinner" strokeWidth="4" />
+        <span>Updating results…</span>
+      </div>
+    }
+    <p-table
+      [value]="results()"
+      dataKey="id"
+      styleClass="pd-search-table"
+      [attr.aria-busy]="refreshing() ? 'true' : null"
+    >
       <ng-template pTemplate="header">
         <tr>
           <th pSortableColumn="name" style="width: 24%">Name <p-sortIcon field="name" /></th>
