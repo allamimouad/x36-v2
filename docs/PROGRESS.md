@@ -127,7 +127,19 @@ passing its own rendered ids to keep a Shift-range in sort order.
 Accepted asymmetry: a search selection may span document lists, where the menu Delete
 works (each item to its own bin) but a mixed set dragged onto a bin is refused whole.
 
-**Verification (2026-11-05):** full headless suite **247/247**, production build, both
+**Deselecting did not look like deselecting** (reported from manual use, fixed
+2026-11-05). Ctrl-clicking a selected row left it looking selected, and clicking outside
+the rows appeared to do nothing, while drags acted on the right items — state correct,
+paint wrong. One cause: `pd-row-focused` and `pd-row-selected` shared `--pd-selection-bg`
+in the file table, and every row click focuses, so the row just clicked was always
+painted as selected. Clicking the empty space compounded it, because `clearSelection`
+left `focusedId` set. Recycle-bin rows had the same look for the same reason, though they
+only ever focus. Selection now keeps the fill, focus gets the inset accent edge the
+combined rule already used, and `clearSelection` clears focus too — which also removes an
+asymmetry, since right-clicking the empty space already did. The search table never had
+this: no focused class, and a hover colour plainly distinct from the selection fill.
+
+**Verification (2026-11-05):** full headless suite **249/249**, production build, both
 TypeScript projects and repository lint pass. Reverting each of the four fourth-round
 fixes failed exactly one test apiece, as did reverting `openSearch`'s clear and each of
 the three multi-select fallbacks. **Not yet verified in a real browser** — Ctrl/Shift

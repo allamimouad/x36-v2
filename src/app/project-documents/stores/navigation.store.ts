@@ -487,11 +487,22 @@ export const NavigationStore = signalStore(
             });
         };
 
+        /**
+         * Focus goes with the selection. Clicking the empty space or pressing Escape is
+         * a "nothing is chosen" gesture, and leaving the last-clicked row focused meant
+         * it kept a highlight of its own afterwards. Right-clicking the empty space
+         * already cleared focus, so this also removes that asymmetry.
+         */
         const clearSelection = (): void => {
-            if (store.selectedIds().size === 0 && store.selectionAnchorId() === null) {
+            if (store.selectedIds().size === 0 && store.selectionAnchorId() === null &&
+                store.focusedId() === null) {
                 return;
             }
-            patchState(store, { selectedIds: new Set<string>(), selectionAnchorId: null });
+            patchState(store, {
+                selectedIds: new Set<string>(),
+                selectionAnchorId: null,
+                focusedId: null
+            });
         };
 
         const startRename = (id: string): void => {

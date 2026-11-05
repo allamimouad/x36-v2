@@ -224,8 +224,16 @@ Implemented 2026-10-28 for the right-pane table, extended to the search table
 - **Shift+click** selects from the anchor to the clicked row, in the order the rows are
   currently rendered, and leaves the anchor where it is so a further Shift-click
   re-extends from the same row.
-- Clicking the space below the rows, changing the viewed folder, or Escape clears it.
+- Clicking the space below the rows, changing the viewed folder, or Escape clears it,
+  **including the focused row** — those gestures mean nothing is chosen.
 - Enter/Space on a focused row selects it, matching a plain click.
+
+Focus and selection are **separate affordances and must look it**. Selection is a
+background fill; focus is an inset accent edge. They shared one background until
+2026-11-05, and because every row click focuses, a row that had just been
+Ctrl-click-deselected still read as selected — the state was right, only the paint was
+wrong. The same shared colour made a recycle-bin row look selected, though bins only
+ever focus.
 
 **Any change of view starts with a fresh selection**, with no exceptions — a folder
 navigation, Back/Forward, Up, a typed path, a project load, and **entering or leaving a

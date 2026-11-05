@@ -100,6 +100,19 @@ describe('NavigationStore selection', () => {
         expect(nav.selectionAnchorId()).toBeNull();
     });
 
+    it('clears the focused row along with the selection', () => {
+        nav.setSelection([first.id, second.id], first.id);
+        nav.focus(second.id);
+
+        nav.clearSelection();
+
+        // Clicking the empty space or pressing Escape means nothing is chosen. A row
+        // left focused keeps a highlight of its own, so it has to go too.
+        expect(nav.selectedIds().size).toBe(0);
+        expect(nav.selectionAnchorId()).toBeNull();
+        expect(nav.focusedId()).toBeNull();
+    });
+
     it('drops pruned ids from the selection and the anchor', () => {
         nav.setSelection([first.id, second.id], second.id);
 

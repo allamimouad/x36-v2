@@ -95,14 +95,16 @@
     opacity: 0.5;
   }
 
-  .p-datatable-tbody > tr.pd-row-focused,
   .p-datatable-tbody > tr.pd-row-selected {
     background: var(--pd-selection-bg);
   }
 
-  // A multi-selection reads as one block, so the focused row inside it needs an edge
-  // of its own to stay findable.
-  .p-datatable-tbody > tr.pd-row-selected.pd-row-focused {
+  // Focus must not borrow the selection fill. Every row click focuses, so sharing one
+  // colour made a row that had just been Ctrl-click-deselected still read as selected,
+  // and left the last-clicked row looking selected after the selection was cleared.
+  // The inset edge marks focus in both states, including inside a multi-selection,
+  // where it is also what keeps the focused row findable within one block of colour.
+  .p-datatable-tbody > tr.pd-row-focused {
     box-shadow: inset 2px 0 0 var(--pd-accent);
   }
 

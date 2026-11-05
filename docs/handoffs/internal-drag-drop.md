@@ -518,9 +518,47 @@ for until someone hits it.
 cannot judge: Ctrl and Shift ranges across sorted columns, dragging a search selection
 into a tree folder, Ctrl-drag to copy, and the two mixed-list outcomes above.
 
+### Deselecting did not look like deselecting (2026-11-05)
+
+Reported from manual use: Ctrl-clicking a selected row left it looking selected, and
+clicking outside the rows did not appear to clear anything — while a drag correctly
+acted on the right items. The diagnosis in the report was right: the state was correct
+and only the paint was wrong.
+
+One cause behind both symptoms. `file-table.scss` gave `pd-row-focused` and
+`pd-row-selected` the **same** `--pd-selection-bg`, and `onRowClick` focuses on every
+click, so the row just clicked was always painted as selected whether or not it was:
+
+- Ctrl-click to deselect removed it from `selectedIds` but focused it, so the fill
+  stayed;
+- clicking the empty space called `clearSelection`, which cleared `selectedIds` and the
+  anchor but **not** `focusedId`, so the last-clicked row kept the fill.
+
+A third instance nobody had reported: recycle-bin rows only ever focus — `onBinRowClick`
+emits no selection — so a bin row looked selected even though a bin cannot be selected.
+
+Fixed in two places. Selection keeps the background fill; focus now gets only the inset
+accent edge that the combined `selected.focused` rule already used, which also keeps the
+focused row findable inside a block of selected ones. And `clearSelection` clears
+`focusedId` too, which additionally removes an asymmetry: right-clicking the empty space
+already cleared focus (`project-documents.ts:572`) while left-clicking it did not.
+
+`focusedId` is read for exactly one thing — that class — so widening what clears it
+carries no other behaviour.
+
+The covering test asserts the **computed background colour**, not the class list: the
+classes were always correct, so a class assertion would have passed throughout the
+defect. It has to set the theme custom properties on the host first, because they come
+from an ancestor in the running app and otherwise every colour resolves to nothing and
+the comparison passes for the wrong reason.
+
+The search table never had this: it has no focused class, and its hover colour
+(`#f0f1f2`) is plainly distinct from the selection fill (`#e8f4ef`).
+
 ## Verification (2026-11-05)
 
-- Full headless suite **247 passed** (237 plus 10 for search multi-select). Reverting
+- Full headless suite **249 passed** (237 plus 10 for search multi-select, plus 2 for
+  the focus/selection paint fix; reverting either of those failed exactly its own test). Reverting
   each of the four fourth-round fixes failed exactly one test: the `clear` line, the
   drag-copy call site, the container's `loading` binding, and the copy guard on the
   navigation decision. Reverting `openSearch`'s clear failed its test; `exitSearch`'s is
