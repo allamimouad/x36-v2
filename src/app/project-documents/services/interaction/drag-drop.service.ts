@@ -115,9 +115,9 @@ export class DragDropService {
             Array.from(event.dataTransfer?.types ?? []).includes(INTERNAL_DRAG_TYPE);
     }
 
-    public startDrag({ event, node, selectedIds }: ItemDragRequest): void {
+    public startDrag({ event, node, selectedIds, selectedNodes }: ItemDragRequest): void {
         event.stopPropagation();
-        const sources = this.dragSet(node, selectedIds);
+        const sources = this.dragSet(node, selectedIds, selectedNodes);
         const projectId = this.fileSystem.projectId();
         const policy = this.policy();
         // Every item must be draggable, or none is: letting a mixed selection through
@@ -349,7 +349,8 @@ export class DragDropService {
      */
     private dragSet(
         node: FileSystemNode,
-        selectedIds: ReadonlySet<string> | undefined
+        selectedIds: ReadonlySet<string> | undefined,
+        selectedNodes: readonly FileSystemNode[] | undefined
     ): FileSystemNode[] {
         const entities = this.fileSystem.entityMap();
         if (selectedIds === undefined || !selectedIds.has(node.id) || selectedIds.size <= 1) {
@@ -358,10 +359,15 @@ export class DragDropService {
             return [entities[node.id] ?? node];
         }
         const ids = [...selectedIds];
+        // The surface's own rows stand in for ids the cache does not hold, on the same
+        // terms as the grabbed node above. Uncached is not the same as removed: every
+        // search result is uncached, and refusing those would refuse the whole gesture.
+        const handed = new Map((selectedNodes ?? []).map((candidate) => [candidate.id, candidate]));
         const nodes = ids
-            .map((id) => entities[id])
+            .map((id) => entities[id] ?? handed.get(id))
             .filter((candidate): candidate is FileSystemNode => candidate !== undefined);
-        // A selection naming something the cache no longer holds is not safe to act on.
+        // Naming something neither source knows means the selection is stale, and a
+        // stale selection is not safe to act on.
         if (nodes.length !== ids.length) { return []; }
 
         return topMostNodes(nodes, entities);

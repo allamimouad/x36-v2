@@ -108,6 +108,16 @@
   opacity: 0.65;
 }
 
+// Matches the right-pane table: the same selection background, and cut rows at half
+// opacity until the paste lands.
+.pd-search-row-selected {
+  background: var(--pd-selection-bg);
+}
+
+.pd-search-row-cut {
+  opacity: 0.5;
+}
+
 .pd-search-name {
   display: flex;
   align-items: center;

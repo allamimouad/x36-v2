@@ -214,10 +214,10 @@ The authorized single-item scenarios are implemented below; multi-selection rema
   frontend neither predicts the final name nor prompts for one
 - On successful move after cut: clear clipboard
 
-### 3.7 Multi-select (right pane only)
+### 3.7 Multi-select (both tables)
 
-Implemented 2026-10-28 for internal drag-and-drop. The tree is single-item throughout;
-the recycle bin does not take part.
+Implemented 2026-10-28 for the right-pane table, extended to the search table
+2026-11-05. The tree is single-item throughout; the recycle bin does not take part.
 
 - **Click** replaces the selection and becomes the anchor.
 - **Ctrl/Cmd+click** toggles one row and moves the anchor to it.
@@ -233,10 +233,28 @@ search**. It is enforced in one place, `_clearedSelection()`, which returns a ne
 each call so two patches cannot share one instance. Reloading the *current* folder is
 not a change of view and deliberately keeps the selection.
 
-The search table is single-item: it has no click-selection handler, and `isMultiSelected`
-is table-only, so every search action acts on the row that was used. Extending selection
-there would first need `selectedNodes` to stop resolving ids through the cache — a search
-hit is never cached, so a search selection resolves to nothing today.
+**The search table has the same selection**, with two deliberate differences:
+Enter/Space opens a result rather than selecting it, and Paste is not offered there
+because that surface has no target folder.
+
+Both tables resolve a click through one shared `resolveSelection` (`utils/selection.
+utils.ts`), each passing its own table's rendered ids so a Shift-range follows the
+current sort.
+
+Extending selection to search took widening how a selection is turned back into nodes.
+A search hit is **never** cached — results come from the search endpoint and nothing
+inserts them into `FileSystemStore`, deliberately, because `currentFolderChildren`
+derives a folder's contents from whatever entity claims it as a parent and would then
+present a partial listing as a complete one. Both places that resolved a selection
+through the cache therefore fall back to the surface's own rows: `selectedNodes` reads
+the search results, and a drag carries `selectedNodes` alongside `selectedIds`. A
+selection naming something **neither** source knows is still refused outright — stale is
+not the same as uncached.
+
+A search selection may span document lists, since one result set can. The consequence is
+asymmetric and accepted: the context-menu **Delete works** across lists, each item going
+to its own list's bin, while **dragging a mixed set onto a bin is refused as a whole**,
+because the bin policy requires a matching list and drag validation is set-wide.
 
 Selection is **not** wired through PrimeNG's `selectionMode="multiple"`. The rows own
 native drag listeners whose propagation is deliberately stopped before PrimeNG's own

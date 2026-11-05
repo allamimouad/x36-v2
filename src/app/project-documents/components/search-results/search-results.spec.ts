@@ -134,6 +134,86 @@ describe('SearchResults', () => {
         expect(host().textContent).not.toContain('Searching…');
     });
 
+    describe('selection', () => {
+        // Built here, not in the describe body: that runs during collection, before the
+        // `result` declared at the foot of this file has been assigned.
+        let second: FileSystemNode;
+        let third: FileSystemNode;
+
+        beforeEach(() => {
+            second = { ...result, id: 'file-2', name: 'summary.docx' };
+            third = { ...result, id: 'file-3', name: 'tender.docx' };
+            fixture.componentRef.setInput('results', [result, second, third]);
+            fixture.detectChanges();
+        });
+
+        it('replaces on a plain click and extends across the rendered rows on Shift', () => {
+            const requested = jasmine.createSpy('requested');
+            fixture.componentInstance.selectionRequested.subscribe(requested);
+
+            row(result.id).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+            expect(requested).toHaveBeenCalledWith({ ids: [result.id], anchorId: result.id });
+
+            fixture.componentRef.setInput('selectedIds', new Set([result.id]));
+            fixture.componentRef.setInput('selectionAnchorId', result.id);
+            fixture.detectChanges();
+            row(third.id).dispatchEvent(
+                new MouseEvent('click', { bubbles: true, shiftKey: true })
+            );
+
+            // The middle row comes along, which only the table's own rendered order
+            // can say — the ids alone do not imply it.
+            expect(requested).toHaveBeenCalledWith({
+                ids: [result.id, second.id, third.id],
+                anchorId: result.id
+            });
+        });
+
+        it('marks the selected rows and clears on a click outside them', () => {
+            const cleared = jasmine.createSpy('cleared');
+            fixture.componentInstance.emptySpaceClicked.subscribe(cleared);
+            fixture.componentRef.setInput('selectedIds', new Set([second.id]));
+            fixture.detectChanges();
+
+            expect(row(second.id).classList).toContain('pd-search-row-selected');
+            expect(row(result.id).classList).not.toContain('pd-search-row-selected');
+
+            host().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+            expect(cleared).toHaveBeenCalled();
+        });
+
+        it('drags the whole selection, carrying rows the cache cannot hold', () => {
+            const started = jasmine.createSpy('started');
+            fixture.componentInstance.dragStarted.subscribe(started);
+            fixture.componentRef.setInput('draggableIds', new Set([result.id, second.id]));
+            fixture.componentRef.setInput('selectedIds', new Set([result.id, second.id]));
+            fixture.detectChanges();
+
+            row(result.id).dispatchEvent(new DragEvent('dragstart', { bubbles: true }));
+
+            // The nodes travel with the ids: a search hit is never cached, so the drag
+            // could not resolve this selection from the cache alone.
+            const request = started.calls.mostRecent().args[0] as {
+                selectedIds?: ReadonlySet<string>;
+                selectedNodes?: readonly FileSystemNode[];
+            };
+            expect([...request.selectedIds ?? []].sort()).toEqual([result.id, second.id].sort());
+            expect((request.selectedNodes ?? []).map(({ id }) => id).sort())
+                .toEqual([result.id, second.id].sort());
+        });
+
+        function row(id: string): HTMLElement {
+            const element = host().querySelector<HTMLElement>(
+                `[data-testid="pd-search-result-${id}"]`
+            );
+            if (!element) { throw new Error(`Missing search row: ${id}`); }
+
+            return element;
+        }
+    });
+
     function host(): HTMLElement {
         const element: unknown = fixture.nativeElement;
         if (!(element instanceof HTMLElement)) { throw new Error('Expected component host'); }

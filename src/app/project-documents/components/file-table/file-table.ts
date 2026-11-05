@@ -31,6 +31,7 @@ import {
     hasInternalDragType, type ItemDragRequest, type ItemDropRequest
 } from '../../models/drag-state.model';
 import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
+import { resolveSelection } from '../../utils/selection.utils';
 import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 
 interface RowVm {
@@ -211,7 +212,11 @@ export class FileTable {
 
     protected onRowClick(event: MouseEvent, row: RowVm): void {
         this.itemFocused.emit(row.id);
-        this.selectionRequested.emit(this.resolveSelection(event, row));
+        this.selectionRequested.emit(resolveSelection(event, row.id, {
+            selectedIds: this.selectedIds(),
+            anchorId: this.selectionAnchorId(),
+            renderedIds: this.renderedIds()
+        }));
     }
 
     protected onRowKeydown(event: KeyboardEvent, row: RowVm): void {
@@ -392,38 +397,11 @@ export class FileTable {
         return pathAfterRoot ? `${listKey}/${pathAfterRoot}` : listKey;
     }
 
-    private resolveSelection(event: MouseEvent, row: RowVm): SelectionRequest {
-        if (event.shiftKey) {
-            const range = this.renderedRangeTo(row.id);
-            // The anchor stays put, so a further Shift-click re-extends from the same
-            // row rather than from the last one touched.
-            if (range !== null) { return { ids: range, anchorId: this.selectionAnchorId() }; }
-        }
-        if (event.ctrlKey || event.metaKey) {
-            const next = new Set(this.selectedIds());
-            if (!next.delete(row.id)) { next.add(row.id); }
-
-            return { ids: [...next], anchorId: row.id };
-        }
-
-        return { ids: [row.id], anchorId: row.id };
-    }
-
-    /**
-     * Ids from the anchor to `id` in the order the rows are currently rendered, which
-     * column sorting changes. Null when there is no anchor yet or either row is not
-     * rendered, leaving the caller to treat the click as an ordinary one.
-     */
-    private renderedRangeTo(id: string): string[] | null {
-        const anchorId = this.selectionAnchorId();
+    /** Row ids in the order the table currently renders them, which sorting changes. */
+    private renderedIds(): string[] {
         const rendered = this.table()?.value as RowVm[] | undefined;
-        if (anchorId === null || rendered === undefined) { return null; }
-        const from = rendered.findIndex((row) => row.id === anchorId);
-        const to = rendered.findIndex((row) => row.id === id);
-        if (from === -1 || to === -1) { return null; }
-        const [start, end] = from <= to ? [from, to] : [to, from];
 
-        return rendered.slice(start, end + 1).map((row) => row.id);
+        return (rendered ?? []).map((row) => row.id);
     }
 
     private isDropInFolderDisabled(row: RowVm): boolean {

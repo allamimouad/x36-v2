@@ -432,6 +432,11 @@ export class ProjectDocuments {
         this.navigation.setSelection(request.ids, request.anchorId);
     }
 
+    protected onSearchSelectionRequested(request: SelectionRequest): void {
+        this.focusedSurface.set('search');
+        this.navigation.setSelection(request.ids, request.anchorId);
+    }
+
     protected onItemFocused(id: string): void {
         this.inlineRenameError.set(null);
         this.focusedSurface.set('table');
@@ -526,6 +531,9 @@ export class ProjectDocuments {
         const locked = this.isWriting(result.id) ||
             result.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly ||
             this.navigation.isListReadonly();
+        // Renaming many at once means nothing, so it is the one action a multi-selection
+        // disables — the same rule the right-pane table applies.
+        const multi = this.isMultiSelected(result, 'search');
         this.showContextMenu(request.event, [
             this.menuItem('Open Folder', 'folder_open', 'pd-menu-open-folder', () => {
                 void this.onSearchResultActivated(result);
@@ -533,7 +541,7 @@ export class ProjectDocuments {
             { separator: true },
             this.menuItem('Rename Folder', 'edit', 'pd-menu-rename-folder', () => {
                 this.startInlineRename(result, 'search');
-            }, locked),
+            }, locked || multi),
             this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
                 this.copyToClipboard(result, 'search');
             }, locked),
@@ -1120,11 +1128,28 @@ export class ProjectDocuments {
         }
     }
 
-    /** The selected rows as nodes, in the cache's order. */
+    /**
+     * The selected rows as nodes, cache first and the search results after.
+     *
+     * A search hit is never cached — results come straight from the search endpoint and
+     * nothing inserts them, deliberately, because the table derives a folder's children
+     * from whatever entity claims it as a parent and would then show a partial listing
+     * as a complete one. So the cache cannot resolve a search selection, and the
+     * surface's own rows stand in for it, as they do for a dragged search result.
+     */
     private selectedNodes(): FileSystemNode[] {
         const selected = this.navigation.selectedIds();
+        const resolved = new Map(this.fileSystem.entities()
+            .filter((node) => selected.has(node.id))
+            .map((node) => [node.id, node]));
+        if (resolved.size === selected.size) { return [...resolved.values()]; }
+        for (const result of this.search.results()) {
+            if (selected.has(result.id) && !resolved.has(result.id)) {
+                resolved.set(result.id, result);
+            }
+        }
 
-        return this.fileSystem.entities().filter((node) => selected.has(node.id));
+        return [...resolved.values()];
     }
 
     /**
@@ -1576,10 +1601,11 @@ export class ProjectDocuments {
      * selection; Rename stays single-item, since renaming many at once means nothing.
      * The tree has no selection.
      */
+    /** The tree is single-item throughout; both tables have a selection. */
     private isMultiSelected(node: FileSystemNode, source: NodeSurface): boolean {
         const selected = this.navigation.selectedIds();
 
-        return source === 'table' && selected.size > 1 && selected.has(node.id);
+        return source !== 'tree' && selected.size > 1 && selected.has(node.id);
     }
 
     private menuItem(

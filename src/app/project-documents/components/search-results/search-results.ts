@@ -4,6 +4,7 @@ import {
     Component,
     effect,
     ElementRef,
+    HostListener,
     input,
     output,
     signal,
@@ -11,15 +12,17 @@ import {
 } from '@angular/core';
 import { InputText } from 'primeng/inputtext';
 import { ProgressSpinner } from 'primeng/progressspinner';
-import { TableModule } from 'primeng/table';
+import { Table, TableModule } from 'primeng/table';
 import type {
     ItemRenameRequest,
     SearchResultContextMenuRequest
 } from '../../models/context-menu-request.model';
 import type { ItemDragRequest } from '../../models/drag-state.model';
 import type { FileSystemNode } from '../../models/file-system-node.model';
+import type { SelectionRequest } from '../../models/selection-request.model';
 import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
 import { parentOfRelativePath, relativePathFromRoot } from '../../utils/path.utils';
+import { resolveSelection } from '../../utils/selection.utils';
 
 @Component({
     selector: 'pr-search-results',
@@ -43,7 +46,12 @@ export class SearchResults {
     public readonly deleteConfirmationId = input<string | null>(null);
     public readonly draggableIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly internalSourceIds = input<ReadonlySet<string>>(new Set<string>());
+    public readonly selectedIds = input<ReadonlySet<string>>(new Set<string>());
+    public readonly selectionAnchorId = input<string | null>(null);
+    public readonly cutIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly resultActivated = output<FileSystemNode>();
+    public readonly selectionRequested = output<SelectionRequest>();
+    public readonly emptySpaceClicked = output();
     public readonly dragStarted = output<ItemDragRequest>();
     public readonly dragEnded = output();
     public readonly contextMenuRequested = output<SearchResultContextMenuRequest>();
@@ -58,6 +66,7 @@ export class SearchResults {
     private readonly inlineRenameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput');
     private readonly deleteCancelButton =
         viewChild<ElementRef<HTMLButtonElement>>('deleteCancelButton');
+    private readonly table = viewChild(Table);
 
     constructor() {
         effect(() => {
@@ -80,6 +89,31 @@ export class SearchResults {
         });
     }
 
+    /**
+     * Anything outside a row counts as empty space and clears the selection. The
+     * right-pane table has a dedicated element to test for; this surface is only the
+     * table, so the absence of a row is the test. Bound on the host, as there too, so
+     * the wrapper does not need keyboard handlers of its own — Escape is the keyboard
+     * path and the container owns it.
+     */
+    @HostListener('click', ['$event'])
+    protected onHostClick(event: MouseEvent): void {
+        if (event.target instanceof Element && !event.target.closest('tr')) {
+            this.emptySpaceClicked.emit();
+        }
+    }
+
+    protected onRowClick(event: MouseEvent, result: FileSystemNode): void {
+        if (event.target instanceof HTMLElement && event.target.closest('input, button')) {
+            return;
+        }
+        this.selectionRequested.emit(resolveSelection(event, result.id, {
+            selectedIds: this.selectedIds(),
+            anchorId: this.selectionAnchorId(),
+            renderedIds: this.renderedIds()
+        }));
+    }
+
     protected onDragStart(event: DragEvent, result: FileSystemNode): void {
         if (!this.draggableIds().has(result.id) || this.renamingId() === result.id ||
             this.deleteConfirmationId() === result.id) {
@@ -87,9 +121,15 @@ export class SearchResults {
 
             return;
         }
-        // No `selectedIds`: selection is right-pane-table only, so a search drag is
-        // always the single row that was grabbed.
-        this.dragStarted.emit({ event, node: result });
+        // The rows travel with the ids: a search result is never cached, so the drag
+        // could not resolve this selection from the cache alone.
+        const selectedIds = this.selectedIds();
+        this.dragStarted.emit({
+            event,
+            node: result,
+            selectedIds,
+            selectedNodes: this.results().filter(({ id }) => selectedIds.has(id))
+        });
     }
 
     protected activate(event: Event, result: FileSystemNode): void {
@@ -173,6 +213,13 @@ export class SearchResults {
         const trimmedBase = editedName.trim();
         const completeName = ext && trimmedBase ? `${trimmedBase}.${ext}` : editedName;
         this.renameSubmitted.emit({ node: result, name: completeName });
+    }
+
+    /** Row ids in the order the table currently renders them, which sorting changes. */
+    private renderedIds(): string[] {
+        const rendered = this.table()?.value as FileSystemNode[] | undefined;
+
+        return (rendered ?? []).map(({ id }) => id);
     }
 }
 

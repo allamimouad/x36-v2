@@ -349,6 +349,61 @@ describe('DragDropService native session and mutations', () => {
             node.name === uncached.name && node.parentId === destination.id)).toBeTrue();
     });
 
+    it('drags a whole selection of nodes the cache never held', async () => {
+        // Two children read straight from the API, so the store never sees either —
+        // the position every search result is in.
+        const listing = await firstValueFrom(api.listDocuments('project', source));
+        const uncached = [...listing.folders, ...listing.files]
+            .filter((child) => child.accessLevel === undefined)
+            .slice(0, 2);
+        if (uncached.length < 2) { throw new Error('Expected two unrestricted children'); }
+        for (const node of uncached) {
+            expect(store.entityMap()[node.id]).toBeUndefined();
+        }
+        const move = spyOn(api, 'move').and.callThrough();
+        const selectedIds = new Set(uncached.map(({ id }) => id));
+
+        // The ids alone cannot resolve this selection, so the rows travel with them.
+        // Without that the whole gesture is refused rather than one item dropped.
+        service.startDrag({
+            event: event('dragstart'), node: uncached[0], selectedIds, selectedNodes: uncached
+        });
+
+        expect([...service.state()?.sourceIds ?? []].sort()).toEqual([...selectedIds].sort());
+
+        await service.drop(event('drop'), destination.id);
+
+        expect(move).toHaveBeenCalledTimes(2);
+        for (const node of uncached) {
+            expect(store.entities().some((entity) =>
+                entity.name === node.name && entity.parentId === destination.id)).toBeTrue();
+        }
+    });
+
+    it('refuses a selection naming something neither the cache nor the surface knows',
+        async () => {
+            const listing = await firstValueFrom(api.listDocuments('project', source));
+            const uncached = [...listing.folders, ...listing.files]
+                .find((child) => child.accessLevel === undefined);
+            if (!uncached) { throw new Error('Expected an unrestricted child'); }
+            const move = spyOn(api, 'move').and.callThrough();
+
+            // A stale id is still a refusal: the fallback widens what counts as
+            // resolvable, it does not drop the guard.
+            service.startDrag({
+                event: event('dragstart'),
+                node: uncached,
+                selectedIds: new Set([uncached.id, 'gone']),
+                selectedNodes: [uncached]
+            });
+
+            expect(service.state()).toBeNull();
+
+            await service.drop(event('drop'), destination.id);
+
+            expect(move).not.toHaveBeenCalled();
+        });
+
     it('builds the drag policy once for a whole list of candidates', () => {
         // `entityMap` is the policy's most expensive input: it is scanned in full to
         // find the recycle bins. Reading it once per candidate made marking search

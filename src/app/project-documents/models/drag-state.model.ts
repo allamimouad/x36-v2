@@ -22,6 +22,12 @@ export interface ItemDragRequest {
      * surfaces without selection, such as the tree.
      */
     selectedIds?: ReadonlySet<string>;
+    /**
+     * The selected rows themselves, for surfaces whose rows are not in the cache —
+     * every search result is one. Without them a multi-item drag from such a surface
+     * cannot resolve its own selection and is refused outright.
+     */
+    selectedNodes?: readonly FileSystemNode[];
 }
 
 export interface DragContext {

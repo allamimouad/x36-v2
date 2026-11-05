@@ -472,13 +472,62 @@ carries no test, because none can be written without reaching past the store's A
 new test covers `openSearch`, which is reachable, and pins `exitSearch`'s reachable
 branch alongside it.
 
+### Multi-select in the search table (2026-11-05)
+
+Prompted by asking why it did not work. It had been scoped out when selection was built
+— the right-pane table had no bulk actions then either — and it was not a cheap
+extension afterwards, for one reason worth keeping: **two places resolved a selection
+through the cache, and a search hit is never cached.** `selectedNodes` filtered
+`fileSystem.entities()`, so a search selection resolved to zero nodes and every bulk
+action silently did nothing; `dragSet` mapped the ids through `entityMap()` and refused
+the whole gesture when one was missing.
+
+The ids themselves were never the problem: `NavigationStore` holds one surface-agnostic
+`Set<string>`.
+
+**Why the results are not simply cached.** Inserting search hits into `FileSystemStore`
+would make everything that resolves ids through the cache work for free, now and later.
+It would also corrupt the right-pane table: `currentFolderChildren`
+(`navigation.store.ts:165`) is a computed that takes every entity whose `parentId`
+matches the viewed folder, with no check that the folder's listing was ever fetched. A
+search that found `/A/B/report.pdf` would make that one file appear on opening `/A/B`,
+showing 2 of 50 files as the whole folder. So the cache keeps meaning "things we have
+listed", and resolution falls back to the surface instead — `selectedNodes` reads
+`search.results()`, and `ItemDragRequest` carries `selectedNodes` beside `selectedIds`.
+A selection naming something neither source knows is still refused: stale is not the
+same as uncached, and that guard is what the rejection was written for.
+
+`resolveSelection` and `renderedRangeTo` moved out of `file-table.ts` into
+`utils/selection.utils.ts`, so both tables share one implementation and each passes its
+own rendered ids — which is what keeps a Shift-range in the current sort order.
+`isMultiSelected` became `source !== 'tree'`, and because `requestDelete`,
+`copyToClipboard` and `cutToClipboard` already branch on it, the existing search context
+menu started acting on the whole selection with no further change; only Rename needed
+the multi guard the table already had.
+
+Two deliberate differences from the table: Enter/Space still **opens** a search result
+rather than selecting it, and Paste is not offered there, as that surface has no target
+folder.
+
+A search selection may span document lists, since one result set can. Accepted
+asymmetry: the menu Delete works across lists, each item routed to its own bin, while a
+mixed set dragged onto a bin is refused as a whole. Not worth relaxing the bin policy
+for until someone hits it.
+
+**Still unverified in a real browser.** Click-and-drag is the one part the headless suite
+cannot judge: Ctrl and Shift ranges across sorted columns, dragging a search selection
+into a tree folder, Ctrl-drag to copy, and the two mixed-list outcomes above.
+
 ## Verification (2026-11-05)
 
-- Full headless suite **237 passed** (231 plus 5 for the fourth round, plus 1 for the
-  search-boundary selection clear). Reverting each of the four fourth-round fixes failed
-  exactly one test: the `clear` line, the drag-copy call site, the container's `loading`
-  binding, and the copy guard on the navigation decision. Reverting `openSearch`'s clear
-  failed its test; `exitSearch`'s is unreachable and has no control.
+- Full headless suite **247 passed** (237 plus 10 for search multi-select). Reverting
+  each of the four fourth-round fixes failed exactly one test: the `clear` line, the
+  drag-copy call site, the container's `loading` binding, and the copy guard on the
+  navigation decision. Reverting `openSearch`'s clear failed its test; `exitSearch`'s is
+  unreachable and has no control. For multi-select, reverting the `dragSet` fallback, the
+  `selectedNodes` fallback and the `isMultiSelected` widening each failed exactly one
+  test; the `resolveSelection` extraction is behaviour-neutral and is covered by the
+  existing table tests passing untouched.
 - Production build, both TypeScript projects and repository lint pass (the two
   pre-existing `path-bar` template warnings only).
 

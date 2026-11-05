@@ -106,9 +106,33 @@ does. `exitSearch`'s branch turns out to be unreachable (index 0 is always a fol
 entry), so it is clear-for-consistency with no test; `openSearch` is reachable and has
 one.
 
-**Verification (2026-11-05):** full headless suite **237/237**, production build, both
+**Search multi-select is now implemented** (2026-11-05), to parity with the right-pane
+table: plain/Ctrl/Shift click, selected and cut styling, click-outside and Escape to
+clear, dragging the whole selection, and bulk delete/copy/cut. Two deliberate
+differences — Enter/Space still opens a result, and Paste is not offered on a surface
+with no target folder.
+
+The blocker was never the selection itself: `NavigationStore` holds one surface-agnostic
+id set. It was that **two places turned ids back into nodes through the cache, and a
+search hit is never cached** — `selectedNodes` resolved to zero nodes, so every bulk
+action silently did nothing, and `dragSet` refused the whole gesture. Caching the results
+would fix both for free and was rejected: `currentFolderChildren` takes every entity
+whose `parentId` matches the viewed folder with no check that the listing was fetched, so
+a search hit would later appear as a row and present a partial folder as a complete one.
+Both paths fall back to the surface's own rows instead, while still refusing a selection
+naming something neither source knows — stale is not the same as uncached.
+`resolveSelection` moved into `utils/selection.utils.ts` so both tables share it, each
+passing its own rendered ids to keep a Shift-range in sort order.
+
+Accepted asymmetry: a search selection may span document lists, where the menu Delete
+works (each item to its own bin) but a mixed set dragged onto a bin is refused whole.
+
+**Verification (2026-11-05):** full headless suite **247/247**, production build, both
 TypeScript projects and repository lint pass. Reverting each of the four fourth-round
-fixes failed exactly one test apiece, as did reverting `openSearch`'s clear. Every fix from the earlier rounds has a regression
+fixes failed exactly one test apiece, as did reverting `openSearch`'s clear and each of
+the three multi-select fallbacks. **Not yet verified in a real browser** — Ctrl/Shift
+ranges across sorted columns and dragging a search selection are the parts the headless
+suite cannot judge. Every fix from the earlier rounds has a regression
 test confirmed to fail without it, except the component-lifetime guard, which is covered
 by inspection because testing it needs a different concurrency harness than that spec
 uses.

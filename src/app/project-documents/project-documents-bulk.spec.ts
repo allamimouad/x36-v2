@@ -296,6 +296,37 @@ describe('ProjectDocuments bulk actions', () => {
         expect(searchCalls).toHaveBeenCalledTimes(2);
     });
 
+    it('deletes a whole selection of search rows the cache never held', async () => {
+        const scope = navigation.currentFolder();
+        if (!scope) { throw new Error('Expected a current folder'); }
+        const hits = [
+            { ...otherFolder([]), id: 'hit-a', name: 'Hit A' },
+            { ...otherFolder([]), id: 'hit-b', name: 'Hit B' }
+        ];
+        const searchCalls = spyOn(api, 'searchDocuments').and.returnValue(of(hits));
+        const remove = spyOn(api, 'delete').and.returnValue(of(undefined));
+        const search = fixture.debugElement.injector.get(DocumentSearchService);
+        search.search('project', scope, 'Hit');
+        await flushTimers();
+        for (const hit of hits) {
+            expect(store.entityMap()[hit.id]).toBeUndefined();
+        }
+
+        // Select both rows, then delete through one of them. Resolving these ids
+        // through the cache yields nothing, so before the surface fallback this
+        // silently deleted nothing at all.
+        navigation.setSelection(hits.map(({ id }) => id), hits[0].id);
+        searchCalls.and.returnValue(of([]));
+        const show = spyOn(TestBed.inject(PopupService), 'showPopup');
+        (fixture.componentInstance as unknown as {
+            requestDelete: (target: FileSystemNode, surface: 'table' | 'search') => void;
+        }).requestDelete(hits[0], 'search');
+        await acceptPopup(show);
+
+        expect(remove).toHaveBeenCalledTimes(2);
+        expect(search.results()).toEqual([]);
+    });
+
     it('keeps the search rows rendered while the reconciling refresh is in flight',
         async () => {
             const scope = navigation.currentFolder();
