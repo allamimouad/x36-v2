@@ -323,6 +323,19 @@ the local demo harness, as measured). Both were confirmed to reject what they ar
 to reject — `TS2322` and `TS2739`, the same codes the other repo reported. `docs/TODO.md`
 item 12 is closed; what survives is the rule, not a backlog entry.
 
+**PopupService's own two tokens, and exact parity reached** (2026-11-06). Providing the
+real `PopupService` moved the failure one hop down its dependency path: it injects
+`CURRENT_APP_INJECTION_TOKEN` and `IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN`,
+supplied by the application and therefore owed by a test module. Fourth instance of the
+stand-in pattern, and the last one: both tokens now exist in
+`src/local/ibportal-web-ui-commons/app-context.tokens.ts`, the stand-in injects them, and
+this repo reproduced the other repo's failure exactly — same error, same injection path,
+**46 failures**, the same number reported there. All four specs provide them; the suite
+is green. The recommended alternative, `{ provide: PopupService, useValue: {} }`, was
+measured instead of argued: it leaves **12** failures, because jasmine cannot spy a
+method that does not exist and several tests click the real rendered confirmation
+dialog.
+
 **Verification (2026-11-06):** full headless suite **277/277** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round

@@ -5,7 +5,12 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { DialogService } from 'primeng/dynamicdialog';
 import { Subject } from 'rxjs';
-import { PopupService } from 'ibportal-web-ui-commons';
+import {
+    CURRENT_APP_INJECTION_TOKEN,
+    IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN,
+    IBPortalTargetApplication,
+    PopupService
+} from 'ibportal-web-ui-commons';
 import type { FileSystemNode, FolderNode } from './models/file-system-node.model';
 import { isFolder } from './models/file-system-node.model';
 import { ProjectDocuments } from './project-documents';
@@ -27,6 +32,10 @@ describe('ProjectDocuments internal drag wiring', () => {
     beforeEach(async () => {
         await TestBed.configureTestingModule({ imports: [ProjectDocuments], providers: [
             provideRouter([]), provideNoopAnimations(), DialogService, PopupService,
+            { provide: CURRENT_APP_INJECTION_TOKEN,
+                useValue: IBPortalTargetApplication.PROJECTS },
+            { provide: IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN,
+                useValue: 'support@example.invalid' },
             ProjectOverviewService,
             provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting(),
             { provide: MOCK_CONFIG, useValue: {

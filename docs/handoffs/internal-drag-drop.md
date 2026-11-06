@@ -863,7 +863,7 @@ plainly:
 
 ```
 Expected one matching request for criteria "Match URL: /projects/1/documents/copy", found none.
-Requests received are: POST http://localhost:8085/ibportal-project/projects/1/documents/copy
+Requests received are: POST http://<host>/<app-base>/projects/1/documents/copy
 ```
 
 Same path, prefixed origin. The strictness objection still stands on its own terms —
@@ -873,8 +873,8 @@ belong to the HTTP layer carrying it. So the matching now goes through `matchesP
 which accepts an exact path or a path at the end of a longer URL, and the comment says
 why.
 
-Verified by two control runs rather than asserted: prefixing the copy URL with
-`http://localhost:8085/ibportal-project` keeps the suite at **277 SUCCESS**, and
+Verified by two control runs rather than asserted: prefixing the copy URL with an
+absolute host and application base keeps the suite at **277 SUCCESS**, and
 changing the path itself to `/documents/copy-wrong` still fails **3 tests**. Tolerating
 the prefix cost no strictness on the part that matters.
 
@@ -981,6 +981,54 @@ and restoring it returns the suite to green. All four specs now list `PopupServi
 This is the third instance of one pattern and it is now recorded as `docs/TODO.md`
 item 12: **a stand-in must be at least as strict as the thing it stands for.** Two
 measured, still-loose stubs are listed there.
+
+### PopupService needs two application tokens (2026-11-06)
+
+Providing the real `PopupService` moved the failure one hop down its own dependency
+path, reported from the other repo as the single cause of all **46**:
+
+```
+NG0201: No provider found for `InjectionToken CurrentAppInjectionToken`.
+Path: _PopupService -> CurrentAppInjectionToken (Source: Standalone[ProjectDocuments2])
+```
+
+Its constructor injects `CURRENT_APP_INJECTION_TOKEN` and
+`IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN`, which the application supplies in
+`app.config.ts` and a test module therefore has to supply too. **Fourth instance of the
+same pattern**: the stand-in injected neither, so nothing here could see the
+requirement.
+
+Both tokens now exist in `src/local/ibportal-web-ui-commons/app-context.tokens.ts` and
+the stand-in injects them, which brought this repo to exact parity — same error, same
+path, and **46 failures**, the same number reported. All four specs now provide them,
+and the suite is green again.
+
+That count also closes an open question: the earlier tally of 41 was a miscount from
+grepping `it(`, not a sign that the spec files had diverged. They have not. The
+breakdown reported there — 17 + 16 + 12 + 1 — is this repo's too.
+
+**Not taken: `{ provide: PopupService, useValue: {} }`.** It was recommended over
+providing the tokens, on the reasoning that the specs only ever
+`spyOn(TestBed.inject(PopupService), …)` so the real class is never needed. That is not
+true of these specs, and the difference is measurable rather than arguable: with
+`useValue: {}` the suite goes to **12 failures**, in two groups.
+
+- `Error: <spyOn> : showPopup() method does not exist` — jasmine requires the method to
+  be present on the object before it can replace it, so an empty object cannot be spied
+  on at all.
+- `Expected null not to be null` at `project-documents.spec.ts:301` — several tests
+  click the **real** rendered dialog:
+  ```ts
+  const confirm = document.querySelector('[data-testid="confirmation-popup-confirm"]');
+  expect(confirm).not.toBeNull();
+  confirm?.click();
+  ```
+  That button exists only because the real service opens a real dialog through
+  `DialogService`. Stubbing it deletes the coverage of *a destructive action requires
+  confirmation, and cancelling keeps the record* — which is the point of those tests.
+
+So the heavier option is the correct one here. The two `useValue` lines per spec are the
+cost of keeping the confirmation flow genuinely under test.
 
 ### What the destination still has to answer on the copy tests
 
