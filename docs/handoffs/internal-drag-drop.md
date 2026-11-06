@@ -913,6 +913,37 @@ demo route from `app.routes.ts`, not part of the migrated feature, so it is left
 a cast there would be dead weight. If that harness is ever migrated it needs the same
 treatment.
 
+### Container specs must provide HttpClient (2026-11-06)
+
+Reported from the other repo: every `ProjectDocuments bulk actions` test failing with
+
+```
+NG0201: No provider found for `_HttpClient`.
+Path: DocumentsAPIService2 -> _HttpClient
+```
+
+One cause behind all of them, and nothing to do with the test logic. The four specs that
+build `ProjectDocuments` provided no `HttpClient`. That passes here only because this
+component hardcodes `{ provide: FileSystemApi, useClass: MockFileSystemApi }`, so nothing
+HTTP-backed is ever constructed. In the destination the component graph reaches
+`DocumentsAPIService`, which injects `HttpClient`, and the injector has nowhere to get
+it.
+
+All four now provide `provideHttpClient(withInterceptorsFromDi())` and
+`provideHttpClientTesting()` — inert here, required there.
+
+**Reproduced before fixing, rather than assumed.** Temporarily pointing this component at
+`SharePointFileSystemApi` (which injects `HttpClient`) produced **32 NG0201 errors**, the
+same failure. With the providers added and the component still HTTP-backed: **0**.
+
+**One thing to watch on their side.** That simulation left 46 failures after NG0201
+disappeared, because a real HTTP API with `provideHttpClientTesting()` has no data unless
+the requests are flushed. That is an artefact of forcing this component onto the real
+service — but it is also what they will see if their `ProjectDocuments` wires the real
+API rather than a mock. The injector error is fixed either way; if a second wave of
+"no data" failures follows, the question is what their component provides for
+`FileSystemApi`.
+
 ## Verification (2026-11-05)
 
 - Full headless suite **275 passed** — 258 through the first quality pass, which edited

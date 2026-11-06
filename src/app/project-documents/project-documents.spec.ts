@@ -1,3 +1,5 @@
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { By } from '@angular/platform-browser';
@@ -43,6 +45,8 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
             providers: [provideRouter([]), provideNoopAnimations(), DialogService,
+                provideHttpClient(withInterceptorsFromDi()),
+                provideHttpClientTesting(),
                 ProjectOverviewService,
                 { provide: ActivatedRoute, useValue: { snapshot: {
                     get queryParamMap(): ParamMap { return convertToParamMap(queryParams); }

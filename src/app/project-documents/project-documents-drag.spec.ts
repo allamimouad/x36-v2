@@ -1,3 +1,5 @@
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
@@ -24,6 +26,7 @@ describe('ProjectDocuments internal drag wiring', () => {
     beforeEach(async () => {
         await TestBed.configureTestingModule({ imports: [ProjectDocuments], providers: [
             provideRouter([]), provideNoopAnimations(), DialogService, ProjectOverviewService,
+            provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting(),
             { provide: MOCK_CONFIG, useValue: {
                 minLatencyMs: 0, maxLatencyMs: 0, errorRate: 0, enableErrors: false
             } }

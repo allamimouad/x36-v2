@@ -281,6 +281,13 @@ reproduced locally first by swapping in a real `enum` and a twelve-field DTO, an
 re-checked the same way afterwards. That simulation also surfaced a third site their
 report did not list — the local demo route — left alone as it is not migrated.
 
+**Container specs now provide HttpClient** (2026-11-06). Every bulk-action test failed in
+the other repo with `NG0201: No provider found for _HttpClient`, one cause for all of
+them: the four specs that build `ProjectDocuments` provided none, which only passes here
+because this component hardcodes the mock API and never constructs anything HTTP-backed.
+Reproduced locally by pointing the component at `SharePointFileSystemApi` — 32 NG0201
+errors, then 0 once the providers were added.
+
 **Verification (2026-11-06):** full headless suite **278/278** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round

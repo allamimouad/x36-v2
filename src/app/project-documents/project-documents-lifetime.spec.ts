@@ -1,3 +1,5 @@
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -36,6 +38,8 @@ describe('ProjectDocuments batch lifetime', () => {
             imports: [ProjectDocuments],
             providers: [provideRouter([]), provideNoopAnimations(), DialogService,
                 ProjectOverviewService,
+                provideHttpClient(withInterceptorsFromDi()),
+                provideHttpClientTesting(),
                 { provide: FILE_MANAGER_CONFIG, useValue: {
                     ...DEFAULT_FILE_MANAGER_CONFIG, bulkOpConcurrency: 1
                 } },

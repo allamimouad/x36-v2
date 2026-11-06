@@ -1,3 +1,5 @@
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -29,6 +31,8 @@ describe('ProjectDocuments bulk actions', () => {
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
             providers: [provideRouter([]), provideNoopAnimations(), DialogService,
+                provideHttpClient(withInterceptorsFromDi()),
+                provideHttpClientTesting(),
                 ProjectOverviewService,
                 { provide: MOCK_CONFIG, useValue: {
                     minLatencyMs: 0, maxLatencyMs: 0, errorRate: 0, enableErrors: false
@@ -207,7 +211,6 @@ describe('ProjectDocuments bulk actions', () => {
         return row;
     }
 
-    /** A folder of the current list that is not one of the selected rows. */
     /** Two sibling hits, neither inside the other, with distinct paths as real ones have. */
     function searchHits(): FolderNode[] {
         const base = otherFolder([]);
@@ -218,6 +221,7 @@ describe('ProjectDocuments bulk actions', () => {
         ];
     }
 
+    /** A folder of the current list that is not one of the selected rows. */
     function otherFolder(exclude: FileSystemNode[]): FolderNode {
         const excluded = new Set(exclude.map(({ id }) => id));
         const folder = navigation.currentFolderChildren().folders
