@@ -24,6 +24,12 @@ export class ProjectDocumentsDemo {
     protected readonly projectId = 'demo-project';
 
     constructor() {
-        inject(ProjectOverviewService).projectDTO.set({ name: 'Demo Project' });
+        inject(ProjectOverviewService).projectDTO.set({
+            id: 1,
+            name: 'Demo Project',
+            projectType: null,
+            projectPhase: null,
+            initialProjectPhase: null
+        });
     }
 }

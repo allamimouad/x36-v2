@@ -402,17 +402,27 @@ same injector scope, same required fields, same enum identity. A looser stand-in
 make the tests pass, it makes them stop asking. Where the real shape is unknown, prefer
 the stricter guess: it fails here, where it is cheap, instead of after migration.
 
-**Still loose, measured but not yet tightened** (2026-11-06):
-- `src/local/api/model/folderNodeResponse.ts` and `fileNodeResponse.ts` declare
-  `accessLevel` as a string union where the generated client declares an `enum`. Making
-  it a real `enum` compiles clean — **zero** breakage measured.
-- `ProjectDTO` in `src/services/project-overview.service.ts` has every field optional
-  where the generated DTO requires `id`, `name`, `projectType`, `projectPhase` and
-  `initialProjectPhase`. Requiring them breaks exactly **one** line
-  (`project-documents-demo.ts:27`).
+**The last two were tightened the same day** (2026-11-06):
+- `folderNodeResponse.ts` and `fileNodeResponse.ts` are real `enum`s now, as the
+  generated client declares them. Zero breakage, as measured.
+- `ProjectDTO` in `src/services/project-overview.service.ts` is an exported interface
+  whose five fields are **required**. Only `name` is typed, because only `name` is read
+  here; the rest are `unknown`, which is honest — their types belong to the overview
+  feature and guessing them would invent a constraint the real DTO may not have.
+  Required-ness is the part that carries: it keeps a bare literal illegal, so a fixture
+  has to assert its shape, and an assertion compiles against both declarations. Broke
+  exactly one line (`project-documents-demo.ts:27`, the local harness), as measured.
 
-**Priority**: P2. The measurement is done; both are small, and leaving them loose keeps
-the same class of failure in play.
+Both guards were confirmed to bite by compiling the code they are meant to reject:
+`const a: FolderNodeResponseAccessLevelEnum = 'READONLY'` gives **TS2322** and
+`const b: ProjectDTO = { name: 'x' }` gives **TS2739** — the same error codes the other
+repo reported before the stubs were tightened.
+
+**Status**: closed as a backlog item. What remains is the rule, which applies to any
+stand-in added later: *at least as strict as the thing it stands for — same injector
+scope, same required fields, same enum identity.* Where the real shape is unknown,
+declare the part that is known and leave the rest `unknown` rather than guessing a type
+or, worse, omitting the field.
 
 
 > (Two former items were resolved: `initialize`'s reduce-with-spread pipeline —

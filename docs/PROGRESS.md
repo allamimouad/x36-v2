@@ -313,6 +313,16 @@ where the adapter passes the id to a numeric parameter, and project ids are inte
 `encodeURIComponent` stays and is now untested; the alternative was a permanently red
 test in the destination.
 
+**The last two loose stand-ins were tightened** (2026-11-06). Rather than wait for a
+fourth round of migration errors, the whole class was swept: `src/local/` and
+`src/services/` hold six files in total, and the two that were looser than the real
+dependency are now as strict. The access-level stubs are real `enum`s (zero breakage, as
+measured) and `ProjectDTO` requires its five fields, typing only `name` and leaving the
+rest `unknown` instead of guessing types that belong to another feature (one breakage,
+the local demo harness, as measured). Both were confirmed to reject what they are meant
+to reject — `TS2322` and `TS2739`, the same codes the other repo reported. `docs/TODO.md`
+item 12 is closed; what survives is the rule, not a backlog entry.
+
 **Verification (2026-11-06):** full headless suite **277/277** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round
