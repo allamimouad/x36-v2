@@ -802,6 +802,38 @@ back without reading the measurement.
 The restructured loops were checked against a stashed tree: **275 both before and after**,
 so no parameterised case was lost.
 
+### Aligned with the colleague's open-file PR (2026-11-06)
+
+Ported from "Open other file formats in web + [CFO-12577][Projects] Documents" so the
+next push does not have to carry it by hand. Three of the four changed files have a
+counterpart here.
+
+**Opening a file now defaults to the local application.** `openFile` is the single entry
+point behind a table double-click, an activated search result, and the menu's Open: it
+uses the desktop application when the file has one and falls back to online. Previously
+both activation paths called `openInOnlineApplication` unconditionally, so a Word
+document opened in the browser viewer even for a user with Word installed.
+
+**The menu shape follows from the same question.** A file with no local application gets
+a single **Open** entry (`pd-menu-open-file`) rather than an **Open File in** submenu
+whose only usable child is Online Application. `fileOpenMenuItem` decides that, and
+`fileContextMenu` just calls it, so the shape is settled in one place.
+
+The reasoning rests on a backend contract her PR also documents on `fileNodeResponse`:
+`desktopUrl` is null for anything that is not an Office document, and `onlineUrl` is
+always populated for file nodes and is the fallback. That file is a generated model that
+exists here only as an enum stub, so her file had nothing to port — but the same three
+fields live on our own `FileNode` domain model, undocumented, so the contract went there
+verbatim in meaning. It is also in SPEC 3.5. That is why "can it open locally" is the
+right question to branch on.
+
+Also taken: `padding: 0.25rem` on `.pd-tree .p-tree-node-content` in `folder-tree.scss`.
+
+**It arrived untested and does not leave that way.** The suite was 275 before the port
+and still 275 after, which means nothing covered either activation path or the menu
+shape. Two tests now cover both halves, and reverting each half fails exactly its own
+test: the default-open branch, and the single-entry branch.
+
 ## Verification (2026-11-05)
 
 - Full headless suite **275 passed** — 258 through the first quality pass, which edited

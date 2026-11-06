@@ -12,7 +12,9 @@ import { firstValueFrom, throwError } from 'rxjs';
 import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
 import { FileTable } from './components/file-table/file-table';
 import { FileLaunchService } from './services/interaction/file-launch.service';
-import { isFolder, type FolderNode } from './models/file-system-node.model';
+import {
+    isFolder, type FileSystemNode, type FolderNode
+} from './models/file-system-node.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
 import { MOCK_CONFIG } from './services/mock/mock-config.token';
 import { FileSystemStore } from './stores/file-system.store';
@@ -68,7 +70,7 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         return node;
     }
 
-    function menuFor(node: FolderNode): MenuItem[] {
+    function menuFor(node: FileSystemNode): MenuItem[] {
         const row = host().querySelector(`[data-testid="pd-row-${node.id}"]`);
         if (!row) { throw new Error(`Missing row: ${node.name}`); }
         row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
@@ -323,6 +325,69 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         await render();
         expect(navigation.currentFolderId()).toBe(bin.id);
     });
+
+    it('opens a file locally when it can, and online only when it cannot', async () => {
+        const file = await openContractsFile();
+        const launcher = fixture.debugElement.injector.get(FileLaunchService);
+        const desktop = spyOn(launcher, 'openDesktop').and.returnValue(true);
+        const online = spyOn(launcher, 'openOnline').and.returnValue(true);
+        const canOpenDesktop = spyOn(launcher, 'canOpenDesktop').and.returnValue(true);
+
+        fileTable().itemDoubleClicked.emit(file);
+        await render();
+
+        // The local application is the default when the file has one — opening the
+        // browser viewer for an Office document the user has Word for is the wrong
+        // default.
+        expect(desktop).toHaveBeenCalledTimes(1);
+        expect(online).not.toHaveBeenCalled();
+
+        canOpenDesktop.and.returnValue(false);
+        fileTable().itemDoubleClicked.emit(file);
+        await render();
+
+        expect(online).toHaveBeenCalledTimes(1);
+        expect(desktop).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers one Open entry when a file has no local application, a submenu when it has',
+        async () => {
+            const file = await openContractsFile();
+            const launcher = fixture.debugElement.injector.get(FileLaunchService);
+            const canOpenDesktop = spyOn(launcher, 'canOpenDesktop').and.returnValue(false);
+            spyOn(launcher, 'canOpenOnline').and.returnValue(true);
+
+            // A submenu whose only usable child is "Online Application" is a click the
+            // user should not have to make.
+            const single = menuFor(file).find((item) => item.label === 'Open');
+            expect(single).toBeDefined();
+            expect(single?.items).toBeUndefined();
+            expect(single?.disabled).toBeFalse();
+            expect(menuFor(file).some((item) => item.label === 'Open File in')).toBeFalse();
+
+            canOpenDesktop.and.returnValue(true);
+
+            const submenu = menuFor(file).find((item) => item.label === 'Open File in');
+            expect(submenu?.items?.length).toBe(2);
+            expect(menuFor(file).some((item) => item.label === 'Open')).toBeFalse();
+        });
+
+    /** Navigate into Contracts and return its first file row. */
+    async function openContractsFile(): Promise<FileSystemNode> {
+        await render();
+        const contracts = folder('/execution/Contracts');
+        navigation.navigateTo(contracts.id);
+        await render();
+        const file = store.entities().find((node) =>
+            node.kind === 'file' && node.parentId === contracts.id);
+        if (!file) { throw new Error('Expected a file in Contracts'); }
+
+        return file;
+    }
+
+    function fileTable(): FileTable {
+        return fixture.debugElement.query(By.directive(FileTable)).componentInstance as FileTable;
+    }
 
     it('ignores a deleted file activation emitted while viewing its bin', async () => {
         await render();

@@ -486,7 +486,7 @@ export class ProjectDocuments {
 
     protected async onSearchResultActivated(result: FileSystemNode): Promise<void> {
         if (!isFolder(result)) {
-            this.openInOnlineApplication(result);
+            this.openFile(result);
 
             return;
         }
@@ -872,7 +872,7 @@ export class ProjectDocuments {
     protected onItemDoubleClicked(node: FileSystemNode): void {
         if (this.navigation.currentFolderIsRecycleBin()) { return; }
         if (!isFolder(node)) {
-            this.openInOnlineApplication(node);
+            this.openFile(node);
 
             return;
         }
@@ -1457,20 +1457,12 @@ export class ProjectDocuments {
 
     private fileContextMenu(file: FileNode, source: NodeSurface = 'table'): MenuItem[] {
         const locked = this.isWriting(file.id);
-        const openItems = this.fileOpenMenuItems(file, locked);
         const isReadonly = file.accessLevel === FileNodeResponseAccessLevelEnum.Readonly
             || this.navigation.isCurrentFolderReadonly();
         const multi = this.isMultiSelected(file, source);
 
         return [
-            this.menuItem(
-                'Open File in',
-                'file_open',
-                'pd-menu-open-file-in',
-                undefined,
-                openItems.every((item) => item.disabled === true),
-                openItems
-            ),
+            this.fileOpenMenuItem(file, locked),
             { separator: true },
             this.menuItem('Rename File', 'edit', 'pd-menu-rename-file', () => {
                 this.startInlineRename(file, source);
@@ -1489,6 +1481,35 @@ export class ProjectDocuments {
                 this.downloadFile(file);
             }, locked || !this.fileLauncher.canDownload(file))
         ];
+    }
+
+    /**
+     * Office files offer a choice between the local and the online application. Any other
+     * file type can only be opened online, so it gets a single "Open" entry instead of the
+     * submenu.
+     */
+    private fileOpenMenuItem(file: FileNode, locked: boolean): MenuItem {
+        if (!this.fileLauncher.canOpenDesktop(file)) {
+            return this.menuItem(
+                'Open',
+                'file_open',
+                'pd-menu-open-file',
+                () => {
+                    this.openFile(file);
+                },
+                locked || !this.fileLauncher.canOpenOnline(file)
+            );
+        }
+        const openItems = this.fileOpenMenuItems(file, locked);
+
+        return this.menuItem(
+            'Open File in',
+            'file_open',
+            'pd-menu-open-file-in',
+            undefined,
+            openItems.every((item) => item.disabled === true),
+            openItems
+        );
     }
 
     private fileOpenMenuItems(file: FileNode, locked: boolean): MenuItem[] {
@@ -1567,6 +1588,16 @@ export class ProjectDocuments {
                 isClosable: true
             });
         }
+    }
+
+    /** Default open action: the local application when available, the online one otherwise. */
+    private openFile(file: FileNode): void {
+        if (this.fileLauncher.canOpenDesktop(file)) {
+            this.openInDesktopApplication(file);
+
+            return;
+        }
+        this.openInOnlineApplication(file);
     }
 
     private openInOnlineApplication(file: FileNode): void {

@@ -143,7 +143,8 @@ existing popup implementation and generated models without changing those import
 - Initially open Execution when available, otherwise Marketing.
 - Optional URL query parameters `listKey` (case-insensitive) and `folderPath` (full backend path) resolve a folder after default initialization. Both must be non-empty and the list key must be recognized; otherwise ignore the link and retain the query parameters. Once a recognized link is attempted, clear all query parameters with `replaceUrl` on success or failure; default navigation stays in history.
 - **Double-click a folder on the right** → opens that folder
-- **Double-click a file on the right** → opens it in its online application
+- **Double-click a file on the right** → opens it in its **local** application when the
+  file has one, otherwise online
 - **Single-click a folder on the tree** → opens that folder
 - **Current folder is highlighted in the tree** whenever visible there
 - **Back / forward / up** like browser history:
@@ -204,7 +205,9 @@ item 6.
 ### 3.5 Right-click context menus
 
 - **Folder** (tree or right pane): Open Folder; separator; Rename Folder, Copy Folder, Paste, Delete Folder; separator; Upload within folder → Folder / File
-- **File**: Open File in → Local application / Online Application; separator; Rename File, Copy File, Delete File; separator; Download File
+- **File**: a single **Open** when the file has no local application, otherwise
+  **Open File in** → Local application / Online Application; separator; Rename File,
+  Copy File, Delete File; separator; Download File
 - **Right-pane empty area**: Create new Folder; separator; Paste; Upload → Folder / File
 - Nested menus open on hover. Paste is a direct command, not a submenu.
 - Root folders cannot be renamed or deleted. Actions whose workflows are not implemented yet remain visible but disabled, preserving the final menu structure.
@@ -216,6 +219,11 @@ item 6.
 - Online opens in a new browser tab; Local application launches an allow-listed
   Microsoft Office URI; Download navigates directly to SharePoint without Angular or
   the application backend relaying the file bytes.
+- **Opening defaults to local, not online** (2026-11-06). `desktopUrl` is null for
+  anything that is not an Office document, while `onlineUrl` is always populated and is
+  the fallback — so "can it open locally" is the question that decides both the default
+  action and the menu shape. A file with no local application gets one **Open** entry
+  rather than a submenu whose only usable child is Online Application.
 
 ### 3.6 Cut / copy / paste clipboard
 
@@ -399,8 +407,9 @@ browser download per file.
   address-bar navigation paths from the node's canonical `path` and the already-loaded
   list-root `path`.
 - Double-clicking/pressing Enter on a folder result opens that folder. The same action
-  on a file opens its online application. Single-click does not navigate; locating a
-  file is an explicit `Open File Location` action in its context menu.
+  on a file opens it the way a double-click does in the table: locally when it can,
+  online otherwise. Single-click does not navigate; locating a file is an explicit
+  `Open File Location` action in its context menu.
 - Folder and search screens are distinct navigation-history entries. Opening a result
   adds its folder screen; Back restores the search scope/query and reruns it instead of
   retaining stale results. Resubmitting while already on a search screen replaces that

@@ -239,7 +239,23 @@ deleted, because `noUncheckedIndexedAccess` is off and every `entityMap()[id]` t
 reads as always-defined. Enabling that flag drops the reports to 20 but costs 134
 TypeScript errors, and the 20 survivors contain no defects.
 
-**Verification (2026-11-06):** full headless suite **275/275** — checked against a
+**Aligned with the colleague's open-file PR** (CFO-12577, ported 2026-11-06). Opening a
+file now defaults to the **local** application and falls back to online, through one
+`openFile` used by the table double-click, an activated search result and the menu —
+previously both activation paths went straight to online, so a Word document opened in
+the browser viewer even with Word installed. The menu shape follows the same question: a
+file with no local application gets a single **Open** instead of a submenu whose only
+usable child is Online Application. Also took `padding: 0.25rem` on the tree node
+content. Her `fileNodeResponse` doc changes have no counterpart here — that generated
+model is an enum stub locally — but the same three fields are on our own `FileNode`
+domain model, so the contract they state (`desktopUrl` null for non-Office, `onlineUrl`
+always populated and the fallback) is documented there instead, and in SPEC 3.5. It is
+why the branch is on "can it open locally".
+
+The port arrived untested: the suite was 275 before and after, so nothing covered either
+activation path or the menu shape. Two tests now cover both halves.
+
+**Verification (2026-11-06):** full headless suite **277/277** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round
 fixes failed exactly one test apiece, as did reverting `openSearch`'s clear and each of
