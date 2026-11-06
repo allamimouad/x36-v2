@@ -34,6 +34,7 @@ export default tseslint.config(
       // A closure made in a loop that reads a variable the loop reassigns sees the last
       // value, not the one from its own iteration.
       'no-loop-func': 'error',
+      'no-nested-ternary': 'error',
       'max-lines': [
         'error',
         {

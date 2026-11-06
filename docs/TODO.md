@@ -369,9 +369,11 @@
   (`external-drop.service.ts:41`, `name-dialog.utils.ts:7`). **No defects.** That is the
   argument for leaving it off: it costs 134 type errors to make meaningful and finds
   nothing wrong.
-- **If the other laptop reports it**: the reports are explained above, not ignored. The
-  two it flags in `project-documents-drag.spec.ts` are the `files[0]` guard, which is
-  correct and must stay.
+- **Not actually reported by the other laptop.** This item came out of misreading a
+  report of `no-nested-ternary` as this rule. It is kept because the measurement is
+  real and worth having before anyone enables it. The single thing it flags in
+  `project-documents-drag.spec.ts` is the `files[0]` guard, which is correct and
+  must stay.
 - **What would change the decision**: enabling `noUncheckedIndexedAccess` for its own
   sake, since honest index types are worth having independently. Then enable this rule
   in the same change and clear the 20.

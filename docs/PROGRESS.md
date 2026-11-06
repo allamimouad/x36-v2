@@ -218,13 +218,20 @@ own branch, and replacing the bulk specs' timer flushing waits on item 8, since 
 flushing exists to absorb the double initialization.
 
 **ESLint rules mirrored from the other laptop (2026-11-06).** Four classes were failing
-there and passing here, so the local config was weaker. `no-loop-func` and
-`@typescript-eslint/no-unsafe-assignment` are new; `no-shadow` was already enabled but
-its default `hoist: 'functions'` misses an inner name shadowing an outer one declared
-later in the file, and `hoist: 'all'` reproduced the reported error verbatim. Six errors
-fixed: three parameterised test loops now build their cases through a factory declared
-outside the loop, one `any` assignment is asserted, and two `callFake` parameters that
-shadowed a later `const target` are renamed.
+there and passing here, so the local config was weaker. `no-loop-func`,
+`no-nested-ternary` and `@typescript-eslint/no-unsafe-assignment` are new; `no-shadow`
+was already enabled but its default `hoist: 'functions'` misses an inner name shadowing
+an outer one declared later in the file, and `hoist: 'all'` reproduced the reported error
+verbatim. Eight errors fixed: three parameterised test loops now build their cases
+through a factory declared outside the loop, one `any` assignment is asserted, two
+`callFake` parameters that shadowed a later `const target` are renamed, and two nested
+ternaries became named helpers.
+
+One correction: the report arrived as "do not necessary expressions", which I read as
+`no-unnecessary-condition` and investigated at length before asking for the rule name.
+It was `no-nested-ternary` — a different rule with a one-line fix. The
+`no-unnecessary-condition` measurement stands as `docs/TODO.md` item 11 but was never
+among the reported errors.
 
 One rule is deliberately **not** mirrored, recorded as `docs/TODO.md` item 11:
 `no-unnecessary-condition` reports 57 problems of which 37 are correct guards it wants

@@ -748,7 +748,7 @@ Four rule classes were failing there and passing here, which means the local con
 weaker. Per the standing policy, the rules are mirrored into `eslint.config.mjs` first,
 then the code fixed — otherwise the same errors come back on the next sync.
 
-**Three rules added, six errors fixed.**
+**Four rules added, eight errors fixed.**
 
 - `no-loop-func` (new): three parameterised test loops declared their `it` bodies inside
   the loop, closing over the `let`s that `beforeEach` reassigns. Safe only because the
@@ -763,6 +763,20 @@ then the code fixed — otherwise the same errors come back on the next sync.
   *later* in the file. With `hoist: 'all'` it reproduced the reported error verbatim:
   two `callFake((_project, node, target) => …)` parameters shadowing a `const target`
   three lines below. The parameters are now named `into`.
+- `no-nested-ternary` (new): two nested ternaries in the drag spec, picking the drop
+  target and its selector from the surface. Replaced by named helpers — a `switch` for
+  the folder and a two-way `nodeSelector` — which also removed the duplicated
+  `data-testid` strings.
+
+**A correction worth recording.** The report came as "do not necessary expressions", and
+I read that as `no-unnecessary-condition` and went off measuring
+`noUncheckedIndexedAccess` before asking for the rule name. The actual message was "Do
+not nest ternary expressions" — a different rule with a one-line fix. Ask for the rule
+name in brackets at the end of an ESLint line before interpreting a paraphrase; it is
+the only part that identifies the rule.
+
+The `no-unnecessary-condition` investigation stands on its own merits as
+`docs/TODO.md` item 11, but it was **not** among the reported errors.
 
 **One rule deliberately not mirrored**, recorded as `docs/TODO.md` item 11.
 `@typescript-eslint/no-unnecessary-condition` reports 57 problems, and **37 are correct

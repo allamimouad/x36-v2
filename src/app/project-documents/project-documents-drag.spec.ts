@@ -79,6 +79,21 @@ describe('ProjectDocuments internal drag wiring', () => {
         return event;
     }
 
+    /** Where each target surface drops: the tree's other root, a table row, or the view. */
+    function targetFolder(targetSurface: 'tree' | 'table' | 'current-folder'): FolderNode {
+        switch (targetSurface) {
+            case 'tree': return root('MARKETING');
+            case 'table': return folder('Schedules');
+            default: return root('EXECUTION');
+        }
+    }
+
+    function nodeSelector(surface: 'tree' | 'table', id: string): string {
+        return surface === 'tree'
+            ? `[data-testid="pd-tree-node-${id}"]`
+            : `[data-testid="pd-row-${id}"]`;
+    }
+
     /**
      * Built outside the loops below on purpose. Declaring the test body inside them
      * closes over `api`, `drag`, `navigation` and `store`, which `beforeEach` reassigns
@@ -92,15 +107,13 @@ describe('ProjectDocuments internal drag wiring', () => {
     ): () => Promise<void> {
         return async (): Promise<void> => {
             const source = folder('Contracts');
-            const target = targetSurface === 'tree' ? root('MARKETING') :
-                targetSurface === 'table' ? folder('Schedules') : root('EXECUTION');
-            const sourceSelector = sourceSurface === 'tree' ?
-                `[data-testid="pd-tree-node-${source.id}"]` :
-                `[data-testid="pd-row-${source.id}"]`;
-            const targetSelector = targetSurface === 'tree' ?
-                `[data-testid="pd-tree-node-${target.id}"]` :
-                targetSurface === 'table' ? `[data-testid="pd-row-${target.id}"]` :
-                    '.pd-current-folder-space';
+            const target = targetFolder(targetSurface);
+            const sourceSelector = sourceSurface === 'tree'
+                ? `[data-testid="pd-tree-node-${source.id}"]`
+                : `[data-testid="pd-row-${source.id}"]`;
+            const targetSelector = targetSurface === 'current-folder'
+                ? '.pd-current-folder-space'
+                : nodeSelector(targetSurface, target.id);
             const copying = targetSurface === 'current-folder';
             const mutation = spyOn(api, copying ? 'copy' : 'move').and.callThrough();
             const data = new DataTransfer();
