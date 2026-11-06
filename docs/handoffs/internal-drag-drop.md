@@ -778,6 +778,17 @@ the only part that identifies the rule.
 The `no-unnecessary-condition` investigation stands on its own merits as
 `docs/TODO.md` item 11, but it was **not** among the reported errors.
 
+**And the "two stale comments" were real after all.** When I could not substantiate them
+earlier I checked for dangling *identifiers*, which cannot catch this: both comments were
+correct prose left above the wrong declaration after `c22afdf` deleted what they
+described. `fileNameParts`' doc comment ended up over `export { isFolder }`, and
+`isAncestorOrSelf`' over `getFoldersLengthDependingOnIfRootFolder` — so each actively
+misdescribed its neighbour, which is worse than no comment. Both deleted.
+
+Pairing every single-line doc comment with the declaration that follows it, across the
+eight files this work touched, found exactly those two and nothing else. That pairing is
+the check to run after deleting a function, not an identifier grep.
+
 **One rule deliberately not mirrored**, recorded as `docs/TODO.md` item 11.
 `@typescript-eslint/no-unnecessary-condition` reports 57 problems, and **37 are correct
 guards it wants deleted**: with `noUncheckedIndexedAccess` off, every

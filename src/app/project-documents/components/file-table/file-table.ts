@@ -411,6 +411,5 @@ function formatSize(bytes: number | undefined): string {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-/** Split a file name into its display base and extension (no leading-dot files). */
 // Make isFolder available to template via export indirection if needed later.
 export { isFolder };

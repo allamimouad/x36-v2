@@ -1855,7 +1855,6 @@ export class ProjectDocuments {
         return a.name.localeCompare(b.name);
     }
 
-    /** Walk up from `candidateId` via parentId; true if `ancestorId` is hit (or is it). */
     private getFoldersLengthDependingOnIfRootFolder(folders: FolderNode[]): number {
         // Remove recycle bin folder from count if current folder is the root folder.
         return this.navigation.parentId() === null ? folders.length - 1 : folders.length;
