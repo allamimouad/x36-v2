@@ -15,7 +15,10 @@ export interface ErrorPopupOptions {
     isClosable?: boolean;
 }
 
-@Injectable({ providedIn: 'root' })
+// Not provided in the root injector: every consumer lists this service in its own
+// `providers`, so each host owns the dialog references it opens and disposes of them
+// with itself.
+@Injectable()
 export class PopupService {
     private readonly dialogs = inject(DialogService);
     private readonly references = new Set<Pick<DynamicDialogRef<unknown>, 'destroy'>>();

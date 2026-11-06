@@ -1,5 +1,6 @@
 import {
     HttpEventType,
+    type HttpRequest,
     provideHttpClient,
     withInterceptorsFromDi
 } from '@angular/common/http';
@@ -84,17 +85,6 @@ describe('SharePointFileSystemApi', () => {
         http.verify({ ignoreCancelled: true });
     });
 
-    it('percent-encodes the project id into the path', () => {
-        // A space is not a realistic project id — ids are numeric, which is why the
-        // other tests use them. This one exists because `encodeURIComponent` on the
-        // project segment is deliberate and nothing else holds it: removing it from all
-        // three call sites leaves the rest of this suite green.
-        api.copy('a b', uploaded, target).subscribe();
-
-        const request = http.expectOne('/projects/a%20b/documents/copy');
-        request.flush({ ...uploaded, id: 'copied-id', parentId: target.id });
-    });
-
     it('sends the complete copy contract and emits the canonical copied node', () => {
         const copied: FileNode = {
             ...uploaded,
@@ -109,7 +99,7 @@ describe('SharePointFileSystemApi', () => {
             result = node;
         });
 
-        const request = http.expectOne('/projects/1/documents/copy');
+        const request = http.expectOne(matchesPath('/projects/1/documents/copy'));
         expect(request.request.method).toBe('POST');
         expect(request.request.body).toEqual({
             kind: 'file',
@@ -138,7 +128,7 @@ describe('SharePointFileSystemApi', () => {
             result = node;
         });
 
-        const request = http.expectOne('/projects/2/documents/copy');
+        const request = http.expectOne(matchesPath('/projects/2/documents/copy'));
         expect(request.request.method).toBe('POST');
         expect(request.request.body).toEqual({
             kind: 'file',
@@ -162,7 +152,7 @@ describe('SharePointFileSystemApi', () => {
             }
         });
 
-        const request = http.expectOne('/projects/2/documents/copy');
+        const request = http.expectOne(matchesPath('/projects/2/documents/copy'));
         request.flush(
             { message: 'Not found' },
             { status: 404, statusText: 'Not Found' }
@@ -188,8 +178,8 @@ describe('SharePointFileSystemApi', () => {
             result = renamed;
         });
 
-        const request = http.expectOne((candidate) =>
-            candidate.url === '/projects/1/document-lists/EXECUTION/documents/file-id'
+        const request = http.expectOne(
+            matchesPath('/projects/1/document-lists/EXECUTION/documents/file-id')
         );
         expect(request.request.method).toBe('PATCH');
         expect(request.request.params.get('kind')).toBe('file');
@@ -208,8 +198,8 @@ describe('SharePointFileSystemApi', () => {
             }
         });
 
-        const request = http.expectOne((candidate) =>
-            candidate.url === '/projects/2/document-lists/EXECUTION/documents/file-id'
+        const request = http.expectOne(
+            matchesPath('/projects/2/document-lists/EXECUTION/documents/file-id')
         );
         request.flush(
             { message: 'The file is locked for shared use' },
@@ -235,9 +225,8 @@ describe('SharePointFileSystemApi', () => {
                 result = created;
             });
 
-        const request = http.expectOne((candidate) =>
-            candidate.url ===
-                '/projects/1/document-lists/EXECUTION/documents/parent-id/files'
+        const request = http.expectOne(
+            matchesPath('/projects/1/document-lists/EXECUTION/documents/parent-id/files')
         );
         expect(request.request.method).toBe('POST');
         expect(request.request.body).toBe(file);
@@ -329,3 +318,13 @@ describe('SharePointFileSystemApi', () => {
         );
     });
 });
+
+/**
+ * Matches a request on the path this adapter builds, ignoring whatever precedes it. The
+ * adapter contributes the path only; the origin and any deployment prefix belong to the
+ * HTTP layer that carries the request, and asserting them here would tie the spec to one
+ * backend client configuration.
+ */
+function matchesPath(expected: string): (request: HttpRequest<unknown>) => boolean {
+    return (request) => request.url === expected || request.url.endsWith(expected);
+}

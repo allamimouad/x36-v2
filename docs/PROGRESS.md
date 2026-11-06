@@ -288,7 +288,32 @@ because this component hardcodes the mock API and never constructs anything HTTP
 Reproduced locally by pointing the component at `SharePointFileSystemApi` — 32 NG0201
 errors, then 0 once the providers were added.
 
-**Verification (2026-11-06):** full headless suite **278/278** — checked against a
+**Container specs now provide PopupService, and the stand-in stopped hiding it**
+(2026-11-06). The next run in the other repo reported 46 failures; **41** were one cause,
+`NG0201: No provider found for _PopupService`, raised while constructing
+`ProjectDocuments` rather than in any assertion. The library's service is not
+root-provided — each consumer lists it in its own `providers` — while the local stand-in
+was `@Injectable({ providedIn: 'root' })`, so the specs here never had to. Fixed at the
+stand-in: it is now plain `@Injectable()`, which makes this repo reproduce the
+requirement. Confirmed by removing the provider from one spec and getting the reported
+error verbatim, then restoring it. This is the third stand-in that was looser than the
+real dependency, now recorded as `docs/TODO.md` item 12 with two more measured and still
+open.
+
+**The SharePoint copy tests were made portable, and one was deleted** (2026-11-06). The
+remaining failures are that suite running against the destination's own adapter, which
+the transfer boundaries say to keep. Its copy goes through the generated backend client,
+so the request carries a configured base path. The spec now matches on the path the
+adapter contributes rather than the whole URL — which is the colleague's `endsWith`
+change, **rejected on 2026-11-06 and taken the same day once her evidence turned out to
+be right**; see the handoff. Controls: prefixing the copy URL with the destination's
+origin keeps the suite green, and a wrong path still fails 3 tests. The
+percent-encoding test is deleted — it used `'a b'` as a project id, which becomes `NaN`
+where the adapter passes the id to a numeric parameter, and project ids are integers.
+`encodeURIComponent` stays and is now untested; the alternative was a permanently red
+test in the destination.
+
+**Verification (2026-11-06):** full headless suite **277/277** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round
 fixes failed exactly one test apiece, as did reverting `openSearch`'s clear and each of

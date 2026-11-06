@@ -850,25 +850,52 @@ Three remaining `'project'` ids at the empty-file, abort and duplicate-name test
 `params.get('name')`, so the project id never reaches their assertion. Her change is
 complete and self-consistent.
 
-**Not taken: `candidate.url === …` → `candidate.url.endsWith(…)`.** It was offered as
-tolerance for a base path prepended in front of the service, but the evidence says no
-base path exists on either side: her *before* state matched exactly
-(`candidate.url === '/projects/project%201/document-lists/…'`) and was passing in her own
-repo, which it could not have been if anything were prefixed. So the change buys nothing
-and costs strictness — `endsWith` accepts `/anything/projects/1/documents/copy`.
-Demonstrated rather than argued: prefixing every service URL with `/WRONG` fails **7
-tests** under exact matching, and would have passed every one under `endsWith`.
+**`candidate.url === …` → path matching: rejected 2026-11-06, then taken the same day.
+She was right.**
 
-This is a deliberate divergence and the one place this file will conflict on rebase.
-Worth raising with her — the convergence should go the other way.
+It was offered as tolerance for a base path prepended in front of the service. It was
+rejected on the reasoning that no base path exists on either side, since her *before*
+state matched exactly and was passing in her own repo. That reasoning was wrong: it
+assumed one adapter where there are two. Her passing *before* state was her repo's
+**previous** adapter; the destination's current one routes `copy` through the generated
+backend client, which carries a configured base path. The destination's own run shows it
+plainly:
 
-**One coverage loss, found by control run and repaired.** `'project 1'` was the only
-thing proving the service percent-encodes the project segment. After her change,
-stripping `encodeURIComponent` from all three call sites in
-`sharepoint-file-system-api.ts` left the whole suite green. A single additive test now
-holds it — deliberately using a space, with a comment saying why an unrealistic id is
-the point. Reverting the encoding fails exactly that test. This test is **ours, not
-hers**; it is additive, so it will not conflict on rebase.
+```
+Expected one matching request for criteria "Match URL: /projects/1/documents/copy", found none.
+Requests received are: POST http://localhost:8085/ibportal-project/projects/1/documents/copy
+```
+
+Same path, prefixed origin. The strictness objection still stands on its own terms —
+`endsWith` does accept `/anything/projects/1/documents/copy` — but the prefix is not
+this spec's to assert. The adapter contributes a path; the origin and deployment prefix
+belong to the HTTP layer carrying it. So the matching now goes through `matchesPath`,
+which accepts an exact path or a path at the end of a longer URL, and the comment says
+why.
+
+Verified by two control runs rather than asserted: prefixing the copy URL with
+`http://localhost:8085/ibportal-project` keeps the suite at **277 SUCCESS**, and
+changing the path itself to `/documents/copy-wrong` still fails **3 tests**. Tolerating
+the prefix cost no strictness on the part that matters.
+
+**Tell her the rejection was wrong.** The convergence goes her way on this one.
+
+**One coverage loss, repaired, then deliberately given up (2026-11-06).** `'project 1'`
+was the only thing proving the service percent-encodes the project segment; after her
+change, stripping `encodeURIComponent` from all three call sites left the whole suite
+green. An additive test was written to hold it, deliberately using `'a b'` with a
+comment saying why an unrealistic id was the point.
+
+That test is now **deleted**. In the destination it produced
+`POST .../projects/NaN/documents/copy` — the adapter there converts the project id for
+the generated client's numeric parameter, so `Number('a b')` is `NaN`. The test asserts
+behaviour for an input the domain forbids: project ids are integers, which is the whole
+reason the rest of the suite uses `'1'` and `'2'`. It cannot pass against an adapter
+that takes the id as a number, and it was never defending a real scenario.
+
+`encodeURIComponent` stays at all three call sites — a no-op on a numeric id, correct if
+ids ever widen — and is now **untested**. That is the accepted cost; the alternative was
+a permanently red test in the destination.
 
 **`file-system.store.spec.ts` — not applied, already fixed here.** Her change moves the
 repeated-copy test off the execution root onto a Contracts folder found by path, then
@@ -931,6 +958,45 @@ it.
 
 All four now provide `provideHttpClient(withInterceptorsFromDi())` and
 `provideHttpClientTesting()` — inert here, required there.
+
+### Container specs must provide PopupService (2026-11-06)
+
+The same report, one round later: **41 of 46** remaining failures were a single cause.
+
+```
+NG0201: No provider found for `_PopupService`. Source: Standalone[ProjectDocuments2]
+```
+
+Every test in all four container specs, failing at component construction rather than in
+any assertion. The library's `PopupService` is **not** root-provided — each consumer
+lists it in its own `providers`, which `project-documents-demo.ts` already did. The local
+stand-in was `@Injectable({ providedIn: 'root' })`, so the specs here never had to.
+
+Fixed at the stand-in, not at the symptom: it is now plain `@Injectable()`, which makes
+this repo reproduce the destination's requirement. Removing the provider from one spec
+afterwards reproduces the reported error verbatim —
+`NG0201: No provider found for PopupService. Source: Standalone[ProjectDocuments2]` —
+and restoring it returns the suite to green. All four specs now list `PopupService`.
+
+This is the third instance of one pattern and it is now recorded as `docs/TODO.md`
+item 12: **a stand-in must be at least as strict as the thing it stands for.** Two
+measured, still-loose stubs are listed there.
+
+### What the destination still has to answer on the copy tests
+
+After the above, the residue is the `SharePointFileSystemApi` copy suite. Those tests run
+against the **destination's** adapter, which the transfer boundaries say to keep, not
+against the local reference one. Two differences showed up:
+
+- **Base path** — handled here by `matchesPath` (see the test-sync section above).
+- **Numeric project id** — `Number('a b')` produced `NaN` in the URL, so the destination's
+  adapter converts the id for the generated client. The unrealistic-id test is deleted;
+  nothing else in the suite depends on the id being a string.
+
+If copy tests still fail there after these two changes, the next thing to look at is the
+request **body**: this spec asserts the `CopyDocumentRequest` shape the local adapter
+sends, and a generated client may name those fields differently. That cannot be settled
+from this repo — it needs the destination's `sharepoint-file-system-api.ts`.
 
 **Reproduced before fixing, rather than assumed.** Temporarily pointing this component at
 `SharePointFileSystemApi` (which injects `HttpClient`) produced **32 NG0201 errors**, the

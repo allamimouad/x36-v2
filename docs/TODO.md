@@ -379,6 +379,42 @@
   in the same change and clear the 20.
 - **Priority**: P3, and explicitly a decision rather than a defect.
 
+## 12. Local stand-ins are looser than the real dependencies they stand for
+
+Every local stand-in under `src/local/` and `src/services/` exists so this repo can
+build without the host application. Each time one has been **more permissive** than the
+real thing, the suite stayed green here and failed on first contact with the host. Three
+instances so far, all the same shape:
+
+- **`ProjectDTO` / `FolderNodeResponseAccessLevelEnum`** (resolved 2026-11-06, commit
+  `ee0bfd6`): the stubs were a loose `interface` and a string union where the generated
+  client has required fields and a real `enum`. Two test fixtures did not compile.
+- **`HttpClient`** (resolved 2026-11-06, commit `815571e`): the container's dependency
+  graph reaches `HttpClient` through the real API, which the specs never provided
+  because the mock short-circuits it here. `NG0201` on every container spec.
+- **`PopupService`** (resolved 2026-11-06): the stand-in was
+  `@Injectable({ providedIn: 'root' })`; the library's is not root-provided and every
+  consumer lists it in its own `providers`. `NG0201: No provider found for PopupService`
+  on all 41 container tests.
+
+**The rule this gives us**: a stand-in must be at least as strict as the real thing —
+same injector scope, same required fields, same enum identity. A looser stand-in does not
+make the tests pass, it makes them stop asking. Where the real shape is unknown, prefer
+the stricter guess: it fails here, where it is cheap, instead of after migration.
+
+**Still loose, measured but not yet tightened** (2026-11-06):
+- `src/local/api/model/folderNodeResponse.ts` and `fileNodeResponse.ts` declare
+  `accessLevel` as a string union where the generated client declares an `enum`. Making
+  it a real `enum` compiles clean — **zero** breakage measured.
+- `ProjectDTO` in `src/services/project-overview.service.ts` has every field optional
+  where the generated DTO requires `id`, `name`, `projectType`, `projectPhase` and
+  `initialProjectPhase`. Requiring them breaks exactly **one** line
+  (`project-documents-demo.ts:27`).
+
+**Priority**: P2. The measurement is done; both are small, and leaving them loose keeps
+the same class of failure in play.
+
+
 > (Two former items were resolved: `initialize`'s reduce-with-spread pipeline —
 > 2026-07-06, by the reactive `connectProject` refactor — and the duplicated
 > template tree sections — 2026-07-08, by the tree-splitter work plus a

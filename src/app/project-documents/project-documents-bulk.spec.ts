@@ -30,7 +30,7 @@ describe('ProjectDocuments bulk actions', () => {
     beforeEach(async () => {
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
-            providers: [provideRouter([]), provideNoopAnimations(), DialogService,
+            providers: [provideRouter([]), provideNoopAnimations(), DialogService, PopupService,
                 provideHttpClient(withInterceptorsFromDi()),
                 provideHttpClientTesting(),
                 ProjectOverviewService,

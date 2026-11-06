@@ -5,6 +5,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { DialogService } from 'primeng/dynamicdialog';
 import { Subject } from 'rxjs';
+import { PopupService } from 'ibportal-web-ui-commons';
 import type { FileSystemNode, FolderNode } from './models/file-system-node.model';
 import { isFolder } from './models/file-system-node.model';
 import { ProjectDocuments } from './project-documents';
@@ -25,7 +26,8 @@ describe('ProjectDocuments internal drag wiring', () => {
 
     beforeEach(async () => {
         await TestBed.configureTestingModule({ imports: [ProjectDocuments], providers: [
-            provideRouter([]), provideNoopAnimations(), DialogService, ProjectOverviewService,
+            provideRouter([]), provideNoopAnimations(), DialogService, PopupService,
+            ProjectOverviewService,
             provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting(),
             { provide: MOCK_CONFIG, useValue: {
                 minLatencyMs: 0, maxLatencyMs: 0, errorRate: 0, enableErrors: false

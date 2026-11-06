@@ -36,7 +36,7 @@ describe('ProjectDocuments batch lifetime', () => {
     beforeEach(async () => {
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
-            providers: [provideRouter([]), provideNoopAnimations(), DialogService,
+            providers: [provideRouter([]), provideNoopAnimations(), DialogService, PopupService,
                 ProjectOverviewService,
                 provideHttpClient(withInterceptorsFromDi()),
                 provideHttpClientTesting(),
