@@ -255,7 +255,22 @@ why the branch is on "can it open locally".
 The port arrived untested: the suite was 275 before and after, so nothing covered either
 activation path or the menu shape. Two tests now cover both halves.
 
-**Verification (2026-11-06):** full headless suite **277/277** — checked against a
+**Test sync from a colleague's unit-test PR** (2026-11-06). Only one of the three files
+shown applied: `sharepoint-file-system-api.spec.ts` now uses real project ids (`'1'`,
+`'2'`) instead of `'project 1'`/`'project'`. Her second change — exact URL matching to
+`endsWith` — was **not** taken: her own before-state matched exactly and passed, so no
+base path exists to tolerate, and `endsWith` only loses strictness. Prefixing every
+service URL with `/WRONG` fails 7 tests under exact matching and would pass all of them
+under `endsWith`. A control run also showed her change silently dropped the only coverage
+of
+`encodeURIComponent` on the project segment — stripping it left the suite green — so one
+additive test now holds that, using a space deliberately. The other two files were not
+applied: our `file-system.store.spec.ts` already copies into Contracts (via
+`loadPathListing`, one step shorter than hers), and our `navigation.store.spec.ts`
+already asserts 5 folders including `Recycle Bin`, where hers asserts 4 — taking it would
+have been a regression.
+
+**Verification (2026-11-06):** full headless suite **278/278** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round
 fixes failed exactly one test apiece, as did reverting `openSearch`'s clear and each of

@@ -834,6 +834,54 @@ and still 275 after, which means nothing covered either activation path or the m
 shape. Two tests now cover both halves, and reverting each half fails exactly its own
 test: the default-open branch, and the single-entry branch.
 
+### Test sync from the colleague's unit-test PR (2026-11-06)
+
+Three files were shown; **only one applied here.**
+
+**`sharepoint-file-system-api.spec.ts` — her id change taken, her matching change not.**
+
+Taken: project ids in that suite were `'project 1'` and `'project'`, which are not ids
+at all, and the assertions therefore hardcoded the encoded form
+`/projects/project%201/...`. They are `'1'` and `'2'` now. The `uploaded` fixture also
+gained its optional fields explicitly, which documents that it has no launch URLs.
+
+Three remaining `'project'` ids at the empty-file, abort and duplicate-name tests are
+**left alone on purpose**: her diff does not touch them because those tests match on
+`params.get('name')`, so the project id never reaches their assertion. Her change is
+complete and self-consistent.
+
+**Not taken: `candidate.url === …` → `candidate.url.endsWith(…)`.** It was offered as
+tolerance for a base path prepended in front of the service, but the evidence says no
+base path exists on either side: her *before* state matched exactly
+(`candidate.url === '/projects/project%201/document-lists/…'`) and was passing in her own
+repo, which it could not have been if anything were prefixed. So the change buys nothing
+and costs strictness — `endsWith` accepts `/anything/projects/1/documents/copy`.
+Demonstrated rather than argued: prefixing every service URL with `/WRONG` fails **7
+tests** under exact matching, and would have passed every one under `endsWith`.
+
+This is a deliberate divergence and the one place this file will conflict on rebase.
+Worth raising with her — the convergence should go the other way.
+
+**One coverage loss, found by control run and repaired.** `'project 1'` was the only
+thing proving the service percent-encodes the project segment. After her change,
+stripping `encodeURIComponent` from all three call sites in
+`sharepoint-file-system-api.ts` left the whole suite green. A single additive test now
+holds it — deliberately using a space, with a comment saying why an unrealistic id is
+the point. Reverting the encoding fails exactly that test. This test is **ours, not
+hers**; it is additive, so it will not conflict on rebase.
+
+**`file-system.store.spec.ts` — not applied, already fixed here.** Her change moves the
+repeated-copy test off the execution root onto a Contracts folder found by path, then
+`loadChildren`. Ours already copies into Contracts and reaches it through
+`store.loadPathListing('EXECUTION', 'Contracts')`, which returns the folder directly —
+same intent, one step shorter.
+
+**`navigation.store.spec.ts` — not applied, ours is ahead.** Her change goes from 3 to 4
+folders, adding `Unavailable on open`. Ours already asserts **5**: `Contracts`,
+`Recycle Bin`, `Schedules`, `Site Reports`, `Unavailable on open`. Applying hers would
+drop a folder and lose the recycle bin from the expectation — a regression, not a sync.
+Our seed exposes the bin as a child of the root and theirs evidently does not.
+
 ## Verification (2026-11-05)
 
 - Full headless suite **275 passed** — 258 through the first quality pass, which edited
