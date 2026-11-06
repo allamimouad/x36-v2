@@ -742,6 +742,41 @@ services.
 completion signals waits on item 8, since the flushing exists to absorb the double
 initialization.
 
+### ESLint rules mirrored from the other laptop (2026-11-06)
+
+Four rule classes were failing there and passing here, which means the local config was
+weaker. Per the standing policy, the rules are mirrored into `eslint.config.mjs` first,
+then the code fixed — otherwise the same errors come back on the next sync.
+
+**Three rules added, six errors fixed.**
+
+- `no-loop-func` (new): three parameterised test loops declared their `it` bodies inside
+  the loop, closing over the `let`s that `beforeEach` reassigns. Safe only because the
+  body runs after the assignment, which the rule cannot reason about. Fixed by building
+  each case through a factory declared outside the loops
+  (`connectsCase`, `ignoresPendingCase`) and, in one spot, by reading `destination.id`
+  into a `const` before the loop.
+- `@typescript-eslint/no-unsafe-assignment` (new): one `const host: HTMLElement =
+  fixture.nativeElement`, where `nativeElement` is `any`.
+- `@typescript-eslint/no-shadow` was **already enabled and still missed it** — the
+  default `hoist: 'functions'` ignores an inner name shadowing an outer one declared
+  *later* in the file. With `hoist: 'all'` it reproduced the reported error verbatim:
+  two `callFake((_project, node, target) => …)` parameters shadowing a `const target`
+  three lines below. The parameters are now named `into`.
+
+**One rule deliberately not mirrored**, recorded as `docs/TODO.md` item 11.
+`@typescript-eslint/no-unnecessary-condition` reports 57 problems, and **37 are correct
+guards it wants deleted**: with `noUncheckedIndexedAccess` off, every
+`entityMap()[id]` is typed as always-defined, so the guards this feature depends on read
+as "always falsy". Enabling the flag drops the reports to 20 but costs **134 TypeScript
+errors** (12 app, 122 spec), and the 20 survivors are 16 redundant `?.`, two
+`while (true)`, one dead `if (listKey)` and two intentional guards against DOM and forms
+types that lie — no defects. The config carries a comment saying so, so nobody adds it
+back without reading the measurement.
+
+The restructured loops were checked against a stashed tree: **275 both before and after**,
+so no parameterised case was lost.
+
 ## Verification (2026-11-05)
 
 - Full headless suite **275 passed** — 258 through the first quality pass, which edited

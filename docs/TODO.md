@@ -2,8 +2,8 @@
 
 > Open findings from the ongoing working-tree reviews. Findings 1–2 came from
 > the 2026-07-06 partial document-root / `ProjectDocuments` review; findings
-> 3–6 came from the 2026-07-31 copy/paste reviews; findings 7–10 came from the
-> 2026-11 internal drag-and-drop reviews, item 10 from its quality pass. These are deliberately left for
+> 3–6 came from the 2026-07-31 copy/paste reviews; findings 7–11 came from the
+> 2026-11 internal drag-and-drop reviews, items 10–11 from its quality pass. These are deliberately left for
 > later and are also tracked in `PROGRESS.md` → "Deferred / Known Issues".
 > This file carries the full detail. Remove entries here (and in PROGRESS.md)
 > as they are fixed.
@@ -349,6 +349,33 @@
   "no test edits" rule, the same one the 2026-11-05 quality pass used.
 - **Priority**: P3 — no defect, pure maintainability, but it compounds with every feature
   added to the container.
+
+## 11. `no-unnecessary-condition` needs `noUncheckedIndexedAccess` first
+
+- **Where**: `eslint.config.mjs` (the rule is deliberately absent, with a comment
+  pointing here) and `tsconfig.json` (`noUncheckedIndexedAccess` is off).
+- **Why it is not simply enabled**: it reports **57** problems in `src`, and **37 of them
+  are correct guards it wants deleted**. With `noUncheckedIndexedAccess` off, a
+  `Record<string, FileSystemNode>` lookup is typed as always-defined, so every
+  `if (!entityMap()[id])` reads as "always falsy" — while at runtime those lookups do
+  return `undefined` for an uncached search hit, a deleted node, or a project switch.
+  Acting on those reports would remove the guards this feature depends on.
+- **Measured cost of doing it honestly** (2026-11-06): turning
+  `noUncheckedIndexedAccess` on drops the rule's reports from 57 to 20 but produces
+  **134 TypeScript errors** — 12 in `tsconfig.app.json`, 122 in `tsconfig.spec.json`.
+- **What the 20 survivors actually are**: 16 redundant `?.` (13 in specs, 3 in
+  `folder-tree.ts`), two `while (true)` loops, one dead `if (listKey)` on a required
+  field, and two deliberate guards against DOM and Angular-forms types that lie
+  (`external-drop.service.ts:41`, `name-dialog.utils.ts:7`). **No defects.** That is the
+  argument for leaving it off: it costs 134 type errors to make meaningful and finds
+  nothing wrong.
+- **If the other laptop reports it**: the reports are explained above, not ignored. The
+  two it flags in `project-documents-drag.spec.ts` are the `files[0]` guard, which is
+  correct and must stay.
+- **What would change the decision**: enabling `noUncheckedIndexedAccess` for its own
+  sake, since honest index types are worth having independently. Then enable this rule
+  in the same change and clear the 20.
+- **Priority**: P3, and explicitly a decision rather than a defect.
 
 > (Two former items were resolved: `initialize`'s reduce-with-spread pipeline —
 > 2026-07-06, by the reactive `connectProject` refactor — and the duplicated

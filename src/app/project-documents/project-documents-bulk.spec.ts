@@ -228,8 +228,8 @@ describe('ProjectDocuments bulk actions', () => {
     }
 
     it('copies every selected row and keeps the clipboard for another paste', async () => {
-        const copy = spyOn(api, 'copy').and.callFake((_project, node, target) =>
-            of({ ...node, id: `${node.id}-copy`, parentId: target.id }));
+        const copy = spyOn(api, 'copy').and.callFake((_project, node, into) =>
+            of({ ...node, id: `${node.id}-copy`, parentId: into.id }));
         const chosen = selectTwoRows();
         const target = otherFolder(chosen);
 
@@ -244,8 +244,8 @@ describe('ProjectDocuments bulk actions', () => {
     });
 
     it('moves every cut row and spends the clipboard', async () => {
-        const move = spyOn(api, 'move').and.callFake((_project, node, target) =>
-            of({ ...node, parentId: target.id }));
+        const move = spyOn(api, 'move').and.callFake((_project, node, into) =>
+            of({ ...node, parentId: into.id }));
         const chosen = selectTwoRows();
         const target = otherFolder(chosen);
 

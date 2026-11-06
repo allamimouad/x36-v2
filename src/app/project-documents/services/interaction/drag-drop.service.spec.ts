@@ -374,9 +374,12 @@ describe('DragDropService native session and mutations', () => {
         await service.drop(event('drop'), destination.id);
 
         expect(move).toHaveBeenCalledTimes(2);
+        // Read before the loop: `destination` is reassigned per test, so a closure built
+        // in the loop would be reaching for a variable that moves underneath it.
+        const destinationId = destination.id;
         for (const node of uncached) {
             expect(store.entities().some((entity) =>
-                entity.name === node.name && entity.parentId === destination.id)).toBeTrue();
+                entity.name === node.name && entity.parentId === destinationId)).toBeTrue();
         }
     });
 
@@ -508,24 +511,39 @@ describe('DragDropService native session and mutations', () => {
         expect(navigation.currentFolderId()).toBe(destination.id);
     });
 
+    /**
+     * Built outside the loops below, because a test body declared inside them closes
+     * over the `let`s that `beforeEach` reassigns — safe only because the body runs
+     * afterwards, which is the reasoning `no-loop-func` cannot do.
+     */
+    function ignoresPendingCase(
+        operation: 'move' | 'copy',
+        projectId: string
+    ): () => Promise<void> {
+        return async (): Promise<void> => {
+            const response = new Subject<FileSystemNode>();
+            const mutation = spyOn(api, operation).and.returnValue(response);
+            start();
+            const pending = service.drop(event('drop', operation === 'copy'), destination.id);
+            expect(mutation).toHaveBeenCalledTimes(1);
+            await store.initialize(projectId);
+            const before = store.entities();
+            response.next({ ...source, id: 'stale-result', parentId: destination.id });
+            response.complete();
+            await pending;
+            expect(store.entities()).toEqual(before);
+            expect(store.entityMap()['stale-result']).toBeUndefined();
+            expect(notifications.success).not.toHaveBeenCalled();
+            expect(notifications.error).not.toHaveBeenCalled();
+        };
+    }
+
     for (const operation of ['move', 'copy'] as const) {
         for (const projectId of ['project', 'next-project']) {
-            it(`ignores pending ${operation} after reinitializing ${projectId}`, async () => {
-                const response = new Subject<FileSystemNode>();
-                const mutation = spyOn(api, operation).and.returnValue(response);
-                start();
-                const pending = service.drop(event('drop', operation === 'copy'), destination.id);
-                expect(mutation).toHaveBeenCalledTimes(1);
-                await store.initialize(projectId);
-                const before = store.entities();
-                response.next({ ...source, id: 'stale-result', parentId: destination.id });
-                response.complete();
-                await pending;
-                expect(store.entities()).toEqual(before);
-                expect(store.entityMap()['stale-result']).toBeUndefined();
-                expect(notifications.success).not.toHaveBeenCalled();
-                expect(notifications.error).not.toHaveBeenCalled();
-            });
+            it(
+                `ignores pending ${operation} after reinitializing ${projectId}`,
+                ignoresPendingCase(operation, projectId)
+            );
         }
     }
 });

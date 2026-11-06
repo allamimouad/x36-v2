@@ -47,7 +47,7 @@ describe('ProjectDocuments internal drag wiring', () => {
     }
 
     function element(selector: string): HTMLElement {
-        const host: HTMLElement = fixture.nativeElement;
+        const host = fixture.nativeElement as HTMLElement;
         const found = host.querySelector<HTMLElement>(selector);
         if (!found) { throw new Error(`Missing element: ${selector}`); }
 
@@ -79,39 +79,56 @@ describe('ProjectDocuments internal drag wiring', () => {
         return event;
     }
 
-    for (const sourceSurface of ['tree', 'table']) {
+    /**
+     * Built outside the loops below on purpose. Declaring the test body inside them
+     * closes over `api`, `drag`, `navigation` and `store`, which `beforeEach` reassigns
+     * for every test — safe here only because the body runs after that assignment, which
+     * is precisely the reasoning `no-loop-func` cannot do. A factory keeps the closure
+     * out of the loop and the surfaces explicit.
+     */
+    function connectsCase(
+        sourceSurface: 'tree' | 'table',
+        targetSurface: 'tree' | 'table' | 'current-folder'
+    ): () => Promise<void> {
+        return async (): Promise<void> => {
+            const source = folder('Contracts');
+            const target = targetSurface === 'tree' ? root('MARKETING') :
+                targetSurface === 'table' ? folder('Schedules') : root('EXECUTION');
+            const sourceSelector = sourceSurface === 'tree' ?
+                `[data-testid="pd-tree-node-${source.id}"]` :
+                `[data-testid="pd-row-${source.id}"]`;
+            const targetSelector = targetSurface === 'tree' ?
+                `[data-testid="pd-tree-node-${target.id}"]` :
+                targetSurface === 'table' ? `[data-testid="pd-row-${target.id}"]` :
+                    '.pd-current-folder-space';
+            const copying = targetSurface === 'current-folder';
+            const mutation = spyOn(api, copying ? 'copy' : 'move').and.callThrough();
+            const data = new DataTransfer();
+            expect(element(sourceSelector).draggable).toBeTrue();
+            const started = dispatch(element(sourceSelector), 'dragstart', data);
+            expect(started.defaultPrevented).toBeFalse();
+            await render();
+            const over = dispatch(element(targetSelector), 'dragover', data, copying);
+            expect(over.defaultPrevented).toBeTrue();
+            expect(drag.target()).toEqual({ id: target.id, surface: targetSurface });
+            dispatch(element(targetSelector), 'drop', data, copying);
+            await render();
+            expect(mutation).toHaveBeenCalledTimes(1);
+            expect(drag.state()).toBeNull();
+            expect(drag.target()).toBeNull();
+            expect(navigation.currentFolderId()).toBe(root('EXECUTION').id);
+            if (!copying) {
+                expect(store.entityMap()[source.id].parentId).toBe(target.id);
+            }
+        };
+    }
+
+    for (const sourceSurface of ['tree', 'table'] as const) {
         for (const targetSurface of ['tree', 'table', 'current-folder'] as const) {
-            it(`connects ${sourceSurface} to ${targetSurface}`, async () => {
-                const source = folder('Contracts');
-                const target = targetSurface === 'tree' ? root('MARKETING') :
-                    targetSurface === 'table' ? folder('Schedules') : root('EXECUTION');
-                const sourceSelector = sourceSurface === 'tree' ?
-                    `[data-testid="pd-tree-node-${source.id}"]` :
-                    `[data-testid="pd-row-${source.id}"]`;
-                const targetSelector = targetSurface === 'tree' ?
-                    `[data-testid="pd-tree-node-${target.id}"]` :
-                    targetSurface === 'table' ? `[data-testid="pd-row-${target.id}"]` :
-                        '.pd-current-folder-space';
-                const copying = targetSurface === 'current-folder';
-                const mutation = spyOn(api, copying ? 'copy' : 'move').and.callThrough();
-                const data = new DataTransfer();
-                expect(element(sourceSelector).draggable).toBeTrue();
-                const started = dispatch(element(sourceSelector), 'dragstart', data);
-                expect(started.defaultPrevented).toBeFalse();
-                await render();
-                const over = dispatch(element(targetSelector), 'dragover', data, copying);
-                expect(over.defaultPrevented).toBeTrue();
-                expect(drag.target()).toEqual({ id: target.id, surface: targetSurface });
-                dispatch(element(targetSelector), 'drop', data, copying);
-                await render();
-                expect(mutation).toHaveBeenCalledTimes(1);
-                expect(drag.state()).toBeNull();
-                expect(drag.target()).toBeNull();
-                expect(navigation.currentFolderId()).toBe(root('EXECUTION').id);
-                if (!copying) {
-                    expect(store.entityMap()[source.id].parentId).toBe(target.id);
-                }
-            });
+            it(
+                `connects ${sourceSurface} to ${targetSurface}`,
+                connectsCase(sourceSurface, targetSurface)
+            );
         }
     }
 

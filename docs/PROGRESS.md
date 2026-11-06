@@ -217,8 +217,24 @@ Still deferred for stated reasons: the container split (`docs/TODO.md` item 10) 
 own branch, and replacing the bulk specs' timer flushing waits on item 8, since the
 flushing exists to absorb the double initialization.
 
-**Verification (2026-11-05):** full headless suite **275/275**, production build, both
-TypeScript projects and repository lint pass. Reverting each of the four fourth-round
+**ESLint rules mirrored from the other laptop (2026-11-06).** Four classes were failing
+there and passing here, so the local config was weaker. `no-loop-func` and
+`@typescript-eslint/no-unsafe-assignment` are new; `no-shadow` was already enabled but
+its default `hoist: 'functions'` misses an inner name shadowing an outer one declared
+later in the file, and `hoist: 'all'` reproduced the reported error verbatim. Six errors
+fixed: three parameterised test loops now build their cases through a factory declared
+outside the loop, one `any` assignment is asserted, and two `callFake` parameters that
+shadowed a later `const target` are renamed.
+
+One rule is deliberately **not** mirrored, recorded as `docs/TODO.md` item 11:
+`no-unnecessary-condition` reports 57 problems of which 37 are correct guards it wants
+deleted, because `noUncheckedIndexedAccess` is off and every `entityMap()[id]` therefore
+reads as always-defined. Enabling that flag drops the reports to 20 but costs 134
+TypeScript errors, and the 20 survivors contain no defects.
+
+**Verification (2026-11-06):** full headless suite **275/275** — checked against a
+stashed tree to confirm the restructured parameterised loops lost no case — production
+build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round
 fixes failed exactly one test apiece, as did reverting `openSearch`'s clear and each of
 the three multi-select fallbacks. **Not yet verified in a real browser** — Ctrl/Shift
 ranges across sorted columns and dragging a search selection are the parts the headless
