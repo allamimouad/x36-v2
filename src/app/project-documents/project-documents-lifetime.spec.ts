@@ -9,11 +9,11 @@ import { ContextMenu } from 'primeng/contextmenu';
 import { DialogService } from 'primeng/dynamicdialog';
 import { Subject } from 'rxjs';
 import {
-    CURRENT_APP_INJECTION_TOKEN,
-    IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN,
-    IBPortalTargetApplication,
-    PopupService
-} from 'ibportal-web-ui-commons';
+    CURRENT_APPLICATION,
+    PopupService,
+    SUPPORT_EMAIL_ADDRESS,
+    TargetApplication
+} from './tokens/shared-ui';
 import { isFolder, type FileSystemNode } from './models/file-system-node.model';
 import { ProjectDocuments } from './project-documents';
 import { FileSystemApi } from './services/file-system/file-system-api';
@@ -42,9 +42,9 @@ describe('ProjectDocuments batch lifetime', () => {
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
             providers: [provideRouter([]), provideNoopAnimations(), DialogService, PopupService,
-                { provide: CURRENT_APP_INJECTION_TOKEN,
-                    useValue: IBPortalTargetApplication.PROJECTS },
-                { provide: IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN,
+                { provide: CURRENT_APPLICATION,
+                    useValue: TargetApplication.PROJECTS },
+                { provide: SUPPORT_EMAIL_ADDRESS,
                     useValue: 'support@example.invalid' },
                 ProjectOverviewService,
                 provideHttpClient(withInterceptorsFromDi()),

@@ -76,7 +76,7 @@ import { containsNode, topMostNodes } from './utils/node-containment.utils';
 import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
 import { MockFileSystemApi } from './services/mock/mock-file-system-api';
 import { ProjectOverviewService } from '../../services/project-overview.service';
-import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
+import { PopupService, TRACE_ID_HEADER } from './tokens/shared-ui';
 import {
     ConfirmationPopup,
     DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG

@@ -12,12 +12,12 @@ import { ContextMenu } from 'primeng/contextmenu';
 import { DialogService } from 'primeng/dynamicdialog';
 import { firstValueFrom, throwError } from 'rxjs';
 import {
-    CURRENT_APP_INJECTION_TOKEN,
-    IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN,
-    IBPortalTargetApplication,
+    CURRENT_APPLICATION,
     PopupService,
+    SUPPORT_EMAIL_ADDRESS,
+    TargetApplication,
     TRACE_ID_HEADER
-} from 'ibportal-web-ui-commons';
+} from './tokens/shared-ui';
 import { FileTable } from './components/file-table/file-table';
 import { FileLaunchService } from './services/interaction/file-launch.service';
 import {
@@ -51,9 +51,9 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
             providers: [provideRouter([]), provideNoopAnimations(), DialogService, PopupService,
-                { provide: CURRENT_APP_INJECTION_TOKEN,
-                    useValue: IBPortalTargetApplication.PROJECTS },
-                { provide: IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN,
+                { provide: CURRENT_APPLICATION,
+                    useValue: TargetApplication.PROJECTS },
+                { provide: SUPPORT_EMAIL_ADDRESS,
                     useValue: 'support@example.invalid' },
                 provideHttpClient(withInterceptorsFromDi()),
                 provideHttpClientTesting(),

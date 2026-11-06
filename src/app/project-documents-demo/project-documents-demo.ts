@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { DialogService } from 'primeng/dynamicdialog';
-import { PopupService } from 'ibportal-web-ui-commons';
+import { PopupService } from '../project-documents/tokens/shared-ui';
 import { ProjectDocuments } from '../project-documents/project-documents';
 import { ProjectOverviewService } from '../../services/project-overview.service';
 

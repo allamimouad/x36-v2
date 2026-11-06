@@ -1146,3 +1146,23 @@ API rather than a mock. The injector error is fixed either way; if a second wave
   highlight, 700ms expansion without navigation, and protected-source move rejection.
 - Desktop Escape/cursor details and real SharePoint operations remain acceptance
   items as described above. No backend endpoints or adapter methods were changed.
+
+### One point of contact with the shared UI package (2026-11-06)
+
+`src/app/project-documents/tokens/shared-ui.ts` re-exports everything this feature uses
+from the shared UI package — the popup service, the trace-id header, and the two
+application-context tokens — under local names. Every consumer imports from there, so
+the package's exported names are written once in the migrated tree instead of in six
+files.
+
+Re-exporting does not change identity: `PopupService` is the same class and the tokens
+are the same instances, so a `{ provide: … }` entry written against the local names
+matches what the application provides.
+
+**This file must travel with the feature.** If it is missed, the four container specs
+and `project-documents.ts` fail to resolve their imports — loudly, at compile time, not
+silently.
+
+The local stand-in now lives at `src/local/shared-ui-commons/`. The directory name is
+arbitrary; the module specifier in `tsconfig.json` is not, and still has to be the real
+package name for the migrated imports to resolve there.

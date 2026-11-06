@@ -336,6 +336,17 @@ measured instead of argued: it leaves **12** failures, because jasmine cannot sp
 method that does not exist and several tests click the real rendered confirmation
 dialog.
 
+**Shared-package imports funnelled through one file** (2026-11-06). At the user's
+request, the shared UI package's exported names no longer appear throughout the feature.
+`tokens/shared-ui.ts` re-exports what this feature uses under local names
+(`CURRENT_APPLICATION`, `SUPPORT_EMAIL_ADDRESS`, `TargetApplication`) and all six
+consumers import from there, so in the migrated tree the package is named in exactly one
+file instead of six. Re-exporting preserves identity, so the DI entries still match what
+the application provides. The stand-in directory was renamed to
+`src/local/shared-ui-commons/`; the `tsconfig.json` module specifier cannot change,
+since the migrated imports have to resolve against the real package. Suite, lint, build
+and both TypeScript projects verified after the move.
+
 **Verification (2026-11-06):** full headless suite **277/277** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round
