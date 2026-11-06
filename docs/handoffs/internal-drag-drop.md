@@ -882,6 +882,37 @@ folders, adding `Unavailable on open`. Ours already asserts **5**: `Contracts`,
 drop a folder and lose the recycle bin from the expectation — a regression, not a sync.
 Our seed exposes the bin as a child of the root and theirs evidently does not.
 
+### Compile errors reported from the other repo (2026-11-06)
+
+Both reproduced by simulating the stricter types locally rather than guessing, then
+fixed, then re-simulated to confirm.
+
+**TS2322, `navigation.store.spec.ts`:** a fixture wrote `accessLevel: 'READONLY'` as a
+raw string. Here the access-level type is a union of string literals so it assigns;
+there it is a real TypeScript `enum`, where only the member does. Now
+`FolderNodeResponseAccessLevelEnum.Readonly` — which is what the production files
+already use, and the proof that the member is spelled `Readonly` there is that those
+files compile in that repo today. **One occurrence in the whole tree**; swept for
+others and there were none.
+
+**TS2345, `project-documents.spec.ts` (4 sites):** `projectDTO.set({ name: 'X' })` and
+`set({})`. Our `ProjectOverviewService` is a local stub typed `{ name?: string | null }`;
+theirs is the generated `ProjectDTO` with about twelve required fields that say nothing
+about documents. The fixtures now assert through `OverviewDto`, an alias **derived from
+the service** — `NonNullable<ReturnType<ProjectOverviewService['projectDTO']>>` — rather
+than importing a type whose module path differs between the repos. It resolves to the
+loose stub here and to the full DTO there, and the assertion is legal both ways because
+the DTO is assignable to the partial.
+
+Verified by replacing the stub with a twelve-field required interface and a real `enum`
+and running both TypeScript projects: everything in `project-documents` compiles.
+
+**One site was found that their report did not list:**
+`project-documents-demo/project-documents-demo.ts:27` sets the same DTO. It is the local
+demo route from `app.routes.ts`, not part of the migrated feature, so it is left alone —
+a cast there would be dead weight. If that harness is ever migrated it needs the same
+treatment.
+
 ## Verification (2026-11-05)
 
 - Full headless suite **275 passed** — 258 through the first quality pass, which edited

@@ -270,6 +270,17 @@ applied: our `file-system.store.spec.ts` already copies into Contracts (via
 already asserts 5 folders including `Recycle Bin`, where hers asserts 4 — taking it would
 have been a regression.
 
+**Two compile errors reported from the other repo, both fixed** (2026-11-06). A fixture
+wrote `accessLevel: 'READONLY'` as a raw string, which assigns against our literal-union
+type but not against their real `enum`; it uses
+`FolderNodeResponseAccessLevelEnum.Readonly` now, the only such occurrence in the tree.
+And four `projectDTO.set({ … })` fixtures failed against their generated `ProjectDTO`
+with its dozen required fields; they assert through `OverviewDto`, an alias derived from
+the service rather than imported, so it resolves correctly in both repos. Both were
+reproduced locally first by swapping in a real `enum` and a twelve-field DTO, and
+re-checked the same way afterwards. That simulation also surfaced a third site their
+report did not list — the local demo route — left alone as it is not migrated.
+
 **Verification (2026-11-06):** full headless suite **278/278** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round

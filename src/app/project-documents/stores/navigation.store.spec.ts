@@ -1,4 +1,5 @@
 import { signal } from '@angular/core';
+import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 import type { DocumentListRoots } from '../models/document-list.model';
 import { TestBed } from '@angular/core/testing';
 import type { FileSystemNode, FolderNode } from '../models/file-system-node.model';
@@ -321,7 +322,11 @@ describe('NavigationStore load triggering', () => {
 
     it('combines folder access with list access and identifies the recycle bin', () => {
         reader.entityMap.update((nodes) => ({ ...nodes,
-            [fakeDocs.id]: { ...fakeDocs, accessLevel: 'READONLY', isRecycleBin: true }
+            [fakeDocs.id]: {
+                ...fakeDocs,
+                accessLevel: FolderNodeResponseAccessLevelEnum.Readonly,
+                isRecycleBin: true
+            }
         }));
         nav.navigateTo(fakeDocs.id);
         expect(nav.isListReadonly()).toBeFalse();

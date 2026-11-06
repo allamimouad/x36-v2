@@ -22,6 +22,16 @@ import { NavigationStore } from './stores/navigation.store';
 import { ProjectDocuments } from './project-documents';
 import { ProjectOverviewService } from '../../services/project-overview.service';
 
+/**
+ * The overview DTO as this component sees it, derived from the service rather than
+ * imported, so the alias follows whatever shape the service actually exposes.
+ *
+ * Only `name` is read here, and the real DTO carries a dozen required fields that say
+ * nothing about documents — so the fixtures below assert the partial rather than
+ * inventing values the assertions never look at.
+ */
+type OverviewDto = NonNullable<ReturnType<ProjectOverviewService['projectDTO']>>;
+
 describe('ProjectDocuments access and recycle-bin integration', () => {
     let fixture: ComponentFixture<ProjectDocuments>;
     let store: InstanceType<typeof FileSystemStore>;
@@ -44,7 +54,7 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
                 } }
             ]
         }).compileComponents();
-        TestBed.inject(ProjectOverviewService).projectDTO.set({ name: 'Project' });
+        TestBed.inject(ProjectOverviewService).projectDTO.set({ name: 'Project' } as OverviewDto);
         fixture = TestBed.createComponent(ProjectDocuments);
         fixture.componentRef.setInput('id', 'project-123');
         store = fixture.debugElement.injector.get(FileSystemStore);
@@ -107,7 +117,7 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         await render();
         expect(host().querySelector('.pd-project-name')?.textContent?.trim()).toBe('');
 
-        overview.projectDTO.set({ name: 'Loaded project' });
+        overview.projectDTO.set({ name: 'Loaded project' } as OverviewDto);
         await render();
         expect(host().querySelector('.pd-project-name')?.textContent?.trim())
             .toBe('Loaded project');
@@ -116,12 +126,12 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
             'Loaded project - Execution Documents', 'Loaded project - Marketing Documents'
         ]);
 
-        overview.projectDTO.set({ name: 'Renamed project' });
+        overview.projectDTO.set({ name: 'Renamed project' } as OverviewDto);
         await render();
         expect(host().querySelector('.pd-project-name')?.textContent?.trim())
             .toBe('Renamed project');
 
-        overview.projectDTO.set({});
+        overview.projectDTO.set({} as OverviewDto);
         await render();
         expect(host().querySelector('.pd-project-name')?.textContent?.trim()).toBe('');
     });
