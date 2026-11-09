@@ -53,6 +53,7 @@ import {
     PROJECT_DOCUMENTS_TOAST_KEY
 } from './services/interaction/notification.service';
 import { UploadService } from './services/upload/upload.service';
+import { RecycleBinService } from './services/interaction/recycle-bin.service';
 import { DocumentSearchService } from './services/search/document-search.service';
 import { FileSystemReader } from './stores/file-system-reader';
 import { FileSystemStore } from './stores/file-system.store';
@@ -93,12 +94,11 @@ import {
     uploadMenuItems
 } from './services/interaction/context-menu.builder';
 import { ProjectOverviewService } from '../../services/project-overview.service';
-import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
+import { PopupService } from 'ibportal-web-ui-commons';
 import {
     ConfirmationPopup,
     DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG
 } from '@shared/components/confirmation-popup/confirmation-popup';
-import { HttpErrorResponse } from '@angular/common/http';
 import { SearchResults } from './components/search-results/search-results';
 import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -145,7 +145,8 @@ interface PendingDelete {
         MessageService,
         NotificationService,
         UploadService,
-        DocumentSearchService
+        DocumentSearchService,
+        RecycleBinService
     ],
     templateUrl: './project-documents.html',
     styleUrl: './project-documents.scss'
@@ -398,6 +399,7 @@ export class ProjectDocuments {
     private destroyed = false;
     private readonly popupService = inject(PopupService);
     private readonly bulk = inject(BulkOperationService);
+    private readonly recycleBin = inject(RecycleBinService);
     private readonly router = inject(Router);
     private readonly activatedRoute = inject(ActivatedRoute);
 
@@ -1397,8 +1399,10 @@ export class ProjectDocuments {
             openDesktop: (file): void => { this.openInDesktopApplication(file); },
             openOnline: (file): void => { this.openInOnlineApplication(file); },
             download: (file): void => { this.downloadFile(file); },
-            restore: (node): void => { void this.restoreRecycleBinItem(node); },
-            deletePermanently: (node): void => { this.deleteRecycleBinItem(node); },
+            restore: (node): void => { void this.recycleBin.restore(node); },
+            deletePermanently: (node): void => {
+                this.recycleBin.requestPermanentDelete(node);
+            },
             openSearchResultLocation: (result): void => {
                 void this.openSearchResultLocation(result);
             },
@@ -1406,54 +1410,6 @@ export class ProjectDocuments {
                 void this.onSearchResultActivated(result);
             }
         };
-    }
-
-    private deleteRecycleBinItem(node: FileSystemNode): void {
-        this.popupService.showPopup(
-            ConfirmationPopup,
-            { ...DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG, width: '28rem' },
-            {
-                confirmButtonText: 'Confirm',
-                declineButtonText: 'Cancel',
-                message: `Are you sure you want to permanently delete "${node.name}" ${node.kind}?`,
-                onAccept: () => void this.confirmDeleteRecycleBinItem(node)
-            }
-        );
-    }
-
-    private async confirmDeleteRecycleBinItem(node: FileSystemNode): Promise<void> {
-        try {
-            await this.fileSystem.deleteRecycleBinNodes(node.id);
-            this.notifications.success(
-                `The ${node.kind} "${node.name}" has been successfully deleted.`
-            );
-        } catch (error) {
-            this.notifications.error(error);
-        }
-    }
-
-    private async restoreRecycleBinItem(node: FileSystemNode): Promise<void> {
-        try {
-            await this.fileSystem.restoreRecycleBinNodes(node.id);
-            this.notifications.success(
-                `The ${node.kind} "${node.name}" has been successfully restored.`
-            );
-        } catch (error) {
-            const sharepointError = error instanceof HttpErrorResponse
-                ? (error.error as { message: string })
-                : undefined;
-            this.popupService.showErrorPopupWithReportAction({
-                title: 'Cannot restore the item',
-                message: sharepointError?.message || 'An error occurred when trying to ' +
-                    'restore the item. Please refresh and try again.',
-                escapeMessage: true,
-                traceId:
-                    error instanceof HttpErrorResponse
-                        ? error.headers.get(TRACE_ID_HEADER) ?? undefined
-                        : undefined,
-                isClosable: true
-            });
-        }
     }
 
     /** Default open action: the local application when available, the online one otherwise. */
