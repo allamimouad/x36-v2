@@ -326,29 +326,48 @@
   code lacked. Worth doing only if the window is observed to matter.
 - **Priority**: P3 — bounded, self-healing, and no worse than the behaviour it replaced.
 
-## 10. `ProjectDocuments` is 1,548 effective lines behind an eslint waiver
+## 10. `ProjectDocuments` is still past the `max-lines` waiver
 
-- **Where**: `src/app/project-documents/project-documents.ts:1`, which opens with
-  `/* eslint-disable max-lines -- Existing orchestration container; split by
-  responsibility later. */` against a repository limit of 500.
-- **Problem**: it is the only file in the feature with no size discipline, and the
-  internal drag-and-drop work added roughly 150 lines to it — selection resolution,
-  bulk orchestration, the search-selection reconciliation — without paying any of it
-  back. Everything in it is reachable from everything else, so each addition is cheap to
-  make and the file is progressively harder to read.
-- **The seam that is already clean**: the ten context-menu builders, `getContextMenu`
-  through `showContextMenu` (around lines 1380–1660, roughly 300 lines). They take a
-  node and a surface and return `MenuItem[]`; they depend on the stores and a handful of
-  predicates, not on the container's own state machine. A `ProjectDocumentsMenus`
-  service, or a plain module of builder functions taking an explicit context, would move
-  them out without touching behaviour.
-- **Why it was not done with the drag work**: that branch carries fifteen-plus commits of
-  behaviour change that someone has to review. Burying a 300-line move inside it makes
-  that review harder, not easier, and a refactor whose diff is indistinguishable from the
-  feature it travels with is the kind nobody checks. It wants its own branch and its own
-  "no test edits" rule, the same one the 2026-11-05 quality pass used.
-- **Priority**: P3 — no defect, pure maintainability, but it compounds with every feature
-  added to the container.
+**Stage 1 done (2026-11-09): 1,564 -> 1,300 effective lines**, five extractions, each
+its own commit and each verified at 277/277 with the template byte-identical.
+
+| Moved to | Effective |
+|---|---|
+| `utils/tree-section.utils.ts` | -24 |
+| `utils/bootstrap.utils.ts` (helpers, then the deep-link parser) | -29 |
+| `services/interaction/context-menu.builder.ts` | -170 |
+| `services/interaction/recycle-bin.service.ts` | -41 |
+
+The menu builder is the one worth knowing about: it follows `drag-drop-policy.ts` —
+pure functions over a capabilities object of plain values and an actions object of
+callbacks — so nothing in it reaches a store, and what each entry offers can be read in
+one place. The search-result menus moved with it; they had been built inline, duplicating
+the folder menu's structure with different locking rules.
+
+**What the first estimate got wrong**: Stage 1 was planned at ~1,050 and landed at 1,300.
+The block measurements counted neighbouring code that did not move, and every extraction
+leaves a delegation behind. Measure the methods, not the line range, next time.
+
+**Still over budget by 800.** What remains, measured:
+
+| Candidate | Effective |
+|---|---|
+| external drop + upload pickers | ~114 |
+| search handlers | ~113 |
+| bulk delete / paste / selection privates | ~113 |
+| rename, delete, clipboard | ~102 |
+| path bar + history | ~94 |
+| the three `observe*` effects | ~52 |
+| fields and computeds at the top of the class | ~200 |
+
+Reaching 500 means moving essentially all of it, **including component state** — the
+search, external-drop and inline-rename signals would have to live in the services that
+own those concerns. That turns the container into a thin shell over six or so services.
+It is a real option, not a fantasy, but it is a different size of change from Stage 1 and
+should be decided deliberately rather than drifted into.
+
+**The `/* eslint-disable max-lines */` stays until then**, and its comment should keep
+saying what is left.
 
 ## 11. `no-unnecessary-condition` needs `noUncheckedIndexedAccess` first
 

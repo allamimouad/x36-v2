@@ -401,6 +401,20 @@ along with the now-unused `kind` parameter. Measured over five consecutive runs:
 to a 23.96-24.32 s band**, 23% faster, with the run-to-run spread down to 0.36 s and
 277/277 every time. `docs/TODO.md` item 13 closes.
 
+**`ProjectDocuments` shrank by a sixth** (2026-11-09, Stage 1). The user overruled the
+recommendation to defer this to its own branch, so it happens here. Five extractions,
+one commit each, every one verified at 277/277 with `project-documents.html` byte-
+identical and no test edited: tree-section building and the bootstrap helpers became pure
+utils, the deep-link query parser joined them, every context menu moved into
+`context-menu.builder.ts`, and the recycle-bin operations became a component-provided
+service. **1,564 -> 1,300 effective lines.** The menu builder is the substantive one: it
+follows the `drag-drop-policy.ts` pattern, so the menus no longer reach a store, and the
+search-result menus — previously built inline, duplicating the folder menu with different
+locking rules — moved in beside the others. Two stale doc comments were found and
+removed on the way, both orphaned by earlier deletions. Stage 1 was planned at ~1,050 and
+landed at 1,300; the estimate counted neighbouring code that did not move. `docs/TODO.md`
+item 10 carries the measured remainder and what reaching 500 would actually cost.
+
 **Verification (2026-11-06):** full headless suite **277/277** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round
