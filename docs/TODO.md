@@ -425,32 +425,32 @@ declare the part that is known and leave the rest `unknown` rather than guessing
 or, worse, omitting the field.
 
 
-## 13. The mock's write latency ignores its own configuration
+## 13. The mock's write latency ignored its own configuration — resolved 2026-11-09
 
-`MockFileSystemApi.latencyMs` raises the ceiling for writes by a fixed 200 ms, whatever
-the injected config says:
+`MockFileSystemApi.latencyMs` added a fixed 200 ms ceiling to **writes** whatever the
+injected config said:
 
 ```ts
 const max = kind === 'read' ? this.config.maxLatencyMs : this.config.maxLatencyMs + 200;
 ```
 
-A spec that provides `MOCK_CONFIG` with `minLatencyMs: 0, maxLatencyMs: 0` is asking for
-deterministic writes and gets a random 0-200 ms instead. That is not theoretical: it
-produced a real flake while the recycle-bin confirmation tests were being converted
-(2026-11-09). The test was fixed at its own end, by running the accepted callback inside
-the zone so `whenStable` waits for the tracked timer, but the mock is still the cause.
+Every spec in the feature — 13 files — sets `minLatencyMs: 0, maxLatencyMs: 0`, and not
+one of them got it; each write took a random 0-200 ms instead. That is what produced the
+flake chased down while the recycle-bin confirmation tests were being converted. Those two
+specs were fixed at their own end by running the accepted callback inside the zone, where
+`whenStable` waits for the tracked timer; this entry was the cause still standing behind
+them.
 
-**Related exposure, since fixed** (2026-11-09): `project-documents-bulk.spec.ts`
-(`acceptPopup`) and `project-documents-lifetime.spec.ts` invoked `onAccept` from outside
-the zone and waited with `flushTimers`, which covers roughly 40 ms against a write that
-may take 200. They passed by luck rather than construction. Both now run the callback
-through `fixture.ngZone?.run(...)`, so `whenStable` waits for the tracked timer. Three
-consecutive full runs green.
+`latencyMs` now honours the configured range for reads and writes alike, and `kind` is
+gone with it. Measured: the suite went from **31.3 s to a 23.96-24.32 s band across five
+consecutive runs**, a 23% drop, and the spread between runs fell to 0.36 s. All five were
+277/277, so nothing was relying on the extra delay.
 
-**Priority**: P2. Honouring the configured maximum is a two-line change, but it makes
-every mock write faster and could unmask other tests that are currently winning the same
-race, so it wants its own commit and a few repeated runs.
+Demo behaviour is unchanged in character: `DEFAULT_MOCK_CONFIG` is 150-400 ms, so writes
+went from 150-600 ms to 150-400 ms.
 
+**The rule worth keeping**: a caller that configures zero latency is asking for
+deterministic timing, and a mock that quietly adds its own is not a mock of anything.
 
 > (Two former items were resolved: `initialize`'s reduce-with-spread pipeline —
 > 2026-07-06, by the reactive `connectProject` refactor — and the duplicated

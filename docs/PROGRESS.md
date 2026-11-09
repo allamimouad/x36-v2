@@ -384,6 +384,23 @@ no longer preloaded by `index.html` nor referenced by `main`. That restores the 
 baseline this branch had before the regression. Demo-only: nothing on the migration copy
 list is affected.
 
+**The shared-UI barrel was removed** (2026-11-09, correcting the 2026-11-06 entry above).
+`tokens/shared-ui.ts` existed to alias the two application-context tokens on the way
+through, so the long names appeared once rather than in every spec. Once the specs moved
+to a popup stub those tokens had no consumer in this feature, and the file was left
+re-exporting `PopupService` and `TRACE_ID_HEADER` unchanged — indirection with nothing
+behind it, and the user queried it on sight. Deleted; the six consumers import from the
+package directly again, which is what the destination's own code does. What remains of
+the package name in the migrated tree is five import statements, which an import cannot
+avoid.
+
+**The mock honours its configured latency** (2026-11-09). `latencyMs` added a fixed
+200 ms to every write regardless of config, so the 13 specs that ask for zero never got
+it — the cause behind the flake found while converting the recycle-bin tests. Removed,
+along with the now-unused `kind` parameter. Measured over five consecutive runs: **31.3 s
+to a 23.96-24.32 s band**, 23% faster, with the run-to-run spread down to 0.36 s and
+277/277 every time. `docs/TODO.md` item 13 closes.
+
 **Verification (2026-11-06):** full headless suite **277/277** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round
