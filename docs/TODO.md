@@ -425,6 +425,32 @@ declare the part that is known and leave the rest `unknown` rather than guessing
 or, worse, omitting the field.
 
 
+## 13. The mock's write latency ignores its own configuration
+
+`MockFileSystemApi.latencyMs` raises the ceiling for writes by a fixed 200 ms, whatever
+the injected config says:
+
+```ts
+const max = kind === 'read' ? this.config.maxLatencyMs : this.config.maxLatencyMs + 200;
+```
+
+A spec that provides `MOCK_CONFIG` with `minLatencyMs: 0, maxLatencyMs: 0` is asking for
+deterministic writes and gets a random 0-200 ms instead. That is not theoretical: it
+produced a real flake while the recycle-bin confirmation tests were being converted
+(2026-11-09). The test was fixed at its own end, by running the accepted callback inside
+the zone so `whenStable` waits for the tracked timer, but the mock is still the cause.
+
+**Related exposure, not yet addressed**: `project-documents-bulk.spec.ts` (`acceptPopup`)
+and `project-documents-lifetime.spec.ts` invoke `onAccept` from outside the zone and wait
+with `flushTimers`, which covers roughly 40 ms against a write that may take 200. They
+pass consistently today by luck, not by construction. The same one-line change —
+`fixture.ngZone?.run(...)` — would make them deterministic.
+
+**Priority**: P2. Honouring the configured maximum is a two-line change, but it makes
+every mock write faster and could unmask other tests that are currently winning the same
+race, so it wants its own commit and a few repeated runs.
+
+
 > (Two former items were resolved: `initialize`'s reduce-with-spread pipeline —
 > 2026-07-06, by the reactive `connectProject` refactor — and the duplicated
 > template tree sections — 2026-07-08, by the tree-splitter work plus a

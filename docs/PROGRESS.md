@@ -347,6 +347,29 @@ the application provides. The stand-in directory was renamed to
 since the migrated imports have to resolve against the real package. Suite, lint, build
 and both TypeScript projects verified after the move.
 
+**The component stopped choosing its own backend** (2026-11-09). `ProjectDocuments` no
+longer carries `{ provide: FileSystemApi, useClass: MockFileSystemApi }`;
+`provideProjectDocuments({ api })` returns `EnvironmentProviders`, so the adapter is
+chosen in a route or the application config and never inside a component. The earlier
+rationale for the hardcoded binding is superseded: its own last clause, that component
+providers shadow parents, is precisely why neither a host nor a test could substitute
+anything, and that was the root of the `HttpClient` report. Three measured costs are
+recorded in the handoff, including the mock's 446-line seed shipping in the built output,
+now out of `main`. The four container specs provide the adapter exactly as the nine other
+specs in this feature already did.
+
+**Popup assertions moved off the library's markup** (2026-11-09). Four tests asserted
+`[data-testid="confirmation-popup-confirm"]` and `<pr-error-popup>`, which are the local
+stand-ins' DOM; the real shared components use classes and a different element name.
+Rewriting the selectors was rejected as trading one version of the problem for another,
+so the assertions moved to what the component asks the popup for, which is identical in
+both repos. No behavioural coverage lost. `PopupService` is now a stub in the specs,
+which also drops the two application-context tokens from test setup. Converting them
+surfaced a real flake, recorded as `docs/TODO.md` item 13: the mock adds 200 ms to writes
+regardless of configuration, and a callback invoked outside the zone has nothing waiting
+for it. Fixed by running it where the dialog's button would; three consecutive full runs
+green.
+
 **Verification (2026-11-06):** full headless suite **277/277** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round

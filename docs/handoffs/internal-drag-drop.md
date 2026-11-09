@@ -950,9 +950,9 @@ Path: DocumentsAPIService2 -> _HttpClient
 ```
 
 One cause behind all of them, and nothing to do with the test logic. The four specs that
-build `ProjectDocuments` provided no `HttpClient`. That passes here only because this
-component hardcodes `{ provide: FileSystemApi, useClass: MockFileSystemApi }`, so nothing
-HTTP-backed is ever constructed. In the destination the component graph reaches
+build `ProjectDocuments` provided no `HttpClient`. That passed here only because the
+component hardcoded `{ provide: FileSystemApi, useClass: MockFileSystemApi }`, so nothing
+HTTP-backed was ever constructed (that binding has since moved out; see below). In the destination the component graph reaches
 `DocumentsAPIService`, which injects `HttpClient`, and the injector has nowhere to get
 it.
 
@@ -1166,3 +1166,98 @@ silently.
 The local stand-in now lives at `src/local/shared-ui-commons/`. The directory name is
 arbitrary; the module specifier in `tsconfig.json` is not, and still has to be the real
 package name for the migrated imports to resolve there.
+
+### The component no longer chooses its own backend (2026-11-09)
+
+`ProjectDocuments` used to carry `{ provide: FileSystemApi, useClass: MockFileSystemApi }`
+in its own `providers`. That was recorded in PROGRESS as a considered decision — *"one
+consumer, one swap; self-contained beats pluggable, and component providers shadow
+parents anyway"*. The third clause was the mistake: shadowing is exactly why a host and a
+test **cannot** substitute the adapter, which turned out to be the root of two separate
+failure reports.
+
+Three costs, each measured rather than argued:
+
+1. **It pulled the mock into the production bundle.** The component imported
+   `MockFileSystemApi` statically, so the 1,100-line mock unit and its 446-line seed were
+   in the built output. They are now in a lazily loaded chunk of the demo route, out of
+   `main`, and a host that provides a real adapter never references them at all.
+2. **It caused the `HttpClient` failures.** Once the destination edited that line to its
+   own adapter, every container spec constructed the real adapter, its generated client
+   and `HttpClient`. Nothing in a spec could override it, because component providers win.
+3. **Migration meant editing a shared component.** Phase 6 said "swap `useClass` in
+   `project-documents.ts`". Configuring a component by editing it is what DI exists to
+   avoid.
+
+`provideProjectDocuments({ api })` replaces it, returning `EnvironmentProviders` so the
+choice can only be made in a route or the application config — never buried in a
+component again. The demo route makes that choice with the mock; a host makes it with its
+adapter. The feature's other providers stay on the component, because they are
+per-instance state rather than a choice of implementation.
+
+The four container specs now provide the adapter the same way the **nine other specs in
+this feature already did**. That consistency was the strongest argument for the change:
+the component was the only exception to a pattern the codebase had already settled on.
+
+### Popup assertions moved to the service boundary (2026-11-09)
+
+Four tests in `project-documents.spec.ts` asserted the *markup* of the popups —
+`[data-testid="confirmation-popup-confirm"]`, `<pr-error-popup>`. Those attributes and
+that selector belong to the local stand-ins; the real shared components use classes and a
+different element name, so the tests could not pass in both repos. Fifth instance of a
+stand-in differing from the real thing.
+
+Rewriting the selectors to match the real markup was rejected: it would couple these
+specs to another team's CSS and break here, where that markup does not exist. The
+assertions moved down to the service boundary instead — what this component *asks* the
+popup for — which is identical in both repos and was already the style of the other three
+container specs:
+
+```ts
+expect(showError).toHaveBeenCalledOnceWith({
+    title: 'Cannot restore the item',
+    message: '<b>Original name exists</b>',
+    escapeMessage: true,
+    traceId: 'restore-trace-123',
+    isClosable: true
+});
+```
+
+No behavioural coverage was lost: confirmation is still required before a permanent
+delete, accepting still deletes, declining still keeps the record, and the restore errors
+still carry their message and trace id. What was dropped is the re-testing of a shared
+component this feature does not own.
+
+With that done, `PopupService` is reached only through spies, so the specs provide a
+small stub instead of the real class. That also removes the need for the two
+application-context tokens in test setup, and sidesteps the destination's report that the
+real service's generated factory crashes under Karma.
+
+### A latent race the old test was too quick to see (2026-11-09)
+
+Converting those tests surfaced a genuine flake. `MockFileSystemApi.latencyMs` adds a
+fixed 200 ms ceiling to **writes** regardless of configuration:
+
+```ts
+const max = kind === 'read' ? this.config.maxLatencyMs : this.config.maxLatencyMs + 200;
+```
+
+So a spec configured with `maxLatencyMs: 0` still gets a write taking a random 0–200 ms.
+A real button click schedules that timer inside the Angular zone, where
+`fixture.whenStable()` waits for it; invoking the captured `onAccept` straight from a
+spec runs outside the zone, where it waits for nothing. Ten rounds of `setTimeout(0)`
+cover roughly 40 ms, so the assertion won or lost by luck.
+
+Fixed by invoking the callback where the dialog's own button would:
+
+```ts
+fixture.ngZone?.run(() => { props.onAccept(); });
+```
+
+Three consecutive full runs green afterwards.
+
+**Still open, and worth a look.** `project-documents-bulk.spec.ts` and
+`project-documents-lifetime.spec.ts` invoke `onAccept` outside the zone and rely on
+`flushTimers`, so they have the same exposure. They pass consistently today, but that is
+luck rather than design. The `+ 200` itself also looks wrong: a spec that configures zero
+latency is asking for deterministic writes. Both are recorded in `docs/TODO.md`.

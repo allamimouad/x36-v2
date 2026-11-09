@@ -8,15 +8,12 @@ import type { MenuItem } from 'primeng/api';
 import { ContextMenu } from 'primeng/contextmenu';
 import { DialogService } from 'primeng/dynamicdialog';
 import { Subject } from 'rxjs';
-import {
-    CURRENT_APPLICATION,
-    PopupService,
-    SUPPORT_EMAIL_ADDRESS,
-    TargetApplication
-} from './tokens/shared-ui';
+import { PopupService } from './tokens/shared-ui';
 import { isFolder, type FileSystemNode } from './models/file-system-node.model';
 import { ProjectDocuments } from './project-documents';
 import { FileSystemApi } from './services/file-system/file-system-api';
+import { MockFileSystemApi } from './services/mock/mock-file-system-api';
+import { provideProjectDocuments } from './project-documents.providers';
 import { MOCK_CONFIG } from './services/mock/mock-config.token';
 import {
     DEFAULT_FILE_MANAGER_CONFIG, FILE_MANAGER_CONFIG
@@ -33,6 +30,17 @@ import { ProjectOverviewService } from '../../services/project-overview.service'
  * Concurrency is pinned to 1 so a two-item batch leaves the second waiting, which is the
  * only window where the guard can be observed at all.
  */
+/**
+ * The popup service is reached only through spies here: these specs assert what this
+ * component asks for, not how the shared popup renders it, which is that component's
+ * own responsibility. A stub keeps the assertions independent of its markup and of
+ * whatever the real service injects.
+ */
+class StubPopupService {
+    public showPopup(): null { return null; }
+    public showErrorPopupWithReportAction(): null { return null; }
+}
+
 describe('ProjectDocuments batch lifetime', () => {
     let fixture: ComponentFixture<ProjectDocuments>;
     let navigation: InstanceType<typeof NavigationStore>;
@@ -41,17 +49,15 @@ describe('ProjectDocuments batch lifetime', () => {
     beforeEach(async () => {
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
-            providers: [provideRouter([]), provideNoopAnimations(), DialogService, PopupService,
-                { provide: CURRENT_APPLICATION,
-                    useValue: TargetApplication.PROJECTS },
-                { provide: SUPPORT_EMAIL_ADDRESS,
-                    useValue: 'support@example.invalid' },
+            providers: [provideRouter([]), provideNoopAnimations(), DialogService,
+                { provide: PopupService, useClass: StubPopupService },
                 ProjectOverviewService,
                 provideHttpClient(withInterceptorsFromDi()),
                 provideHttpClientTesting(),
                 { provide: FILE_MANAGER_CONFIG, useValue: {
                     ...DEFAULT_FILE_MANAGER_CONFIG, bulkOpConcurrency: 1
                 } },
+                provideProjectDocuments({ api: MockFileSystemApi }),
                 { provide: MOCK_CONFIG, useValue: {
                     minLatencyMs: 0, maxLatencyMs: 0, errorRate: 0, enableErrors: false
                 } }

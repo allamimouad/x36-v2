@@ -374,8 +374,13 @@ pickers or external OS drag-and-drop, with progress.
 - Preserve the implemented raw-body upload progress, cancellation, response, and typed
   error behavior when connecting the generated client; keep the frontend contract
   compatible with a future single-request streaming transport
-- In `project-documents.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
-- Only after that swap, optionally delete `services/mock/` (mock backend + seed + mock config token) and the two `stores/*.spec.ts` if unit tests aren't kept in that repo
+- Call `provideProjectDocuments({ api: SharePointFileSystemApi })` in the route that
+  mounts the feature. The component does not bind `FileSystemApi` itself, so there is
+  nothing to edit inside `project-documents.ts` and no component to re-review
+- Keep `services/mock/` for the tests. The specs provide `MockFileSystemApi` through the
+  same function, and because nothing in the feature imports it any more, a host that
+  provides the real adapter never pulls the mock into its production bundle — which was
+  the only reason deleting it was ever on this list
 - Popup imports/calls already match the photographed PRs. Keep the destination's
   `ibportal-web-ui-commons` package and
   `@shared/components/confirmation-popup/confirmation-popup`. Local equivalents

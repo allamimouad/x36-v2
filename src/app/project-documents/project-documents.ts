@@ -42,7 +42,6 @@ import {
 } from './models/file-system-node.model';
 import { FileSystemError } from './models/file-system-error.model';
 import type { SelectionRequest } from './models/selection-request.model';
-import { FileSystemApi } from './services/file-system/file-system-api';
 import { DragDropService } from './services/interaction/drag-drop.service';
 import { BulkOperationService, doneOf } from './services/interaction/bulk-operation.service';
 import {
@@ -74,7 +73,6 @@ import type {
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
 import { containsNode, topMostNodes } from './utils/node-containment.utils';
 import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
-import { MockFileSystemApi } from './services/mock/mock-file-system-api';
 import { ProjectOverviewService } from '../../services/project-overview.service';
 import { PopupService, TRACE_ID_HEADER } from './tokens/shared-ui';
 import {
@@ -134,8 +132,7 @@ interface PendingDelete {
         MessageService,
         NotificationService,
         UploadService,
-        DocumentSearchService,
-        { provide: FileSystemApi, useClass: MockFileSystemApi }
+        DocumentSearchService
     ],
     templateUrl: './project-documents.html',
     styleUrl: './project-documents.scss'

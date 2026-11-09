@@ -5,22 +5,30 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { DialogService } from 'primeng/dynamicdialog';
 import { Subject } from 'rxjs';
-import {
-    CURRENT_APPLICATION,
-    PopupService,
-    SUPPORT_EMAIL_ADDRESS,
-    TargetApplication
-} from './tokens/shared-ui';
+import { PopupService } from './tokens/shared-ui';
 import type { FileSystemNode, FolderNode } from './models/file-system-node.model';
 import { isFolder } from './models/file-system-node.model';
 import { ProjectDocuments } from './project-documents';
 import { FileSystemApi } from './services/file-system/file-system-api';
+import { MockFileSystemApi } from './services/mock/mock-file-system-api';
+import { provideProjectDocuments } from './project-documents.providers';
 import { DragDropService } from './services/interaction/drag-drop.service';
 import { UploadService } from './services/upload/upload.service';
 import { MOCK_CONFIG } from './services/mock/mock-config.token';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore } from './stores/navigation.store';
 import { ProjectOverviewService } from '../../services/project-overview.service';
+
+/**
+ * The popup service is reached only through spies here: these specs assert what this
+ * component asks for, not how the shared popup renders it, which is that component's
+ * own responsibility. A stub keeps the assertions independent of its markup and of
+ * whatever the real service injects.
+ */
+class StubPopupService {
+    public showPopup(): null { return null; }
+    public showErrorPopupWithReportAction(): null { return null; }
+}
 
 describe('ProjectDocuments internal drag wiring', () => {
     let fixture: ComponentFixture<ProjectDocuments>;
@@ -31,13 +39,11 @@ describe('ProjectDocuments internal drag wiring', () => {
 
     beforeEach(async () => {
         await TestBed.configureTestingModule({ imports: [ProjectDocuments], providers: [
-            provideRouter([]), provideNoopAnimations(), DialogService, PopupService,
-            { provide: CURRENT_APPLICATION,
-                useValue: TargetApplication.PROJECTS },
-            { provide: SUPPORT_EMAIL_ADDRESS,
-                useValue: 'support@example.invalid' },
+            provideRouter([]), provideNoopAnimations(), DialogService,
+            { provide: PopupService, useClass: StubPopupService },
             ProjectOverviewService,
             provideHttpClient(withInterceptorsFromDi()), provideHttpClientTesting(),
+            provideProjectDocuments({ api: MockFileSystemApi }),
             { provide: MOCK_CONFIG, useValue: {
                 minLatencyMs: 0, maxLatencyMs: 0, errorRate: 0, enableErrors: false
             } }

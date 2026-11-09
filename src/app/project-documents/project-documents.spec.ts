@@ -11,19 +11,15 @@ import type { MenuItem } from 'primeng/api';
 import { ContextMenu } from 'primeng/contextmenu';
 import { DialogService } from 'primeng/dynamicdialog';
 import { firstValueFrom, throwError } from 'rxjs';
-import {
-    CURRENT_APPLICATION,
-    PopupService,
-    SUPPORT_EMAIL_ADDRESS,
-    TargetApplication,
-    TRACE_ID_HEADER
-} from './tokens/shared-ui';
+import { PopupService, TRACE_ID_HEADER } from './tokens/shared-ui';
 import { FileTable } from './components/file-table/file-table';
 import { FileLaunchService } from './services/interaction/file-launch.service';
 import {
     isFolder, type FileSystemNode, type FolderNode
 } from './models/file-system-node.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
+import { MockFileSystemApi } from './services/mock/mock-file-system-api';
+import { provideProjectDocuments } from './project-documents.providers';
 import { MOCK_CONFIG } from './services/mock/mock-config.token';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore } from './stores/navigation.store';
@@ -40,6 +36,17 @@ import { ProjectOverviewService } from '../../services/project-overview.service'
  */
 type OverviewDto = NonNullable<ReturnType<ProjectOverviewService['projectDTO']>>;
 
+/**
+ * The popup service is reached only through spies here: these specs assert what this
+ * component asks for, not how the shared popup renders it, which is that component's
+ * own responsibility. A stub keeps the assertions independent of its markup and of
+ * whatever the real service injects.
+ */
+class StubPopupService {
+    public showPopup(): null { return null; }
+    public showErrorPopupWithReportAction(): null { return null; }
+}
+
 describe('ProjectDocuments access and recycle-bin integration', () => {
     let fixture: ComponentFixture<ProjectDocuments>;
     let store: InstanceType<typeof FileSystemStore>;
@@ -50,17 +57,15 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         queryParams = {};
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
-            providers: [provideRouter([]), provideNoopAnimations(), DialogService, PopupService,
-                { provide: CURRENT_APPLICATION,
-                    useValue: TargetApplication.PROJECTS },
-                { provide: SUPPORT_EMAIL_ADDRESS,
-                    useValue: 'support@example.invalid' },
+            providers: [provideRouter([]), provideNoopAnimations(), DialogService,
+                { provide: PopupService, useClass: StubPopupService },
                 provideHttpClient(withInterceptorsFromDi()),
                 provideHttpClientTesting(),
                 ProjectOverviewService,
                 { provide: ActivatedRoute, useValue: { snapshot: {
                     get queryParamMap(): ParamMap { return convertToParamMap(queryParams); }
                 } } },
+                provideProjectDocuments({ api: MockFileSystemApi }),
                 { provide: MOCK_CONFIG, useValue: {
                     minLatencyMs: 0, maxLatencyMs: 0, errorRate: 0, enableErrors: false,
                     protectedFolderPaths: ['execution/Contracts'],
@@ -81,6 +86,16 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         fixture.detectChanges();
         await fixture.whenStable();
         fixture.detectChanges();
+    }
+
+    /**
+     * Accept the confirmation the component asked for. The callback runs inside the zone
+     * because that is where the dialog's own button would call it: the mock's write
+     * latency is a tracked timer, and `whenStable` only waits for it from in there.
+     */
+    function accept(show: jasmine.Spy): void {
+        const props = show.calls.mostRecent().args[2] as { onAccept: () => void };
+        fixture.ngZone?.run(() => { props.onAccept(); });
     }
 
     function host(): HTMLElement {
@@ -240,17 +255,15 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
                     error: { message: '<b>Original name exists</b>' },
                     headers: new HttpHeaders({ [TRACE_ID_HEADER]: 'restore-trace-123' })
                 })));
-            const showError = spyOn(TestBed.inject(PopupService), 'showErrorPopupWithReportAction')
-                .and.callThrough();
+            const showError =
+                spyOn(TestBed.inject(PopupService), 'showErrorPopupWithReportAction');
             const item = menuFor(record).find((candidate) => candidate.label === 'Restore');
             if (!item) { throw new Error('Expected Restore menu action'); }
             item.command?.({ item });
             await render();
-            const dialogs = [...document.querySelectorAll('.p-dialog')];
-            const error = dialogs.find((dialog) => dialog.textContent?.includes('Cannot restore'));
-            expect(error?.textContent).toContain('<b>Original name exists</b>');
-            expect(error?.querySelector('b')).toBeNull();
-            expect(error?.textContent).toContain('restore-trace-123');
+            // The backend message is passed through verbatim with `escapeMessage`, and the
+            // trace id is carried alongside it. How the popup renders either is its own
+            // concern, so it is asserted here and not in the dialog's markup.
             expect(showError).toHaveBeenCalledOnceWith({
                 title: 'Cannot restore the item',
                 message: '<b>Original name exists</b>',
@@ -271,14 +284,21 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         if (!record) { throw new Error('Expected deleted folder in recycle bin'); }
         const api = fixture.debugElement.injector.get(FileSystemApi);
         spyOn(api, 'restoreRecycleBinItem').and.returnValue(throwError(() => new Error('Failed')));
+        const showError =
+            spyOn(TestBed.inject(PopupService), 'showErrorPopupWithReportAction');
         const item = menuFor(record).find((candidate) => candidate.label === 'Restore');
         if (!item) { throw new Error('Expected Restore menu action'); }
         item.command?.({ item });
         await render();
-        const error = document.querySelector('pr-error-popup');
-        expect(error?.textContent).toContain(
-            'An error occurred when trying to restore the item. Please refresh and try again.');
-        expect(error?.querySelector('[data-testid="popup-trace-id"]')).toBeNull();
+        // No HTTP response, so no backend message and no trace id to report.
+        expect(showError).toHaveBeenCalledOnceWith({
+            title: 'Cannot restore the item',
+            message: 'An error occurred when trying to restore the item. ' +
+                'Please refresh and try again.',
+            escapeMessage: true,
+            traceId: undefined,
+            isClosable: true
+        });
         expect(store.entityMap()[record.id]).toBeDefined();
     });
 
@@ -294,15 +314,17 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         if (!record) { throw new Error('Expected deleted folder in recycle bin'); }
         const api = fixture.debugElement.injector.get(FileSystemApi);
         const remove = spyOn(api, 'deletePermanentlyRecycleBinItem').and.callThrough();
+        const show = spyOn(TestBed.inject(PopupService), 'showPopup');
         const item = menuFor(record).find((candidate) => candidate.label === 'Delete');
         if (!item) { throw new Error('Expected Delete menu action'); }
         item.command?.({ item });
         await render();
+        // Nothing is deleted on asking: the confirmation holds the action, and the
+        // component hands the popup the callback that performs it.
         expect(remove).not.toHaveBeenCalled();
-        const confirm = document.querySelector<HTMLButtonElement>(
-            '[data-testid="confirmation-popup-confirm"]');
-        expect(confirm).not.toBeNull();
-        confirm?.click();
+        expect((show.calls.mostRecent().args[2] as { message: string }).message)
+            .toContain(record.name);
+        accept(show);
         await render();
         expect(remove).toHaveBeenCalledOnceWith('project-123', binId, record.id);
         expect(store.entityMap()[record.id]).toBeUndefined();
@@ -319,14 +341,16 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         if (!record) { throw new Error('Expected deleted folder in recycle bin'); }
         const api = fixture.debugElement.injector.get(FileSystemApi);
         const remove = spyOn(api, 'deletePermanentlyRecycleBinItem').and.callThrough();
+        const show = spyOn(TestBed.inject(PopupService), 'showPopup');
         const item = menuFor(record).find((candidate) => candidate.label === 'Delete');
         if (!item) { throw new Error('Expected Delete menu action'); }
         item.command?.({ item });
         await render();
-        const cancel = document.querySelector<HTMLButtonElement>(
-            '[data-testid="confirmation-popup-cancel"]');
-        expect(cancel).not.toBeNull();
-        cancel?.click();
+        // Declining is the absence of acceptance: the popup offers a decline action, and
+        // the component does nothing of its own until `onAccept` is invoked. Leaving it
+        // uninvoked here is exactly what declining does.
+        const props = show.calls.mostRecent().args[2] as { declineButtonText: string };
+        expect(props.declineButtonText).toBe('Cancel');
         await render();
         expect(remove).not.toHaveBeenCalled();
         expect(store.entityMap()[record.id]).toBeDefined();
