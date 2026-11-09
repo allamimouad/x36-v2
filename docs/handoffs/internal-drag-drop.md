@@ -1163,6 +1163,14 @@ matches what the application provides.
 and `project-documents.ts` fail to resolve their imports — loudly, at compile time, not
 silently.
 
+It re-exports **only what the feature uses** — `PopupService` and `TRACE_ID_HEADER`. A
+name listed there has to exist in the real package, so an unused one is a compile error
+waiting to happen for no benefit. The two application-context tokens the popup service
+needs were briefly routed through here while the specs provided the real service; once
+they moved to a stub those tokens had no consumer in the migrated tree, and they are
+wired by `app.config.ts` instead, which is where application-wide wiring belongs and
+which does not travel.
+
 The local stand-in now lives at `src/local/shared-ui-commons/`. The directory name is
 arbitrary; the module specifier in `tsconfig.json` is not, and still has to be the real
 package name for the migrated imports to resolve there.
