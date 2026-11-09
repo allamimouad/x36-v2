@@ -8,7 +8,7 @@ import type { MenuItem } from 'primeng/api';
 import { ContextMenu } from 'primeng/contextmenu';
 import { DialogService } from 'primeng/dynamicdialog';
 import { of, Subject, throwError } from 'rxjs';
-import { PopupService } from './tokens/shared-ui';
+import { PopupService } from 'ibportal-web-ui-commons';
 import { FileSystemError } from './models/file-system-error.model';
 import { isFolder, type FileSystemNode, type FolderNode } from './models/file-system-node.model';
 import { ProjectDocuments } from './project-documents';
@@ -170,14 +170,15 @@ describe('ProjectDocuments bulk actions', () => {
     }
 
     /**
-     * Accept the confirmation the action opened, then wait for its work. `onAccept` is
-     * invoked from here rather than through the component, so the promises it starts
-     * are outside the zone and `whenStable` alone does not cover them.
+     * Accept the confirmation the action opened, then wait for its work. The callback
+     * runs inside the zone because that is where the dialog's own button would call it:
+     * the mock's write latency is a tracked timer, and `whenStable` only waits for it
+     * from in there. `flushTimers` then covers the queue behind it.
      */
     async function acceptPopup(show: jasmine.Spy): Promise<void> {
         expect(show).toHaveBeenCalled();
         const props = show.calls.mostRecent().args[2] as { onAccept: () => void };
-        props.onAccept();
+        fixture.ngZone?.run(() => { props.onAccept(); });
         await flushTimers();
         await render();
     }

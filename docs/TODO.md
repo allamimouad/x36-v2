@@ -440,11 +440,12 @@ produced a real flake while the recycle-bin confirmation tests were being conver
 (2026-11-09). The test was fixed at its own end, by running the accepted callback inside
 the zone so `whenStable` waits for the tracked timer, but the mock is still the cause.
 
-**Related exposure, not yet addressed**: `project-documents-bulk.spec.ts` (`acceptPopup`)
-and `project-documents-lifetime.spec.ts` invoke `onAccept` from outside the zone and wait
-with `flushTimers`, which covers roughly 40 ms against a write that may take 200. They
-pass consistently today by luck, not by construction. The same one-line change —
-`fixture.ngZone?.run(...)` — would make them deterministic.
+**Related exposure, since fixed** (2026-11-09): `project-documents-bulk.spec.ts`
+(`acceptPopup`) and `project-documents-lifetime.spec.ts` invoked `onAccept` from outside
+the zone and waited with `flushTimers`, which covers roughly 40 ms against a write that
+may take 200. They passed by luck rather than construction. Both now run the callback
+through `fixture.ngZone?.run(...)`, so `whenStable` waits for the tracked timer. Three
+consecutive full runs green.
 
 **Priority**: P2. Honouring the configured maximum is a two-line change, but it makes
 every mock write faster and could unmask other tests that are currently winning the same

@@ -11,7 +11,7 @@ import type { MenuItem } from 'primeng/api';
 import { ContextMenu } from 'primeng/contextmenu';
 import { DialogService } from 'primeng/dynamicdialog';
 import { firstValueFrom, throwError } from 'rxjs';
-import { PopupService, TRACE_ID_HEADER } from './tokens/shared-ui';
+import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
 import { FileTable } from './components/file-table/file-table';
 import { FileLaunchService } from './services/interaction/file-launch.service';
 import {

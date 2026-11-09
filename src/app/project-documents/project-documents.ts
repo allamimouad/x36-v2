@@ -74,7 +74,7 @@ import type { ExternalFolderDropRequest } from './models/external-drop-request.m
 import { containsNode, topMostNodes } from './utils/node-containment.utils';
 import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
 import { ProjectOverviewService } from '../../services/project-overview.service';
-import { PopupService, TRACE_ID_HEADER } from './tokens/shared-ui';
+import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
 import {
     ConfirmationPopup,
     DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG

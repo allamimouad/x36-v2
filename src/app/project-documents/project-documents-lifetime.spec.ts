@@ -8,7 +8,7 @@ import type { MenuItem } from 'primeng/api';
 import { ContextMenu } from 'primeng/contextmenu';
 import { DialogService } from 'primeng/dynamicdialog';
 import { Subject } from 'rxjs';
-import { PopupService } from './tokens/shared-ui';
+import { PopupService } from 'ibportal-web-ui-commons';
 import { isFolder, type FileSystemNode } from './models/file-system-node.model';
 import { ProjectDocuments } from './project-documents';
 import { FileSystemApi } from './services/file-system/file-system-api';
@@ -88,7 +88,9 @@ describe('ProjectDocuments batch lifetime', () => {
 
         invoke(menuFor(chosen[0]), isFolder(chosen[0]) ? 'Delete Folder' : 'Delete File');
         const props = show.calls.mostRecent().args[2] as { onAccept: () => void };
-        props.onAccept();
+        // Inside the zone, where the dialog's own button would call it, so `whenStable`
+        // waits for the mock's tracked write timer.
+        fixture.ngZone?.run(() => { props.onAccept(); });
         await flushTimers();
 
         // One in flight, one waiting behind it.

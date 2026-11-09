@@ -5,7 +5,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { DialogService } from 'primeng/dynamicdialog';
 import { Subject } from 'rxjs';
-import { PopupService } from './tokens/shared-ui';
+import { PopupService } from 'ibportal-web-ui-commons';
 import type { FileSystemNode, FolderNode } from './models/file-system-node.model';
 import { isFolder } from './models/file-system-node.model';
 import { ProjectDocuments } from './project-documents';

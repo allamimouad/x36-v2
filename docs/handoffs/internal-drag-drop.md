@@ -1147,33 +1147,21 @@ API rather than a mock. The injector error is fixed either way; if a second wave
 - Desktop Escape/cursor details and real SharePoint operations remain acceptance
   items as described above. No backend endpoints or adapter methods were changed.
 
-### One point of contact with the shared UI package (2026-11-06)
+### One point of contact with the shared UI package — tried, then removed (2026-11-09)
 
-`src/app/project-documents/tokens/shared-ui.ts` re-exports everything this feature uses
-from the shared UI package — the popup service, the trace-id header, and the two
-application-context tokens — under local names. Every consumer imports from there, so
-the package's exported names are written once in the migrated tree instead of in six
-files.
+A barrel at `tokens/shared-ui.ts` briefly re-exported everything this feature used from
+the shared UI package, so the package's names were written once rather than in six files.
 
-Re-exporting does not change identity: `PopupService` is the same class and the tokens
-are the same instances, so a `{ provide: … }` entry written against the local names
-matches what the application provides.
+**It is gone.** Its reason to exist was the aliasing: it renamed the two
+application-context tokens on the way through. Once the specs moved to a popup stub those
+tokens had no consumer here, and the barrel was left re-exporting two names unchanged —
+pure indirection, and a file a reviewer in the destination would rightly query. The
+six consumers import `PopupService` and `TRACE_ID_HEADER` from the package directly
+again, which is also what the destination's own code does.
 
-**This file must travel with the feature.** If it is missed, the four container specs
-and `project-documents.ts` fail to resolve their imports — loudly, at compile time, not
-silently.
-
-It re-exports **only what the feature uses** — `PopupService` and `TRACE_ID_HEADER`. A
-name listed there has to exist in the real package, so an unused one is a compile error
-waiting to happen for no benefit. The two application-context tokens the popup service
-needs were briefly routed through here while the specs provided the real service; once
-they moved to a stub those tokens had no consumer in the migrated tree, and they are
-wired by `app.config.ts` instead, which is where application-wide wiring belongs and
-which does not travel.
-
-The local stand-in now lives at `src/local/shared-ui-commons/`. The directory name is
-arbitrary; the module specifier in `tsconfig.json` is not, and still has to be the real
-package name for the migrated imports to resolve there.
+What remains in the migrated tree is five import statements naming the package, which is
+unavoidable: an import has to name what it imports. Everything else — the stand-in, the
+path alias, the application-context wiring — sits in files that do not travel.
 
 ### The component no longer chooses its own backend (2026-11-09)
 
