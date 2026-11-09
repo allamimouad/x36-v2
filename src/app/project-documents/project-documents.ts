@@ -80,6 +80,18 @@ import {
     rootFromStatus
 } from './utils/bootstrap.utils';
 import { buildTreeSection } from './utils/tree-section.utils';
+import {
+    type ContextMenuDeps,
+    disabledSearchContextMenu,
+    emptyContextMenu,
+    fileContextMenu,
+    folderContextMenu,
+    isMultiSelected,
+    recycleBinContextMenu,
+    searchResultFileMenu,
+    searchResultFolderMenu,
+    uploadMenuItems
+} from './services/interaction/context-menu.builder';
 import { ProjectOverviewService } from '../../services/project-overview.service';
 import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
 import {
@@ -89,15 +101,9 @@ import {
 import { HttpErrorResponse } from '@angular/common/http';
 import { SearchResults } from './components/search-results/search-results';
 import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
-import { FileNodeResponseAccessLevelEnum } from '@api/model/fileNodeResponse';
 import { ActivatedRoute, Router } from '@angular/router';
 
 const DEFAULT_FOLDER_NAME = 'New folder';
-
-interface ProjectDocumentsMenuData {
-    symbol: string;
-    testId: string;
-}
 
 type NodeSurface = 'tree' | 'table' | 'search';
 
@@ -520,48 +526,14 @@ export class ProjectDocuments {
 
     protected onSearchResultContextMenu(request: SearchResultContextMenuRequest): void {
         const result = request.result;
-        if (!isFolder(result)) {
-            this.showContextMenu(request.event, [
-                this.menuItem(
-                    'Open File Location',
-                    'drive_file_move',
-                    'pd-menu-open-search-result',
-                    () => { void this.openSearchResultLocation(result); }
-                ),
-                { separator: true },
-                ...this.fileContextMenu(result, 'search')
-            ]);
-
-            return;
-        }
-        const locked = this.isWriting(result.id) ||
-            result.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly ||
-            this.navigation.isListReadonly();
-        // Renaming many at once means nothing, so it is the one action a multi-selection
-        // disables — the same rule the right-pane table applies.
-        const multi = this.isMultiSelected(result, 'search');
-        this.showContextMenu(request.event, [
-            this.menuItem('Open Folder', 'folder_open', 'pd-menu-open-folder', () => {
-                void this.onSearchResultActivated(result);
-            }),
-            { separator: true },
-            this.menuItem('Rename Folder', 'edit', 'pd-menu-rename-folder', () => {
-                this.startInlineRename(result, 'search');
-            }, locked || multi),
-            this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
-                this.copyToClipboard(result, 'search');
-            }, locked),
-            this.menuItem('Cut Folder', 'content_cut', 'pd-menu-cut-folder', () => {
-                this.cutToClipboard(result, 'search');
-            }, locked),
-            this.menuItem('Delete Folder', 'delete', 'pd-menu-delete-folder', () => {
-                this.requestDelete(result, 'search');
-            }, locked)
-        ]);
+        const deps = this.contextMenuDeps();
+        this.showContextMenu(request.event, isFolder(result)
+            ? searchResultFolderMenu(result, deps)
+            : searchResultFileMenu(result, deps));
     }
 
     protected onSearchEmptyContextMenu(event: MouseEvent): void {
-        this.showContextMenu(event, this.disabledSearchContextMenu());
+        this.showContextMenu(event, disabledSearchContextMenu());
     }
 
     protected onNodeContextMenu(request: NodeContextMenuRequest): void {
@@ -576,7 +548,7 @@ export class ProjectDocuments {
     protected onEmptyContextMenu(event: MouseEvent): void {
         this.focusedSurface.set('table');
         this.navigation.focus(null);
-        this.showContextMenu(event, this.emptyContextMenu());
+        this.showContextMenu(event, emptyContextMenu(this.contextMenuDeps()));
     }
 
     protected async createFolder(parentId = this.navigation.currentFolderId()): Promise<void> {
@@ -603,7 +575,7 @@ export class ProjectDocuments {
         const target = this.navigation.currentFolder();
         const menu = this.uploadMenu();
         if (!target || !menu) { return; }
-        this.toolbarUploadItems.set(this.uploadMenuItems(target));
+        this.toolbarUploadItems.set(uploadMenuItems(target, this.contextMenuDeps()));
         menu.toggle(event);
     }
 
@@ -772,7 +744,7 @@ export class ProjectDocuments {
         this.focusedSurface.set(surface);
         // A whole selection cannot be confirmed on one row, so it asks in the shared
         // popup instead of arming the inline buttons.
-        if (this.isMultiSelected(node, surface)) {
+        if (isMultiSelected(node, surface, this.navigation.selectedIds())) {
             this.requestBulkDelete(this.selectedNodes());
 
             return;
@@ -1045,7 +1017,8 @@ export class ProjectDocuments {
         source: NodeSurface,
         mode: ClipboardMode
     ): void {
-        const nodes = this.isMultiSelected(node, source) ? this.selectedNodes() : [node];
+        const nodes = isMultiSelected(node, source, this.navigation.selectedIds())
+            ? this.selectedNodes() : [node];
         const eligible = nodes.filter(
             (candidate) => candidate.parentId !== null && !this.isWriting(candidate.id)
         );
@@ -1373,157 +1346,66 @@ export class ProjectDocuments {
     }
 
     private getContextMenu(request: NodeContextMenuRequest): MenuItem[] {
+        const deps = this.contextMenuDeps();
         if (this.navigation.currentFolderIsRecycleBin()
             && request.node.parentId === this.navigation.currentFolderId()
         ) {
-            return this.recycleBinContextMenu(request.node);
+            return recycleBinContextMenu(request.node, deps);
         }
 
         if (isFolder(request.node)) {
-            return this.folderContextMenu(request.node, request.source);
+            return folderContextMenu(request.node, request.source, deps);
         }
 
-        return this.fileContextMenu(request.node);
+        return fileContextMenu(request.node, 'table', deps);
     }
 
-    private folderContextMenu(folder: FolderNode, source: NodeSurface): MenuItem[] {
-        const locked = this.isWriting(folder.id);
-        const root = folder.parentId === null;
-        const isProtected = folder.accessLevel === FolderNodeResponseAccessLevelEnum.Protected;
-        const isReadonly = this.isRightClickedFolderReadonly(folder);
-        const multi = this.isMultiSelected(folder, source);
-        const mutateBlocked = root || locked || isProtected || isReadonly;
-        const copyBlocked = root || locked;
-
-        return [
-            this.menuItem('Open Folder', 'folder_open', 'pd-menu-open-folder', () => {
-                this.onItemDoubleClicked(folder);
-            }),
-            { separator: true },
-            this.menuItem('Rename Folder', 'edit', 'pd-menu-rename-folder', () => {
-                this.startInlineRename(folder, source);
-            }, mutateBlocked || multi),
-            this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
-                this.copyToClipboard(folder, source);
-            }, copyBlocked),
-            this.menuItem('Cut Folder', 'content_cut', 'pd-menu-cut-folder', () => {
-                this.cutToClipboard(folder, source);
-            }, mutateBlocked),
-            this.menuItem('Paste', 'content_paste', 'pd-menu-paste', () => {
-                void this.pasteInto(folder);
-            }, locked || !this.canPaste(folder)),
-            this.menuItem('Delete Folder', 'delete', 'pd-menu-delete-folder', () => {
-                this.requestDelete(folder, source);
-            }, mutateBlocked),
-            { separator: true },
-            this.menuItem(
-                'Upload within folder',
-                'upload',
-                'pd-menu-upload-within-folder',
-                undefined,
-                isReadonly,
-                this.uploadMenuItems(folder)
-            )
-        ];
+    /** The state and the callbacks the menu builders need, read once per open. */
+    private contextMenuDeps(): ContextMenuDeps {
+        return { can: this.menuCapabilities(), on: this.menuActions() };
     }
 
-    private isRightClickedFolderReadonly(folder: FolderNode): boolean {
-        if (folder.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly) {
-            return true;
-        }
-        const listKey = folder.listKey;
-        if (listKey) {
-            return this.navigation.readonlyAccessByListKey().get(listKey) ?? false;
-        }
-
-        return false;
+    private menuCapabilities(): ContextMenuDeps['can'] {
+        return {
+            writingIds: this.writingIds(),
+            selectedIds: this.navigation.selectedIds(),
+            readonlyByList: this.navigation.readonlyAccessByListKey(),
+            isCurrentFolderReadonly: this.navigation.isCurrentFolderReadonly(),
+            isListReadonly: this.navigation.isListReadonly(),
+            currentFolder: this.navigation.currentFolder(),
+            canCreateFolder: this.navigation.currentFolder() !== null
+                    && !this.creatingFolder() && !this.navigation.isCurrentFolderReadonly(),
+            canPasteInto: (target): boolean => this.canPaste(target),
+            canOpenDesktop: (file): boolean => this.fileLauncher.canOpenDesktop(file),
+            canOpenOnline: (file): boolean => this.fileLauncher.canOpenOnline(file),
+            canDownload: (file): boolean => this.fileLauncher.canDownload(file)
+        };
     }
 
-    private fileContextMenu(file: FileNode, source: NodeSurface = 'table'): MenuItem[] {
-        const locked = this.isWriting(file.id);
-        const isReadonly = file.accessLevel === FileNodeResponseAccessLevelEnum.Readonly
-            || this.navigation.isCurrentFolderReadonly();
-        const multi = this.isMultiSelected(file, source);
-
-        return [
-            this.fileOpenMenuItem(file, locked),
-            { separator: true },
-            this.menuItem('Rename File', 'edit', 'pd-menu-rename-file', () => {
-                this.startInlineRename(file, source);
-            }, locked || isReadonly || multi),
-            this.menuItem('Copy File', 'content_copy', 'pd-menu-copy-file', () => {
-                this.copyToClipboard(file, source);
-            }, locked),
-            this.menuItem('Cut File', 'content_cut', 'pd-menu-cut-file', () => {
-                this.cutToClipboard(file, source);
-            }, locked || isReadonly),
-            this.menuItem('Delete File', 'delete', 'pd-menu-delete-file', () => {
-                this.requestDelete(file, source);
-            }, locked || isReadonly),
-            { separator: true },
-            this.menuItem('Download File', 'download', 'pd-menu-download-file', () => {
-                this.downloadFile(file);
-            }, locked || !this.fileLauncher.canDownload(file))
-        ];
-    }
-
-    /**
-     * Office files offer a choice between the local and the online application. Any other
-     * file type can only be opened online, so it gets a single "Open" entry instead of the
-     * submenu.
-     */
-    private fileOpenMenuItem(file: FileNode, locked: boolean): MenuItem {
-        if (!this.fileLauncher.canOpenDesktop(file)) {
-            return this.menuItem(
-                'Open',
-                'file_open',
-                'pd-menu-open-file',
-                () => {
-                    this.openFile(file);
-                },
-                locked || !this.fileLauncher.canOpenOnline(file)
-            );
-        }
-        const openItems = this.fileOpenMenuItems(file, locked);
-
-        return this.menuItem(
-            'Open File in',
-            'file_open',
-            'pd-menu-open-file-in',
-            undefined,
-            openItems.every((item) => item.disabled === true),
-            openItems
-        );
-    }
-
-    private fileOpenMenuItems(file: FileNode, locked: boolean): MenuItem[] {
-        return [
-            this.menuItem(
-                'Local application',
-                'grid_view',
-                'pd-menu-open-local',
-                () => { this.openInDesktopApplication(file); },
-                locked || !this.fileLauncher.canOpenDesktop(file)
-            ),
-            this.menuItem(
-                'Online Application',
-                'language',
-                'pd-menu-open-online',
-                () => { this.openInOnlineApplication(file); },
-                locked || !this.fileLauncher.canOpenOnline(file)
-            )
-        ];
-    }
-
-    private recycleBinContextMenu(fileSystemNode: FileSystemNode): MenuItem[] {
-        return [
-            this.menuItem('Restore', 'undo', 'pd-menu-restore', () => {
-                void this.restoreRecycleBinItem(fileSystemNode);
-            }, this.navigation.isListReadonly()),
-            this.menuItem('Delete', 'delete', 'pd-menu-permanently-delete', () => {
-                this.deleteRecycleBinItem(fileSystemNode);
-            }, this.navigation.isListReadonly())
-        ];
+    private menuActions(): ContextMenuDeps['on'] {
+        return {
+            openFolder: (folder): void => { this.onItemDoubleClicked(folder); },
+            rename: (node, source): void => { this.startInlineRename(node, source); },
+            copy: (node, source): void => { this.copyToClipboard(node, source); },
+            cut: (node, source): void => { this.cutToClipboard(node, source); },
+            paste: (target): void => { void this.pasteInto(target); },
+            remove: (node, source): void => { this.requestDelete(node, source); },
+            createFolder: (): void => { void this.createFolder(); },
+            uploadFolder: (target): void => { void this.pickFolder(target); },
+            uploadFile: (target): void => { this.pickFiles(target); },
+            openFile: (file): void => { this.openFile(file); },
+            openDesktop: (file): void => { this.openInDesktopApplication(file); },
+            openOnline: (file): void => { this.openInOnlineApplication(file); },
+            download: (file): void => { this.downloadFile(file); },
+            restore: (node): void => { void this.restoreRecycleBinItem(node); },
+            deletePermanently: (node): void => { this.deleteRecycleBinItem(node); },
+            openSearchResultLocation: (result): void => {
+                void this.openSearchResultLocation(result);
+            },
+            activateSearchResult: (result): void => {
+                void this.onSearchResultActivated(result);
+            }
+        };
     }
 
     private deleteRecycleBinItem(node: FileSystemNode): void {
@@ -1600,86 +1482,6 @@ export class ProjectDocuments {
         if (!this.fileLauncher.download(file)) {
             this.notifications.warning('This file does not have a download link.');
         }
-    }
-
-    private emptyContextMenu(): MenuItem[] {
-        const currentFolder = this.navigation.currentFolder();
-        const canCreate = currentFolder !== null && !this.creatingFolder()
-            && !this.navigation.isCurrentFolderReadonly();
-        const canUpload = currentFolder !== null && !this.navigation.isCurrentFolderReadonly();
-
-        return [
-            this.menuItem('Create new Folder', 'create_new_folder', 'pd-menu-create-folder', () => {
-                void this.createFolder();
-            }, !canCreate),
-            { separator: true },
-            this.menuItem('Paste', 'content_paste', 'pd-menu-paste', () => {
-                if (currentFolder) { void this.pasteInto(currentFolder); }
-            }, currentFolder === null || !this.canPaste(currentFolder)),
-            this.menuItem(
-                'Upload',
-                'upload',
-                'pd-menu-upload',
-                undefined,
-                !canUpload,
-                currentFolder ? this.uploadMenuItems(currentFolder) : undefined
-            )
-        ];
-    }
-
-    private disabledSearchContextMenu(): MenuItem[] {
-        return [
-            this.menuItem(
-                'Create new Folder',
-                'create_new_folder',
-                'pd-menu-create-folder',
-                undefined,
-                true
-            ),
-            { separator: true },
-            this.menuItem('Paste', 'content_paste', 'pd-menu-paste', undefined, true),
-            this.menuItem('Upload', 'upload', 'pd-menu-upload', undefined, true)
-        ];
-    }
-
-    private uploadMenuItems(target: FolderNode): MenuItem[] {
-        return [
-            this.menuItem('Folder', 'drive_folder_upload', 'pd-menu-upload-folder', () => {
-                void this.pickFolder(target);
-            }),
-            this.menuItem('File', 'upload_file', 'pd-menu-upload-file', () => {
-                this.pickFiles(target);
-            })
-        ];
-    }
-
-    /**
-     * Whether this row is part of a multi-selection. Delete and Copy act on the whole
-     * selection; Rename stays single-item, since renaming many at once means nothing.
-     * The tree has no selection.
-     */
-    /** The tree is single-item throughout; both tables have a selection. */
-    private isMultiSelected(node: FileSystemNode, source: NodeSurface): boolean {
-        const selected = this.navigation.selectedIds();
-
-        return source !== 'tree' && selected.size > 1 && selected.has(node.id);
-    }
-
-    private menuItem(
-        label: string,
-        symbol: string,
-        testId: string,
-        action?: () => void,
-        disabled = false,
-        items?: MenuItem[]
-    ): MenuItem {
-        return {
-            label,
-            disabled,
-            items,
-            data: { symbol, testId } satisfies ProjectDocumentsMenuData,
-            command: action ? (): void => action() : undefined
-        };
     }
 
     private showContextMenu(event: MouseEvent, items: MenuItem[]): void {
