@@ -15,7 +15,7 @@ import {
     CURRENT_APP_INJECTION_TOKEN,
     IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN,
     IBPortalTargetApplication
-} from 'ibportal-web-ui-commons';
+} from '../local/shared-ui-commons/app-context.tokens';
 import { routes } from './app.routes';
 
 export const appConfig: ApplicationConfig = {
@@ -25,6 +25,9 @@ export const appConfig: ApplicationConfig = {
         ...isDevMode() ? [provideDevtoolsConfig({ name: 'X36 File Manager' })] : [],
         provideHttpClient(),
         // Supplied once by the application, as the shared popup service expects.
+        // Imported from the module that defines them rather than the package barrel:
+        // the barrel also re-exports the popup service, so asking it for two tokens
+        // pulls that service and PrimeNG's dynamic dialog into the initial bundle.
         {
             provide: CURRENT_APP_INJECTION_TOKEN,
             useValue: IBPortalTargetApplication.PROJECTS

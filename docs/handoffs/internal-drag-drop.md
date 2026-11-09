@@ -1257,3 +1257,14 @@ Three consecutive full runs green afterwards.
 `flushTimers`, so they have the same exposure. They pass consistently today, but that is
 luck rather than design. The `+ 200` itself also looks wrong: a spec that configures zero
 latency is asking for deterministic writes. Both are recorded in `docs/TODO.md`.
+
+### Why `app.config.ts` imports two tokens by their deep path (2026-11-09)
+
+It bypasses the package barrel on purpose. The barrel re-exports `PopupService` next to
+the application-context tokens, and that service reaches PrimeNG's dynamic dialog and the
+error popup, so importing a token through it put the whole popup graph in the initial
+bundle: **658.49 kB down to 514.57 kB** once the import pointed at the defining module
+instead. The comment above those providers says so; do not "tidy" it back to the barrel.
+
+This affects only the local demo configuration, which does not travel. A real host
+imports from the package as usual.

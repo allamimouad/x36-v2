@@ -370,6 +370,20 @@ regardless of configuration, and a callback invoked outside the zone has nothing
 for it. Fixed by running it where the dialog's button would; three consecutive full runs
 green.
 
+**The popup graph left the demo's initial bundle** (2026-11-09). A review on the other
+machine flagged that `app.config.ts` pulled the popup service, the error popup and
+PrimeNG's dynamic dialog into the first load, and it was right: the package barrel
+re-exports the service alongside the two application-context tokens, so asking it for a
+token dragged the service in. Introduced here two commits earlier, when that import was
+moved to the barrel on the reasoning that it mirrors a real host — weak reasoning, since
+`app.config.ts` is local scaffolding that never migrates. The tokens now come from the
+module that defines them, which imports only `InjectionToken`. Measured rather than
+asserted: initial total **658.49 kB -> 514.57 kB** (transfer 152.40 -> 126.08), budget
+overshoot 158.49 kB -> 14.57 kB, and the chunk holding `ErrorPopup` and `PopupService` is
+no longer preloaded by `index.html` nor referenced by `main`. That restores the 514.37 kB
+baseline this branch had before the regression. Demo-only: nothing on the migration copy
+list is affected.
+
 **Verification (2026-11-06):** full headless suite **277/277** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round
