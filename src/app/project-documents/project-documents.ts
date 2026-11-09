@@ -75,6 +75,7 @@ import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
 import {
     bootstrapFailureMessage,
     logRootLoadErrors,
+    parseInitialFolderParams,
     retryForReadError,
     rootFromStatus
 } from './utils/bootstrap.utils';
@@ -1337,34 +1338,14 @@ export class ProjectDocuments {
             }
 
             untracked(() => {
-                const params = this.getInitialFolderParamsFromRoute();
+                const params = parseInitialFolderParams(
+                    this.activatedRoute.snapshot.queryParamMap
+                );
                 if (params) {
                     void this.navigateToInitialFolder(params.listKey, params.folderPath);
                 }
             });
         });
-    }
-
-    private getInitialFolderParamsFromRoute(): {
-        listKey: DocumentListKey;
-        folderPath: string;
-    } | null {
-        const snapshot = this.activatedRoute.snapshot;
-        const listKeyParam = snapshot.queryParamMap.get('listKey');
-        const folderPath = snapshot.queryParamMap.get('folderPath');
-
-        if (!listKeyParam || !folderPath) {
-            return null;
-        }
-
-        const listKey = DOCUMENT_LIST_KEYS.find(
-            (key) => key.toLowerCase() === listKeyParam.toLowerCase()
-        );
-        if (!listKey) {
-            return null;
-        }
-
-        return { listKey, folderPath };
     }
 
     private async navigateToInitialFolder(

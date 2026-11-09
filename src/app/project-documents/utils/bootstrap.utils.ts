@@ -1,5 +1,7 @@
+import type { ParamMap } from '@angular/router';
 import {
     DOCUMENT_LIST_KEYS,
+    type DocumentListKey,
     type DocumentListRoots,
     type DocumentListRootStatus
 } from '../models/document-list.model';
@@ -37,4 +39,29 @@ export function logRootLoadErrors(roots: DocumentListRoots): void {
  */
 export function retryForReadError(error: unknown, retry: () => void): (() => void) | undefined {
     return error instanceof FileSystemError && error.code === 'network' ? retry : undefined;
+}
+
+export interface InitialFolderParams {
+    listKey: DocumentListKey;
+    folderPath: string;
+}
+
+/**
+ * The deep link a project can be opened with. Both parameters are required: a list
+ * without a path, or a path without a list, cannot be resolved to a folder. The list
+ * key is matched case-insensitively because the link is hand-written as often as not.
+ */
+export function parseInitialFolderParams(params: ParamMap): InitialFolderParams | null {
+    const listKeyParam = params.get('listKey');
+    const folderPath = params.get('folderPath');
+
+    if (!listKeyParam || !folderPath) {
+        return null;
+    }
+
+    const listKey = DOCUMENT_LIST_KEYS.find(
+        (key) => key.toLowerCase() === listKeyParam.toLowerCase()
+    );
+
+    return listKey ? { listKey, folderPath } : null;
 }
