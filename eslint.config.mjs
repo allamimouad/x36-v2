@@ -53,6 +53,11 @@ export default tseslint.config(
         }
       ],
       '@stylistic/block-spacing': ['error', 'always'],
+      // Between methods only. Enforcing it between every member would also split up
+      // consecutive `inject(...)` fields, which is not how this codebase reads.
+      '@stylistic/lines-between-class-members': ['error', { enforce: [
+        { blankLine: 'always', prev: 'method', next: 'method' }
+      ] }],
       '@stylistic/indent': ['error', 4],
       '@stylistic/max-len': [
         'error',

@@ -44,6 +44,7 @@ type OverviewDto = NonNullable<ReturnType<ProjectOverviewService['projectDTO']>>
  */
 class StubPopupService {
     public showPopup(): null { return null; }
+
     public showErrorPopupWithReportAction(): null { return null; }
 }
 

@@ -31,6 +31,7 @@ import { ProjectOverviewService } from '../../services/project-overview.service'
  */
 class StubPopupService {
     public showPopup(): null { return null; }
+
     public showErrorPopupWithReportAction(): null { return null; }
 }
 

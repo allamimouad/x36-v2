@@ -415,6 +415,16 @@ removed on the way, both orphaned by earlier deletions. Stage 1 was planned at ~
 landed at 1,300; the estimate counted neighbouring code that did not move. `docs/TODO.md`
 item 10 carries the measured remainder and what reaching 500 would actually cost.
 
+**`lines-between-class-members` mirrored** (2026-11-09). Four errors reported from the
+other repo, all the same thing and all mine: the `StubPopupService` added to each
+container spec had two single-line methods with no blank line between them. The rule is
+no longer in ESLint 9 core, so it comes from `@stylistic`. Its default option would have
+been wrong here — it flags **290** places in this tree, 275 of them consecutive
+`inject(...)` fields, which the other repo plainly does not enforce or it would have
+reported hundreds rather than four. Configured instead to enforce only between methods,
+which reproduces their report exactly: 4 violations, at lines 34, 30, 41 and 47, the
+four they named. Fixed by `--fix`; the diff is four blank lines.
+
 **Verification (2026-11-06):** full headless suite **277/277** — checked against a
 stashed tree to confirm the restructured parameterised loops lost no case — production
 build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round
