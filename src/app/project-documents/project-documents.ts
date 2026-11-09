@@ -73,6 +73,7 @@ import type {
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
 import { containsNode, topMostNodes } from './utils/node-containment.utils';
 import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
+import { buildTreeSection } from './utils/tree-section.utils';
 import { ProjectOverviewService } from '../../services/project-overview.service';
 import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
 import {
@@ -1786,33 +1787,14 @@ export class ProjectDocuments {
         if (!initializedRoot) { return []; }
         const root = this.fileSystem.entityMap()[initializedRoot.id];
         if (!root || !isFolder(root)) { return []; }
-        const all = this.fileSystem.entities();
-        const expanded = this.navigation.expandedTreeIds();
-        const loaded = new Set(this.fileSystem.folderIdsWithLoadedChildren());
-        const buildNode = (folder: FolderNode, isRoot: boolean): TreeNode<FolderNode> => {
-            const childFolders = all
-                .filter((n): n is FolderNode => isFolder(n) && n.parentId === folder.id)
-                .sort((a, b) => this.sortFoldersByAlphabeticalAndRecycleBin(a, b));
-            const isLoaded = loaded.has(folder.id);
 
-            return {
-                key: folder.id,
-                // Section header already carries the full label; the root node shows
-                // the short name.
-                label: isRoot
-                    ? `${listKey[0]}${listKey.slice(1).toLowerCase()}`
-                    : folder.name,
-                data: folder,
-                leaf: isLoaded && childFolders.length === 0 || folder.isRecycleBin,
-                expanded: expanded.has(folder.id),
-                children:
-                    isLoaded && !folder.isRecycleBin
-                        ? childFolders.map((child) => buildNode(child, false))
-                        : []
-            };
-        };
-
-        return [buildNode(root, true)];
+        return buildTreeSection({
+            listKey,
+            root,
+            nodes: this.fileSystem.entities(),
+            expandedIds: this.navigation.expandedTreeIds(),
+            loadedIds: new Set(this.fileSystem.folderIdsWithLoadedChildren())
+        });
     }
 
     /** Runs after every completed initialization (first load, project switch, retry). */
@@ -1872,17 +1854,6 @@ export class ProjectDocuments {
     }
 
     /** Sort folders: alphabetical order with recycle bin folder always at the bottom. */
-    private sortFoldersByAlphabeticalAndRecycleBin(a: FolderNode, b: FolderNode): number {
-        if (a.isRecycleBin && !b.isRecycleBin) {
-            return 1;
-        }
-        if (!a.isRecycleBin && b.isRecycleBin) {
-            return -1;
-        }
-
-        return a.name.localeCompare(b.name);
-    }
-
     private getFoldersLengthDependingOnIfRootFolder(folders: FolderNode[]): number {
         // Remove recycle bin folder from count if current folder is the root folder.
         return this.navigation.parentId() === null ? folders.length - 1 : folders.length;
