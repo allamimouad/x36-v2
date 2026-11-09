@@ -31,8 +31,7 @@ import {
     DOCUMENT_LIST_KEYS,
     DOCUMENT_LIST_LABELS,
     type DocumentListKey,
-    type DocumentListRoots,
-    type DocumentListRootStatus
+    type DocumentListRoots
 } from './models/document-list.model';
 import {
     type FileNode,
@@ -73,6 +72,12 @@ import type {
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
 import { containsNode, topMostNodes } from './utils/node-containment.utils';
 import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
+import {
+    bootstrapFailureMessage,
+    logRootLoadErrors,
+    retryForReadError,
+    rootFromStatus
+} from './utils/bootstrap.utils';
 import { buildTreeSection } from './utils/tree-section.utils';
 import { ProjectOverviewService } from '../../services/project-overview.service';
 import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
@@ -273,7 +278,7 @@ export class ProjectDocuments {
         if (!roots) { return null; }
         const anyLoaded = DOCUMENT_LIST_KEYS.some((key) => roots[key].status === 'loaded');
 
-        return anyLoaded ? null : this.bootstrapFailureMessage(roots);
+        return anyLoaded ? null : bootstrapFailureMessage(roots);
     });
 
     /** One tree section per document list, each rooted at its list root. */
@@ -507,7 +512,7 @@ export class ProjectDocuments {
         } catch (error) {
             this.notifications.error(
                 error,
-                this.retryForReadError(error, () => void this.openSearchResultLocation(result))
+                retryForReadError(error, () => void this.openSearchResultLocation(result))
             );
         }
     }
@@ -907,7 +912,7 @@ export class ProjectDocuments {
             } catch (e) {
                 this.notifications.error(
                     e,
-                    this.retryForReadError(e, () => void this.onSegmentClicked(seg))
+                    retryForReadError(e, () => void this.onSegmentClicked(seg))
                 );
             }
         }
@@ -945,7 +950,7 @@ export class ProjectDocuments {
             this.pathError.set(null);
             this.notifications.error(
                 e,
-                this.retryForReadError(e, () => void this.onPathSubmitted(raw))
+                retryForReadError(e, () => void this.onPathSubmitted(raw))
             );
         }
     }
@@ -967,7 +972,7 @@ export class ProjectDocuments {
             } catch (e) {
                 this.notifications.error(
                     e,
-                    this.retryForReadError(e, () => void this.onUp())
+                    retryForReadError(e, () => void this.onUp())
                 );
             }
 
@@ -1253,7 +1258,7 @@ export class ProjectDocuments {
                     const isInlineCurrentError =
                         parentId === currentFolderId && currentFolderError !== null;
                     if (isInlineCurrentError) { continue; }
-                    const retry = this.retryForReadError(
+                    const retry = retryForReadError(
                         readError,
                         () => void this.fileSystem.loadChildren(parentId)
                     );
@@ -1783,7 +1788,7 @@ export class ProjectDocuments {
     private buildTreeSection(listKey: DocumentListKey): TreeNode<FolderNode>[] {
         const roots = this.fileSystem.initializedRoots();
         if (!roots) { return []; }
-        const initializedRoot = this.rootFromStatus(roots[listKey]);
+        const initializedRoot = rootFromStatus(roots[listKey]);
         if (!initializedRoot) { return []; }
         const root = this.fileSystem.entityMap()[initializedRoot.id];
         if (!root || !isFolder(root)) { return []; }
@@ -1803,10 +1808,10 @@ export class ProjectDocuments {
         this.notifications.clear();
         this.clipboard.clear();
         this.closePathEditor();
-        const marketingRoot = this.rootFromStatus(roots.MARKETING);
-        const executionRoot = this.rootFromStatus(roots.EXECUTION);
+        const marketingRoot = rootFromStatus(roots.MARKETING);
+        const executionRoot = rootFromStatus(roots.EXECUTION);
         const currentRoot = executionRoot ?? marketingRoot;
-        this.logRootLoadErrors(roots);
+        logRootLoadErrors(roots);
         // No root at all: leave navigation untouched — `bootstrapError` derives the
         // message from the same roots result.
         if (!currentRoot) { return; }
@@ -1829,31 +1834,6 @@ export class ProjectDocuments {
         this.pathEditing.set(false);
     }
 
-    private rootFromStatus(root: DocumentListRootStatus): FolderNode | null {
-        return root.status === 'loaded' ? root.root : null;
-    }
-
-    private bootstrapFailureMessage(roots: DocumentListRoots): string {
-        const allNotFound = DOCUMENT_LIST_KEYS.every((key) => roots[key].status === 'not-found');
-
-        return allNotFound
-            ? 'No documents found for this project.'
-            : 'Documents could not be loaded. Try refreshing.';
-    }
-
-    private logRootLoadErrors(roots: DocumentListRoots): void {
-        for (const key of DOCUMENT_LIST_KEYS) {
-            const root = roots[key];
-            if (root.status !== 'error') { continue; }
-            console.error(`[project-documents] ${key} documents could not be loaded`, root.error);
-        }
-    }
-
-    private retryForReadError(error: unknown, retry: () => void): (() => void) | undefined {
-        return error instanceof FileSystemError && error.code === 'network' ? retry : undefined;
-    }
-
-    /** Sort folders: alphabetical order with recycle bin folder always at the bottom. */
     private getFoldersLengthDependingOnIfRootFolder(folders: FolderNode[]): number {
         // Remove recycle bin folder from count if current folder is the root folder.
         return this.navigation.parentId() === null ? folders.length - 1 : folders.length;
