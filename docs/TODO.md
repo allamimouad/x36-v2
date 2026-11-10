@@ -369,6 +369,68 @@ should be decided deliberately rather than drifted into.
 **The `/* eslint-disable max-lines */` stays until then**, and its comment should keep
 saying what is left.
 
+### Stage 2, planned but not started
+
+**Recommendation: do it, but for cohesion rather than for the line count.** Three of the
+four services below are concepts this feature already has and has no file for — a reader
+looking for "how does renaming work" has nowhere to go but a 1,300-line component.
+Getting under 500 would be a byproduct and is **not promised**: the honest estimate is
+550-700, and chasing a number is a poor reason to move code. If it lands just above 500,
+the right answer is probably to keep the waiver with a smaller cap, not to contort
+further.
+
+Two decisions carried over from Stage 1 and should hold: **the component's public surface
+stays identical** (the 391-line template and every child binding untouched), and **one
+concern per commit** with the suite green at each.
+
+**The mechanic.** Stage 1 moved private helpers, which could leave alone. Everything left
+is a handler plus the signals it reads, so Stage 2 moves **state**, which is where
+behaviour lives. Each service owns its signals; the component re-exposes each by
+reference so the template never changes:
+
+```ts
+protected readonly pathEditing = this.pathNav.pathEditing;   // same signal, still reactive
+protected onUp(): Promise<void> { return this.pathNav.goUp(); }
+```
+
+Budget about one line per exposed signal and three per handler — that overhead is already
+in the 550-700 estimate. Every service is component-provided like its siblings, so it
+shares the component's `FileSystemStore` and is destroyed with it; an `effect()` in such a
+service's constructor is in a valid injection context and is torn down with it, which is
+what makes step 5 possible at all.
+
+**Order, lowest risk first:**
+
+1. **`services/navigation/path-navigation.service.ts`** (~94 + state) — `onSegmentClicked`,
+   `onPathSubmitted`, `onUp`, `onBack`, `onForward`, `onEditRequested`, `onEditCancelled`,
+   `closePathEditor`, `resolveAndOpen`, plus `pathEditing`, `pathError`,
+   `currentEditablePath`. Fewest entanglements; the right place to prove the pattern.
+2. **`services/search/search-ui.service.ts`** (~150 + state) — the search handlers, the two
+   search observers, `searchStatusText`, `resetSearchState`, and the `search*` signals. A
+   **separate service that injects `DocumentSearchService`** — that one is the data layer
+   and should not grow UI state.
+3. **`services/upload/upload-ui.service.ts`** (~114 + state) — the seven `onExternal*`
+   handlers, `uploadExternalDrop`, `clearExternalDropState`, the drop-target signals and
+   the two current-folder drop computeds. `pickFiles`, `onFilesPicked` and
+   `openToolbarUploadMenu` **stay on the component**: they reach `fileInput` and
+   `uploadMenu`, which are `viewChild`s.
+4. **`services/interaction/node-mutation.service.ts`** (~215 + state) — rename, delete,
+   clipboard and paste, with `mutationWritingIds`, `inlineRenameError`,
+   `inlineRenameSurface`, `pendingDelete`, `pasting`, `cutIds` and the delete-confirmation
+   computeds. Largest and most entangled: it feeds the menu builder's capabilities and
+   actions, so leave it until the pattern has held three times.
+5. **The three `observe*` effects** (~52) — `observeProjectChanges`,
+   `observeInitializedRoots`, `observeReadErrors`. **Riskiest, deliberately last.** They
+   coordinate across concerns and a mistimed effect changes behaviour without failing a
+   compile. If moving one would change ordering, leave it and record why.
+
+**Verification per step**: both TypeScript projects, `npx eslint src` (only the two known
+`path-bar` warnings), the suite at **277/277** with **no test edited**, and
+`git diff --stat` on `project-documents.html` empty. Run the suite **three times** after
+steps 4 and 5 — those move state and effects, and a timing regression will not show
+reliably in one pass. A refactor that needs its tests rewritten has changed behaviour:
+stop and say so.
+
 ## 11. `no-unnecessary-condition` needs `noUncheckedIndexedAccess` first
 
 - **Where**: `eslint.config.mjs` (the rule is deliberately absent, with a comment
