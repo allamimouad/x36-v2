@@ -213,6 +213,11 @@ Angular now:
 - downloads through a temporary direct-link anchor without `HttpClient`, `fetch`, or
   Blob buffering;
 - shows disabled menu entries when a corresponding link is absent or invalid.
+- offers a single dragged file to the desktop or a file manager by adding a
+  `DownloadURL` drag payload built from the same safe `downloadUrl`. This is a Chromium
+  feature (Chrome, Edge): the browser fetches the link itself after the drop, with the
+  user's own session, exactly as Download File does. Folders and multi-item drags stay
+  internal, and other browsers simply ignore the payload.
 
 The frontend does not append `web=1`, select an Office protocol from an extension,
 construct `download.aspx`, or know the SharePoint site mapping. Those decisions belong

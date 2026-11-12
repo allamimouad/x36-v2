@@ -1,6 +1,7 @@
 import { DOCUMENT } from '@angular/common';
 import { inject, Injectable } from '@angular/core';
 import type { FileNode, FolderNode } from '../../models/file-system-node.model';
+import { safeWebUrl } from '../../utils/download-url.utils';
 
 const DESKTOP_PROTOCOLS = [
     'ms-word',
@@ -21,11 +22,11 @@ export class FileLaunchService {
     private readonly document = inject(DOCUMENT);
 
     public canOpenSharePointWeb(folder: FolderNode): boolean {
-        return this.safeWebUrl(folder.webUrl) !== null;
+        return safeWebUrl(folder.webUrl) !== null;
     }
 
     public canOpenOnline(file: FileNode): boolean {
-        return this.safeWebUrl(file.onlineUrl) !== null;
+        return safeWebUrl(file.onlineUrl) !== null;
     }
 
     public canOpenDesktop(file: FileNode): boolean {
@@ -33,7 +34,7 @@ export class FileLaunchService {
     }
 
     public canDownload(file: FileNode): boolean {
-        return this.safeWebUrl(file.downloadUrl) !== null;
+        return safeWebUrl(file.downloadUrl) !== null;
     }
 
     public openSharePointWeb(folder: FolderNode): boolean {
@@ -58,7 +59,7 @@ export class FileLaunchService {
     }
 
     public download(file: FileNode): boolean {
-        const url = this.safeWebUrl(file.downloadUrl);
+        const url = safeWebUrl(file.downloadUrl);
         if (!url) { return false; }
         try {
             const anchor = this.document.createElement('a');
@@ -76,20 +77,8 @@ export class FileLaunchService {
         }
     }
 
-    private safeWebUrl(value: string | undefined): string | null {
-        if (!value) { return null; }
-        try {
-            const url = new URL(value);
-            const safeProtocol = url.protocol === 'http:' || url.protocol === 'https:';
-
-            return safeProtocol && !url.username && !url.password ? url.href : null;
-        } catch {
-            return null;
-        }
-    }
-
     private openWebUrl(value: string | undefined): boolean {
-        const url = this.safeWebUrl(value);
+        const url = safeWebUrl(value);
         const view = this.document.defaultView;
         if (!url || !view) { return false; }
         try {
@@ -104,7 +93,7 @@ export class FileLaunchService {
     private safeDesktopUrl(value: string | undefined): string | null {
         if (!value || /[\r\n]/.test(value)) { return null; }
         const match = DESKTOP_URL_PATTERN.exec(value);
-        if (!match || !this.safeWebUrl(match[1])) { return null; }
+        if (!match || !safeWebUrl(match[1])) { return null; }
 
         return value;
     }

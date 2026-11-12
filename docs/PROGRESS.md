@@ -6,6 +6,18 @@
 
 ## Current Status
 
+**Active work (2026-11-12): drag a file out to the desktop, on
+`feat/drag-out-to-explorer`.** `feat/internal-drag-drop` was merged into `main` through
+PR #2. A drag of one file now also carries a `DownloadURL` payload
+(`application/octet-stream:<name>:<downloadUrl>`), so dropping it on the Windows desktop or
+an Explorer window saves the file there. The payload is built by `downloadDragData` in
+`utils/download-url.utils.ts`, which also now holds the `safeWebUrl` check that
+`FileLaunchService` used privately. Limits by design: Chromium only, one file per drag (the
+browser takes a single URL), no folders, and the download relies on the user's SharePoint
+session as Download File does — without one, the saved file is the sign-in page. Unit
+suite 283/283 and the production build pass; the real drop onto Explorer still needs
+checking on the other laptop against SharePoint, since mock files carry no `downloadUrl`.
+
 **Active work (2026-11-05): four review rounds on internal drag-and-drop, and one
 search strategy change.** The first round raised five issues; all five were real and all
 are fixed.
@@ -862,6 +874,8 @@ The user requested a follow-up commit after `62ce0fa` and will push manually.
 - [x] Automated drag regression and native browser smoke checks
 - [ ] Desktop Escape/cursor acceptance and actual SharePoint adapter verification
 - [ ] Multi-selection/bulk drag and search-result drag (deferred)
+- [x] Drag a single file out to the desktop / file manager (Chromium `DownloadURL`)
+- [ ] Verify the drag-out against SharePoint in Chrome and Edge on Windows
 
 ---
 

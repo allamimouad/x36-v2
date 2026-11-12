@@ -6,7 +6,7 @@ import { INTERNAL_DRAG_TYPE } from '../../models/drag-state.model';
 import type { DocumentListing } from '../../models/document-listing.model';
 import { FileSystemError } from '../../models/file-system-error.model';
 import {
-    type FileSystemNode, type FolderNode, isFolder
+    type FileNode, type FileSystemNode, type FolderNode, isFolder
 } from '../../models/file-system-node.model';
 import { FileSystemApi } from '../file-system/file-system-api';
 import { MockFileSystemApi } from '../mock/mock-file-system-api';
@@ -19,6 +19,7 @@ import { BulkOperationService } from './bulk-operation.service';
 import { ClipboardService } from './clipboard.service';
 import { DragDropService } from './drag-drop.service';
 import { NotificationService } from './notification.service';
+import { DOWNLOAD_DRAG_TYPE } from '../../utils/download-url.utils';
 
 describe('DragDropService native session and mutations', () => {
     let service: DragDropService;
@@ -347,6 +348,50 @@ describe('DragDropService native session and mutations', () => {
         expect(move).toHaveBeenCalled();
         expect(store.entities().some((node) =>
             node.name === uncached.name && node.parentId === destination.id)).toBeTrue();
+    });
+
+    describe('dragging a file out of the browser', () => {
+        const downloadUrl = 'https://sharepoint.test/_layouts/15/download.aspx?SourceUrl=%2Fa';
+
+        async function uncachedFiles(): Promise<FileNode[]> {
+            const listing = await firstValueFrom(api.listDocuments('project', source));
+            const files = listing.files
+                .filter((child) => child.accessLevel === undefined)
+                .slice(0, 2)
+                .map((child) => ({ ...child, downloadUrl }));
+            if (files.length < 2) { throw new Error('Expected two unrestricted files'); }
+
+            return files;
+        }
+
+        it('offers a single file to the desktop alongside the internal payload', async () => {
+            const [file] = await uncachedFiles();
+
+            service.startDrag({ event: event('dragstart'), node: file });
+
+            expect(data.getData(INTERNAL_DRAG_TYPE)).not.toBe('');
+            expect(data.getData(DOWNLOAD_DRAG_TYPE))
+                .toBe(`application/octet-stream:${file.name}:${downloadUrl}`);
+        });
+
+        it('keeps a multi-item drag internal', async () => {
+            const files = await uncachedFiles();
+
+            service.startDrag({
+                event: event('dragstart'), node: files[0],
+                selectedIds: new Set(files.map(({ id }) => id)), selectedNodes: files
+            });
+
+            expect(service.state()?.sourceIds.length).toBe(2);
+            expect(data.getData(DOWNLOAD_DRAG_TYPE)).toBe('');
+        });
+
+        it('keeps a folder drag internal', () => {
+            start();
+
+            expect(service.state()).not.toBeNull();
+            expect(data.getData(DOWNLOAD_DRAG_TYPE)).toBe('');
+        });
     });
 
     it('drags a whole selection of nodes the cache never held', async () => {

@@ -18,6 +18,7 @@ import {
     type BulkOutcome, BulkOperationService, type DoneOutcome, doneOf
 } from './bulk-operation.service';
 import { canDropItem, canStartDrag, type DragPolicy } from './drag-drop-policy';
+import { DOWNLOAD_DRAG_TYPE, downloadDragData } from '../../utils/download-url.utils';
 
 /**
  * Narrowings applied when a check must look past state the caller already owns:
@@ -134,6 +135,10 @@ export class DragDropService {
         this.endDrag();
         const token = crypto.randomUUID();
         event.dataTransfer.setData(INTERNAL_DRAG_TYPE, token);
+        // Lets one file be dropped onto the desktop or a file manager; the browser
+        // supports a single URL per drag, so a multi-item drag stays internal.
+        const download = sources.length === 1 ? downloadDragData(sources[0]) : null;
+        if (download) { event.dataTransfer.setData(DOWNLOAD_DRAG_TYPE, download); }
         event.dataTransfer.effectAllowed = 'copyMove';
         this.sessionRoots = this.fileSystem.initializedRoots();
         this.sessionNodes = new Map(sources.map((source) => [source.id, source]));
