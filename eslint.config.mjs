@@ -31,6 +31,10 @@ export default tseslint.config(
       curly: ['error', 'all'],
       'consistent-return': 'error',
       'default-case': 'error',
+      // A closure made in a loop that reads a variable the loop reassigns sees the last
+      // value, not the one from its own iteration.
+      'no-loop-func': 'error',
+      'no-nested-ternary': 'error',
       'max-lines': [
         'error',
         {
@@ -49,6 +53,11 @@ export default tseslint.config(
         }
       ],
       '@stylistic/block-spacing': ['error', 'always'],
+      // Between methods only. Enforcing it between every member would also split up
+      // consecutive `inject(...)` fields, which is not how this codebase reads.
+      '@stylistic/lines-between-class-members': ['error', { enforce: [
+        { blankLine: 'always', prev: 'method', next: 'method' }
+      ] }],
       '@stylistic/indent': ['error', 4],
       '@stylistic/max-len': [
         'error',
@@ -71,11 +80,18 @@ export default tseslint.config(
       '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
       '@typescript-eslint/no-unsafe-member-access': 'error',
       '@typescript-eslint/no-unsafe-return': 'error',
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      // `@typescript-eslint/no-unnecessary-condition` is deliberately NOT enabled here.
+      // It needs `noUncheckedIndexedAccess` to be meaningful: without it, every
+      // `entityMap()[id]` reads as always-defined, so 37 of its 57 reports are correct
+      // guards it wants deleted. See docs/TODO.md item 11 before adding it.
       '@typescript-eslint/explicit-function-return-type': 'error',
       '@typescript-eslint/prefer-optional-chain': 'error',
       '@typescript-eslint/require-await': 'error',
       'no-shadow': 'off',
-      '@typescript-eslint/no-shadow': 'error',
+      //  also catches an inner name shadowing an outer one declared later
+      // in the file, which the default misses entirely.
+      '@typescript-eslint/no-shadow': ['error', { hoist: 'all' }],
       '@typescript-eslint/explicit-member-accessibility': [
         'error',
         {

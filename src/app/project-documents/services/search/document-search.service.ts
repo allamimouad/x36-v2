@@ -10,6 +10,13 @@ export class DocumentSearchService {
     public readonly results: Signal<FileSystemNode[]>;
     public readonly activeQuery: Signal<string | null>;
     public readonly isSearching: Signal<boolean>;
+    /**
+     * True while a reconciling `refresh` is in flight, as opposed to a search the user
+     * submitted. The two cannot share one flag: a submitted search has nothing to show
+     * and must replace the table, while a refresh has the previous rows up and must
+     * leave them there.
+     */
+    public readonly isRefreshing: Signal<boolean>;
     public readonly error: Signal<FileSystemError | null>;
     public readonly activeScopeId: Signal<string | null>;
 
@@ -18,29 +25,112 @@ export class DocumentSearchService {
     private readonly _results = signal<FileSystemNode[]>([]);
     private readonly _activeQuery = signal<string | null>(null);
     private readonly _isSearching = signal(false);
+    private readonly _isRefreshing = signal(false);
     private readonly _error = signal<FileSystemError | null>(null);
     private readonly _activeScopeId = signal<string | null>(null);
     private request: Subscription | null = null;
     private requestVersion = 0;
+    /** The last submitted search, kept so `refresh` can re-run it. */
+    private lastSubmitted: { projectId: string; scope: FolderNode; query: string } | null = null;
 
     constructor() {
         this.results = this._results.asReadonly();
         this.activeQuery = this._activeQuery.asReadonly();
         this.isSearching = this._isSearching.asReadonly();
+        this.isRefreshing = this._isRefreshing.asReadonly();
         this.error = this._error.asReadonly();
         this.activeScopeId = this._activeScopeId.asReadonly();
         this.destroyRef.onDestroy(() => this.request?.unsubscribe());
     }
 
+    /**
+     * Drop results by id, mirroring the same method on `NavigationStore` and
+     * `ClipboardService`.
+     *
+     * Results are a snapshot of one query, and every mutation already returns enough to
+     * update that snapshot, so the list is maintained from those results rather than by
+     * re-running the search — which would charge the user the full search latency on
+     * every action to rediscover what we already know.
+     *
+     * Callers must pass the operation's own source ids as well as whatever the cache
+     * removed: a search hit is usually not cached, so the cache reports nothing for it.
+     */
+    public pruneReferences(removedIds: Iterable<string>): void {
+        const removed = new Set(removedIds);
+        if (removed.size === 0) { return; }
+        const current = this._results();
+        const next = current.filter(({ id }) => !removed.has(id));
+        if (next.length !== current.length) { this._results.set(next); }
+    }
+
+    /**
+     * Correct the renamed row immediately, so it does not read as its old name while the
+     * refresh runs. Descendants are left to that refresh: rewriting their paths here is
+     * what repeatedly went wrong, and re-querying is right about them by construction.
+     */
+    public replaceResult(node: FileSystemNode): void {
+        const current = this._results();
+        const index = current.findIndex(({ id }) => id === node.id);
+        if (index === -1) { return; }
+        const next = [...current];
+        next[index] = node;
+        this._results.set(next);
+    }
+
     public search(projectId: string, scope: FolderNode, query: string): void {
-        const normalizedQuery = query.trim();
+        this.run(projectId, scope, query.trim(), true);
+    }
+
+    /**
+     * Re-run the last submitted search, to reconcile the list with the server after a
+     * mutation. Does nothing when no search is active.
+     *
+     * Unlike `search`, this keeps the current rows until the response lands: clearing
+     * them would replace one stale row with an empty table for however long the query
+     * takes, which is the opposite of the intent. Keeping the array is only half of
+     * that — `isRefreshing` is what stops the view swapping the table for its loading
+     * state, so both are needed for a row to actually stay on screen.
+     */
+    public refresh(): void {
+        const last = this.lastSubmitted;
+        if (!last) { return; }
+        this.run(last.projectId, last.scope, last.query, false);
+    }
+
+    public clear(): void {
+        this.requestVersion++;
+        this.request?.unsubscribe();
+        this.request = null;
+        // Forgotten, not just unsubscribed. `clear` runs on every navigation away from a
+        // search, so a retained query would let a later mutation's `refresh` re-run a
+        // search the user has left — against the previous project after a switch, since
+        // this service outlives one project. Worse, that revived `activeQuery` and
+        // `activeScopeId` make the container's `alreadyLoaded` check skip the next real
+        // search and show those rows instead.
+        this.lastSubmitted = null;
+        this._activeQuery.set(null);
+        this._results.set([]);
+        this._error.set(null);
+        this._activeScopeId.set(null);
+        this._isSearching.set(false);
+        this._isRefreshing.set(false);
+    }
+
+    private run(
+        projectId: string,
+        scope: FolderNode,
+        normalizedQuery: string,
+        reset: boolean
+    ): void {
         const version = ++this.requestVersion;
         this.request?.unsubscribe();
+        this.lastSubmitted = { projectId, scope, query: normalizedQuery };
         this._activeQuery.set(normalizedQuery);
-        this._results.set([]);
+        if (reset) { this._results.set([]); }
         this._error.set(null);
         this._activeScopeId.set(scope.id);
         this._isSearching.set(true);
+        this._isRefreshing.set(!reset);
 
         this.request = this.api.searchDocuments(projectId, scope, normalizedQuery).subscribe({
             next: (results) => {
@@ -54,22 +144,16 @@ export class DocumentSearchService {
                         ? error
                         : new FileSystemError('unknown', 'Document search failed', error)
                 );
-                this._isSearching.set(false);
+                this.settle();
             },
             complete: () => {
-                if (version === this.requestVersion) { this._isSearching.set(false); }
+                if (version === this.requestVersion) { this.settle(); }
             }
         });
     }
 
-    public clear(): void {
-        this.requestVersion++;
-        this.request?.unsubscribe();
-        this.request = null;
-        this._activeQuery.set(null);
-        this._results.set([]);
-        this._error.set(null);
-        this._activeScopeId.set(null);
+    private settle(): void {
         this._isSearching.set(false);
+        this._isRefreshing.set(false);
     }
 }

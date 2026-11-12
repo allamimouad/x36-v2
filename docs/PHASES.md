@@ -20,6 +20,11 @@ Bug fixes are a separate future task requiring explicit authorization.
 `ProjectOverviewService.projectDTO()?.name ?? ''` in an effect immediately after
 `observeReadErrors()`. The local service/provider stay outside the copied feature.
 
+**2026-10-23 authorization:** internal single-item native drag-and-drop is now
+approved on `feat/internal-drag-drop`. The Phase 4 scope below supersedes the
+older multi-selection requirements. Existing PR behavior remains unchanged outside
+this feature; real backend move work is a separate follow-up.
+
 ---
 
 ## Phase 1 — Foundation & Read-Only Browsing
@@ -210,7 +215,12 @@ Bug fixes are a separate future task requiring explicit authorization.
 
 **Stores**
 - `stores/navigation.store.ts` — implement `select(id, mode: 'single' | 'toggle' | 'range')`, `selectRange(id)`, `clearSelection()`
-- `stores/file-system.store.ts` — accept arrays in `delete`, `move`, `copy` (pessimistic + progress for bulk); uses `ConcurrencyQueue`
+- `stores/file-system.store.ts` — **superseded 2026-10-28**: the store stays single-item
+  and the caller loops it through `ConcurrencyQueue` instead of accepting arrays. Its
+  per-item logic (connection revision, removed-subtree computation, navigation and
+  clipboard pruning) is verified and wrapping it preserves that, where making it
+  array-aware would mean rewriting it. `DragDropService` does this for multi-item
+  drag; bulk delete/paste should follow the same shape.
 
 **Services**
 - `services/upload/concurrency-queue.ts` — generic queue, max N concurrent; returns per-task results with errors isolated
@@ -218,8 +228,9 @@ Bug fixes are a separate future task requiring explicit authorization.
 
 **Components**
 - `components/file-table/file-table.ts`:
-  - Multi-select wired (p-table selectionMode="multiple")
-  - Cut items render at 50% opacity (read from `ClipboardService`)
+  - Multi-select wired (explicit click handlers, not `selectionMode="multiple"` —
+    see SPEC 3.7 for why)
+  - Cut items render at 50% opacity (read from `ClipboardService`) — done 2026-11-03
   - Context menu adds: Cut, Copy, Paste (if clipboard not empty); folder-menu Paste
     targets the right-clicked folder without opening it first
 ### Acceptance checks
@@ -238,52 +249,39 @@ Bug fixes are a separate future task requiring explicit authorization.
 
 ## Phase 4 — Drag and Drop
 
-**Goal**: full DnD matrix from SPEC §3.4. External upload drops are implemented
-independently of the remaining internal move/copy drag state.
-
-### Entry criteria
-- Phase 3 complete
+**Authorized scope (2026-10-23):** one file/folder per gesture, native HTML DnD,
+using the existing move/copy contract. External upload drops retain their own flow.
 
 ### Deliverables
 
-**Models**
-- `models/drag-state.model.ts` — `DragState` type per SPEC §9
-
-**Services**
-- `services/drag-drop.service.ts`:
-  - `dragState` signal
-  - `startDrag`, `updateEffect`, `endDrag`, `canDropOn` per SPEC §9
-  - `isAncestorOrSelf` helper uses `allFolders` from `FileSystemStore` (injected)
-
-**Components**
-- `components/folder-tree/folder-tree.ts`:
-  - Nodes become draggable (folders only, as tree only shows folders)
-  - Nodes are drop targets (external file/folder upload is already implemented;
-    internal tree/table drops remain)
-  - Visual highlight when `canDropOn` = true during drag
-- `components/file-table/file-table.ts`:
-  - Rows draggable (both folders and files)
-  - Folder rows are drop targets
-  - Empty-area drop zone (folder background) = drop into current folder; show dashed border during drag
-
-**Container**
-- Handles `dropReceived` from tree and table
-- Dispatches to `fileSystemStore.move` or `.copy` based on `dragState.effect`
-- Listens to keydown/keyup on window during active drag to update `effect` based on Ctrl
-- Escape cancels drag via `dragDropService.endDrag()` + setting a `cancelled` flag checked on drop
+- `models/drag-state.model.ts`: typed session, source, target, surface and event contracts.
+- Component-provided `services/interaction/drag-drop.service.ts` plus pure policy:
+  session validation, permissions, source/target busy checks, Ctrl effect, 700ms
+  expand-on-hover, cleanup and pessimistic mutation coordination.
+- Tree folders and table files/folders as sources; tree nodes, table folder rows
+  and unused table space as targets. Children use typed inputs/outputs only.
+- ID-based PrimeNG row/node tracking preserves native drag elements during loading.
+- Move/copy connection revision guards reject old completions after project reinit.
+- Focused policy/service/integration tests and full existing regression suite.
+- Transfer/backend notes in [the drag handoff](handoffs/internal-drag-drop.md).
 
 ### Acceptance checks
-- [ ] All 6 internal DnD scenarios (rows 1-6 in SPEC §3.4) work
-- [ ] Ctrl-held drop = copy; default drop = move
-- [ ] Drop onto self, descendant, or same-parent-move is blocked with no-drop cursor
-- [ ] Multi-select drag moves all selected items sequentially with progress
-- [ ] Visual feedback is crisp: highlight appears on hover over valid target, disappears on leave
-- [ ] Cursor reflects operation (move arrow, copy plus-icon, no-drop)
-- [x] External OS files/folders upload into a hovered tree/right-pane folder, or the
-  current folder through the unused space below the table rows
 
-### NOT in this phase
-- Upload
+- [x] All tree/table single-item source/target combinations are wired
+- [x] Default move, Ctrl-copy, same-parent copy using existing KeepBoth names
+- [x] Self/descendant/same-parent move guards; access, deleted-item and busy guards
+- [x] Target highlights; native move/copy/no-drop effects; leave/end cleanup
+- [x] Valid collapsed tree target expands after 700ms without navigation
+- [x] Pessimistic canonical results, reference pruning and affected-view navigation
+- [x] Old-project results cannot update the new cache or trigger drag UI completion
+- [x] External OS file/folder uploads remain separate from internal gestures
+- [ ] Manual native Escape/cursor acceptance in desktop Edge/Chrome
+- [ ] Real SharePoint move/copy and cross-list/cross-site backend acceptance
+
+### Deferred
+
+Multi-selection/bulk dragging, cut, search-result dragging and new backend endpoints.
+Keyboard cut/move equivalence remains outside this single-item mouse feature.
 
 ---
 
@@ -376,8 +374,13 @@ pickers or external OS drag-and-drop, with progress.
 - Preserve the implemented raw-body upload progress, cancellation, response, and typed
   error behavior when connecting the generated client; keep the frontend contract
   compatible with a future single-request streaming transport
-- In `project-documents.ts`, swap the provider `useClass: MockFileSystemApi` → `useClass: SharePointFileSystemApi` and update/remove the `MockFileSystemApi` import (the binding lives in the container, not `app.config.ts`)
-- Only after that swap, optionally delete `services/mock/` (mock backend + seed + mock config token) and the two `stores/*.spec.ts` if unit tests aren't kept in that repo
+- Call `provideProjectDocuments({ api: SharePointFileSystemApi })` in the route that
+  mounts the feature. The component does not bind `FileSystemApi` itself, so there is
+  nothing to edit inside `project-documents.ts` and no component to re-review
+- Keep `services/mock/` for the tests. The specs provide `MockFileSystemApi` through the
+  same function, and because nothing in the feature imports it any more, a host that
+  provides the real adapter never pulls the mock into its production bundle — which was
+  the only reason deleting it was ever on this list
 - Popup imports/calls already match the photographed PRs. Keep the destination's
   `ibportal-web-ui-commons` package and
   `@shared/components/confirmation-popup/confirmation-popup`. Local equivalents

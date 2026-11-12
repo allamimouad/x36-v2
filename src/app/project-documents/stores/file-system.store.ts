@@ -28,6 +28,7 @@ import {
     setEntity,
     withEntities
 } from '@ngrx/signals/entities';
+import { containsNode, pathContainsOrEquals } from '../utils/node-containment.utils';
 import type { DocumentListing } from '../models/document-listing.model';
 import type {
     DocumentListRoots,
@@ -42,6 +43,43 @@ import {
     isFolder
 } from '../models/file-system-node.model';
 import { FileSystemApi } from '../services/file-system/file-system-api';
+
+/**
+ * Everything cached beneath `node`, itself included. `containsNode` walks parent links
+ * and falls back to a path prefix, so this also reaches descendants whose intermediate
+ * parents were never cached. Resolve it *after* a mutation returns: a set captured
+ * beforehand misses whatever was loaded while the request was in flight.
+ */
+function removedSubtreeOf(
+    node: FileSystemNode,
+    all: FileSystemNode[],
+    entities: Record<string, FileSystemNode>
+): FileSystemNode[] {
+    return all.filter((candidate) => containsNode(node, candidate, entities));
+}
+
+/**
+ * Whether `targetParent` lies inside `source` — the one destination a move or copy can
+ * never have. `cachedSubtreeIds` covers descendants reached through parent links; the
+ * path comparison also catches a target whose ancestors were never cached, which is the
+ * only signal available when the source itself is uncached.
+ */
+function targetsOwnSubtree(
+    source: FileSystemNode,
+    targetParent: FolderNode,
+    cachedSubtreeIds: string[]
+): boolean {
+    if (!isFolder(source)) { return false; }
+
+    return cachedSubtreeIds.includes(targetParent.id) ||
+        source.listKey === targetParent.listKey &&
+        pathContainsOrEquals(source.path, targetParent.path);
+}
+
+/** One in-flight children load, boxed so its cleanup can verify it still owns the id. */
+interface ChildrenLoad {
+    promise: Promise<void>;
+}
 
 interface FileSystemState {
     projectId: string | null;
@@ -81,8 +119,18 @@ export const FileSystemStore = signalStore(
     withState(initialState),
     fileSystemDevtoolsFeature(),
     withMethods((store, api = inject(FileSystemApi)) => {
-    // The `_`-prefixed functions below are private local closures (internal helpers),
-    // NOT NgRx private store members — they are not returned from `withMethods`.
+        let connectionRevision = 0;
+        const _checkConnection = (revision: number): void => {
+            if (revision !== connectionRevision) {
+                throw new FileSystemError('cancelled', 'The project changed during the operation');
+            }
+        };
+        // The `_`-prefixed functions below are private local closures (internal helpers),
+        // NOT NgRx private store members — they are not returned from `withMethods`.
+        // Identity box: the map is keyed by folder id, but a settling request must be
+        // able to tell its own entry from a newer one that took the id after a
+        // reinitialization cleared the map.
+        const _childrenLoads = new Map<string, ChildrenLoad>();
         const _markLoading = (folderId: string): void => {
             const ids = store.folderIdsWithLoadingChildren();
             if (ids.includes(folderId)) { return; }
@@ -150,6 +198,10 @@ export const FileSystemStore = signalStore(
 
         /** Wipe all project state and mark the given project as the one being loaded. */
         const _beginInitialize = (projectId: string): void => {
+            connectionRevision++;
+            // Folder ids are re-resolved against the new connection, so no load issued
+            // against the old one may answer for them.
+            _childrenLoads.clear();
             patchState(store, setAllEntities<FileSystemNode>([]), {
                 projectId,
                 folderIdsWithLoadingChildren: [],
@@ -240,8 +292,8 @@ export const FileSystemStore = signalStore(
             _markLoaded(listing.currentFolder.id);
         };
 
-        const loadChildren = async (parentId: string): Promise<void> => {
-            if (store.folderIdsWithLoadingChildren().includes(parentId)) { return; }
+        const _loadChildren = async (parentId: string, entry: ChildrenLoad): Promise<void> => {
+            const revision = connectionRevision;
             _markLoading(parentId);
             _setError(parentId, undefined);
             try {
@@ -257,13 +309,57 @@ export const FileSystemStore = signalStore(
                         ? api.getRecycleBinItems(_requireProjectId(), parent.id)
                         : api.listDocuments(_requireProjectId(), parent)
                 );
+                // A reinitialization while this was in flight discards it: its listing
+                // describes the previous connection and must not reach the new cache,
+                // where the stale-entity pruning would also act on it.
+                if (revision !== connectionRevision) { return; }
+                // The folder may have been deleted while its listing was in flight.
+                // Applying it would reinsert the removed subtree as orphans and mark a
+                // node that no longer exists as loaded. A delete does not bump the
+                // connection revision, so the check above does not cover this.
+                if (!store.entityMap()[parentId]) { return; }
                 _applyListing(listing);
             } catch (e) {
-                _setError(parentId, toFileSystemError(e));
+                if (revision === connectionRevision) {
+                    _setError(parentId, toFileSystemError(e));
+                }
             } finally {
-                _unmarkLoading(parentId);
+                // Release the marker and the map entry together, and only while this
+                // request still owns the id. After a reinitialization a newer load may
+                // hold it, and clearing its marker would tell everything gated on
+                // `folderIdsWithLoadingChildren` that a live request had finished.
+                // When nothing replaced it there is nothing to release either:
+                // `_beginInitialize` already emptied both.
+                if (_childrenLoads.get(parentId) === entry) {
+                    _unmarkLoading(parentId);
+                    _childrenLoads.delete(parentId);
+                }
             }
         };
+
+        /**
+     * Load a folder's children, reusing the request already in flight for the same
+     * folder instead of starting a second one. The returned promise settles when that
+     * load finishes, so a caller that must act on the fresh listing can await it.
+     */
+        const loadChildren = (parentId: string): Promise<void> => {
+            const inFlight = _childrenLoads.get(parentId);
+            if (inFlight !== undefined) { return inFlight.promise; }
+            // Registered before the request starts: `_loadChildren` can reach its
+            // `finally` synchronously (an uncached parent throws before any await),
+            // and that cleanup must find this entry in order to retire it.
+            const entry: ChildrenLoad = { promise: Promise.resolve() };
+            _childrenLoads.set(parentId, entry);
+            // `_loadChildren` records its own failures in `errorByParentId` and never
+            // rejects, so this promise is always safe to await or discard.
+            entry.promise = _loadChildren(parentId, entry);
+
+            return entry.promise;
+        };
+
+        /** The in-flight children load for `parentId`, or null when none is running. */
+        const pendingChildrenLoad = (parentId: string): Promise<void> | null =>
+            _childrenLoads.get(parentId)?.promise ?? null;
 
         /**
      * Resolve a typed list-relative path to its target and load only that folder's
@@ -309,6 +405,10 @@ export const FileSystemStore = signalStore(
 
             return out;
         };
+
+        /** Subtree ids when the node is cached; empty when it is not (e.g. a search hit). */
+        const _subtreeIdsIfCached = (id: string): string[] =>
+            store.entityMap()[id] ? _cachedSubtreeIds(id) : [];
 
         const _cachedSubtree = (id: string): FileSystemNode[] => {
             const nodeById = store.entityMap();
@@ -389,9 +489,11 @@ export const FileSystemStore = signalStore(
                 );
             }
             const trimmed = name.trim();
+            const revision = connectionRevision;
             const created = await firstValueFrom(
                 api.createFolder(_requireProjectId(), parent, trimmed)
             );
+            _checkConnection(revision);
             patchState(store, setEntity<FileSystemNode>(created));
             _adjustParentCount(parentId, 1);
 
@@ -444,7 +546,9 @@ export const FileSystemStore = signalStore(
                     );
                 }
             }
+            const revision = connectionRevision;
             const renamed = await firstValueFrom(api.rename(_requireProjectId(), node, newName));
+            _checkConnection(revision);
             if (cachedNode) {
                 const updated = _updateCachedSubtreePaths(
                     node.id,
@@ -459,18 +563,26 @@ export const FileSystemStore = signalStore(
             return renamed;
         };
 
+        /** Deletes `input` and returns the cache ids it removed, as `move` does. */
         const deleteNodes = async (
             input: string | string[] | FileSystemNode
-        ): Promise<void> => {
+        ): Promise<string[]> => {
             const node = _mutationNode(input, 'delete');
-            const subtree = store.entityMap()[node.id] ? _cachedSubtree(node.id) : [];
+            const revision = connectionRevision;
             await firstValueFrom(api.delete(_requireProjectId(), node));
-            if (subtree.length === 0) { return; }
-            patchState(store, removeEntities(subtree.map((candidate) => candidate.id)));
+            _checkConnection(revision);
+            // Resolved after the request, like `move`. A set captured beforehand left
+            // orphans behind — descendants loaded while the request was in flight, and
+            // descendants whose intermediate parents were never cached — still holding
+            // clipboard and selection references to a node that no longer exists.
+            const removedSubtree = removedSubtreeOf(node, store.entities(), store.entityMap());
+            if (removedSubtree.length === 0) { return []; }
+            const removed = removedSubtree.map((candidate) => candidate.id);
+            patchState(store, removeEntities(removed));
             _adjustParentCount(node.parentId, -1);
-            // Clear loaded markers for every removed folder, not just the root — loaded
-            // descendant folders would otherwise leave orphaned ids in the loaded set.
-            _unmarkLoaded(...subtree.filter(isFolder).map((folder) => folder.id));
+            clearRemovedFolderMarkers(removedSubtree);
+
+            return removed;
         };
 
         const deleteRecycleBinNodes = async (ids: string | string[]): Promise<void> => {
@@ -525,13 +637,14 @@ export const FileSystemStore = signalStore(
      * preserving possibly-stale descendants. Returns the removed subtree ids so a
      * coordinator can prune navigation/clipboard references that pointed into it.
      */
-        const move = async (ids: string | string[], targetParentId: string): Promise<string[]> => {
-            const id = onlySingleId(ids, 'move');
-            const node = store.entityMap()[id];
+        const move = async (
+            input: string | string[] | FileSystemNode,
+            targetParentId: string
+        ): Promise<string[]> => {
+            // Accepts a node, as `copy`, `delete` and `rename` do, so a source that was
+            // never cached — a search result — can still be moved.
+            const node = _mutationNode(input, 'move');
             const targetParent = store.entityMap()[targetParentId];
-            if (!node) {
-                throw new FileSystemError('not-found', `Node not found in cache: ${id}`);
-            }
             if (node.parentId === null) {
                 throw new FileSystemError('invalid-name', 'Root folder cannot be moved');
             }
@@ -542,16 +655,18 @@ export const FileSystemStore = signalStore(
                 );
             }
             if (node.parentId === targetParentId) { return []; }
-            if (isFolder(node) && _cachedSubtreeIds(id).includes(targetParentId)) {
+            if (targetsOwnSubtree(node, targetParent, _subtreeIdsIfCached(node.id))) {
                 throw new FileSystemError(
                     'descendant-move',
                     'Cannot move a folder into itself or a descendant'
                 );
             }
             const oldParentId = node.parentId;
-            const removedSubtree = _cachedSubtree(id);
-            const removedIds = removedSubtree.map((candidate) => candidate.id);
+            const revision = connectionRevision;
             const moved = await firstValueFrom(api.move(_requireProjectId(), node, targetParent));
+            _checkConnection(revision);
+            const removedSubtree = removedSubtreeOf(node, store.entities(), store.entityMap());
+            const removedIds = removedSubtree.map((candidate) => candidate.id);
             patchState(store, removeEntities(removedIds), setEntity<FileSystemNode>(moved));
             _adjustParentCount(oldParentId, -1);
             _adjustParentCount(targetParentId, 1);
@@ -566,20 +681,17 @@ export const FileSystemStore = signalStore(
         ): Promise<void> => {
             const source = _mutationNode(input, 'copy');
             const targetParent = _targetFolder(targetInput);
-            const cachedDescendant = store.entityMap()[source.id] &&
-                _cachedSubtreeIds(source.id).includes(targetParent.id);
-            const pathDescendant = source.listKey === targetParent.listKey &&
-                (targetParent.path === source.path ||
-                    targetParent.path.startsWith(`${source.path}/`));
-            if (isFolder(source) && (cachedDescendant || pathDescendant)) {
+            if (targetsOwnSubtree(source, targetParent, _subtreeIdsIfCached(source.id))) {
                 throw new FileSystemError(
                     'descendant-move',
                     'Cannot copy a folder into itself or a descendant'
                 );
             }
+            const revision = connectionRevision;
             const copied = await firstValueFrom(
                 api.copy(_requireProjectId(), source, targetParent)
             );
+            _checkConnection(revision);
             if (store.entityMap()[targetParent.id]) {
                 patchState(store, setEntity<FileSystemNode>(copied));
                 _adjustParentCount(targetParent.id, 1);
@@ -619,6 +731,7 @@ export const FileSystemStore = signalStore(
             connectProject,
             initialize,
             loadChildren,
+            pendingChildrenLoad,
             loadPathListing,
             invalidate,
             createFolder,

@@ -7,7 +7,7 @@
 >
 > **Before starting any work**: read `PROGRESS.md` to see which phase is active.
 > **Before ending your session**: update `PROGRESS.md` with what you completed, what you deferred, and what the next session should pick up.
-> **Authorized scope update (2026-10-21):** the four PRs are synchronized locally, including recycle bin, backend-supplied access rules, and initial folder links. This explicitly extends the original scope; internal drag-and-drop remains deferred. See `handoffs/pr-sync.md`.
+> **Authorized scope update (2026-10-21):** the four PRs are synchronized locally, including recycle bin, backend-supplied access rules, and initial folder links. This explicitly extends the original scope; internal drag-and-drop was deferred until the separate authorization below. See `handoffs/pr-sync.md`.
 > **Additional PR (2026-10-22):** PR5 names the routed project input `id` and
 > replaces the container's `projectLabel` input with a writable signal initialized
 > to `''`. Immediately after `observeReadErrors()`, the constructor effect sets it
@@ -19,6 +19,12 @@
 > broad current-bin activation guard. Preserve existing limitations, including
 > tree Open Folder doing nothing while a recycle bin is displayed. Any proposed
 > bug fixes require a separate, explicit task after synchronization is reviewed.
+>
+> **Internal drag authorization (2026-10-23):** implement single-item native file/folder
+> move and Ctrl-copy on `feat/internal-drag-drop`, using the existing store/API
+> contract. Tree nodes, table folder rows, and unused table space are targets.
+> Search-result sources, multi-selection, cut, and new backend endpoints remain
+> deferred. See `handoffs/internal-drag-drop.md` for behavior and backend follow-up.
 >
 > **Never implement features from a future phase.** If you notice something needed later, note it in `PROGRESS.md` under "Deferred" and move on.
 > **Git publishing rule**: commit and push to `main` by default. Create or use another
@@ -137,7 +143,8 @@ existing popup implementation and generated models without changing those import
 - Initially open Execution when available, otherwise Marketing.
 - Optional URL query parameters `listKey` (case-insensitive) and `folderPath` (full backend path) resolve a folder after default initialization. Both must be non-empty and the list key must be recognized; otherwise ignore the link and retain the query parameters. Once a recognized link is attempted, clear all query parameters with `replaceUrl` on success or failure; default navigation stays in history.
 - **Double-click a folder on the right** → opens that folder
-- **Double-click a file on the right** → opens it in its online application
+- **Double-click a file on the right** → opens it in its **local** application when the
+  file has one, otherwise online
 - **Single-click a folder on the tree** → opens that folder
 - **Current folder is highlighted in the tree** whenever visible there
 - **Back / forward / up** like browser history:
@@ -152,7 +159,7 @@ existing popup implementation and generated models without changing those import
 
 ### 3.4 Drag-and-drop — full matrix
 
-All scenarios must work:
+The authorized single-item scenarios are implemented below; multi-selection remains deferred:
 
 | # | Source | Target | Result | Guard |
 |---|--------|--------|--------|-------|
@@ -161,8 +168,23 @@ All scenarios must work:
 | 3 | Tree (folder) | Tree (folder node) | Move source under target | Descendant guard |
 | 4 | Right pane (folder or file) | Tree (folder node) | Move item into target | Self/descendant guard |
 | 5 | Right pane (folder or file) | Right pane (folder row) | Move item into target | No self-drop |
-| 6 | Right-pane multi-selection | Any folder | Move all selected | Applied per-item |
+| 6 | Right-pane multi-selection | Any folder | Deferred | Not part of current authorization |
+| 6a | Right pane (folder or file) | Unused right-pane space | Ctrl-copy into current folder | Same-parent move is rejected |
 | 7 | External OS files/folders | Right pane (folder row) | Upload into that folder | — |
+
+**The descendant guard is frontend-only, by necessity.** It lives in one place,
+`pathContainsOrEquals` (`utils/node-containment.utils.ts`), used by `containsNode`'s
+path fallback, `FileSystemStore.targetsOwnSubtree` and
+`ProjectDocuments.isNodeAncestorOrSelf`. It is **case-insensitive**, because SharePoint
+addresses the same folder as `/Contracts` or `/contracts`; the trailing slash in the
+prefix test is what keeps `/Contracts2` from reading as a child of `/Contracts`. Only the
+comparison is normalized — a stored path is never rewritten.
+
+It cannot be delegated to the backend: the real API answers a descendant copy with a
+generic **HTTP 500** and creates nothing (verified 2026-11-05). That is safe but carries
+no descendant signal, so nothing in the response can be mapped to `descendant-move`, and
+mapping a 500 to it would relabel every server-side copy failure. See `docs/TODO.md`
+item 6.
 | 8 | External OS files/folders | Unused right-pane space below rows | Upload to current folder | — |
 | 9 | External OS files/folders | Tree folder node | Upload into that folder | — |
 
@@ -177,13 +199,15 @@ All scenarios must work:
 - Valid target: folder row/node highlights
 - Invalid: `cursor: no-drop`, no highlight
 - Current-folder target: the complete unused space below the rendered rows becomes a
-  dashed drop zone during an external drag. If rows fill the pane, it keeps a usable
+  dashed drop zone during an internal or external drag. If rows fill the pane, it keeps a usable
   minimum height at the bottom; the table/header/file rows do not become the target.
 
 ### 3.5 Right-click context menus
 
 - **Folder** (tree or right pane): Open Folder; separator; Rename Folder, Copy Folder, Paste, Delete Folder; separator; Upload within folder → Folder / File
-- **File**: Open File in → Local application / Online Application; separator; Rename File, Copy File, Delete File; separator; Download File
+- **File**: a single **Open** when the file has no local application, otherwise
+  **Open File in** → Local application / Online Application; separator; Rename File,
+  Copy File, Delete File; separator; Download File
 - **Right-pane empty area**: Create new Folder; separator; Paste; Upload → Folder / File
 - Nested menus open on hover. Paste is a direct command, not a submenu.
 - Root folders cannot be renamed or deleted. Actions whose workflows are not implemented yet remain visible but disabled, preserving the final menu structure.
@@ -195,6 +219,11 @@ All scenarios must work:
 - Online opens in a new browser tab; Local application launches an allow-listed
   Microsoft Office URI; Download navigates directly to SharePoint without Angular or
   the application backend relaying the file bytes.
+- **Opening defaults to local, not online** (2026-11-06). `desktopUrl` is null for
+  anything that is not an Office document, while `onlineUrl` is always populated and is
+  the fallback — so "can it open locally" is the question that decides both the default
+  action and the menu shape. A file with no local application gets one **Open** entry
+  rather than a submenu whose only usable child is Online Application.
 
 ### 3.6 Cut / copy / paste clipboard
 
@@ -207,11 +236,124 @@ All scenarios must work:
   frontend neither predicts the final name nor prompts for one
 - On successful move after cut: clear clipboard
 
-### 3.7 Multi-select (right pane only)
+### 3.7 Multi-select (both tables)
 
-- **Click**: select one (becomes anchor)
-- Drives bulk delete, bulk move/copy, bulk cut/copy
-- PrimeNG `p-table` `selectionMode="multiple"` with `dataKey="id"`
+Implemented 2026-10-28 for the right-pane table, extended to the search table
+2026-11-05. The tree is single-item throughout; the recycle bin does not take part.
+
+- **Click** replaces the selection and becomes the anchor.
+- **Ctrl/Cmd+click** toggles one row and moves the anchor to it.
+- **Shift+click** selects from the anchor to the clicked row, in the order the rows are
+  currently rendered, and leaves the anchor where it is so a further Shift-click
+  re-extends from the same row.
+- Clicking the space below the rows, changing the viewed folder, or Escape clears it,
+  **including the focused row** — those gestures mean nothing is chosen.
+- Enter/Space on a focused row selects it, matching a plain click.
+
+Focus and selection are **separate affordances and must look it**. Selection is a
+background fill; focus is an inset accent edge. They shared one background until
+2026-11-05, and because every row click focuses, a row that had just been
+Ctrl-click-deselected still read as selected — the state was right, only the paint was
+wrong. The same shared colour made a recycle-bin row look selected, though bins only
+ever focus.
+
+**Any change of view starts with a fresh selection**, with no exceptions — a folder
+navigation, Back/Forward, Up, a typed path, a project load, and **entering or leaving a
+search**. It is enforced in one place, `_clearedSelection()`, which returns a new `Set`
+each call so two patches cannot share one instance. Reloading the *current* folder is
+not a change of view and deliberately keeps the selection.
+
+**The search table has the same selection**, with two deliberate differences:
+Enter/Space opens a result rather than selecting it, and Paste is not offered there
+because that surface has no target folder.
+
+Both tables resolve a click through one shared `resolveSelection` (`utils/selection.
+utils.ts`), each passing its own table's rendered ids so a Shift-range follows the
+current sort.
+
+Extending selection to search took widening how a selection is turned back into nodes.
+A search hit is **never** cached — results come from the search endpoint and nothing
+inserts them into `FileSystemStore`, deliberately, because `currentFolderChildren`
+derives a folder's contents from whatever entity claims it as a parent and would then
+present a partial listing as a complete one. Both places that resolved a selection
+through the cache therefore fall back to the surface's own rows: `selectedNodes` reads
+the search results, and a drag carries `selectedNodes` alongside `selectedIds`. A
+selection naming something **neither** source knows is still refused outright — stale is
+not the same as uncached.
+
+A search selection may span document lists, since one result set can. The consequence is
+asymmetric and accepted: the context-menu **Delete works** across lists, each item going
+to its own list's bin, while **dragging a mixed set onto a bin is refused as a whole**,
+because the bin policy requires a matching list and drag validation is set-wide.
+
+Selection is **not** wired through PrimeNG's `selectionMode="multiple"`. The rows own
+native drag listeners whose propagation is deliberately stopped before PrimeNG's own
+handlers, and a Shift-range has to follow the rendered order, which column sorting
+changes. The table therefore resolves the whole next selection itself and reports it;
+the store only stores it.
+
+**A bulk selection collapses to top-most ancestors**, exactly as a drag always has
+(`topMostNodes`). Only a search can put a folder and something inside it in the same
+selection — the right-pane table lists one folder's children, so its rows are always
+siblings. Acting on both would pull the child out of the folder it is travelling with on
+a cut, duplicate it on a copy, and delete it twice. Collapsing happens in
+`selectedNodes`, not inside the batch runner, so each caller's own count and confirmation
+text describe what will actually run (which is why the delete dialog needs a singular
+form: collapsing two rows can leave one).
+
+**A search selection never outlives its rows.** A re-query can drop a row that was
+selected — renaming it so it stops matching is the easiest way, but any refresh can — and
+the node behind it may still be cached, so a bulk action or drag could reach something
+invisible. Two things prevent it: the container reconciles the selection against the
+current result ids, and `selectedNodes` resolves from the **active surface only** (search
+results while searching, the cache otherwise) rather than merging both, which makes a
+hidden row unresolvable rather than merely absent. The search surface likewise reports
+only the ids it is showing when a drag starts.
+
+Drives drag-and-drop of several items, plus bulk delete, copy and cut (2026-11-03).
+Delete and Copy/Cut act on the whole selection; **Rename stays single-item**, since
+renaming many at once means nothing, and is the only action still disabled on a
+multi-selection.
+
+Deleting a selection asks once in the shared `ConfirmationPopup` ("delete 5 items?");
+a single delete keeps its inline row buttons. Cut is move underneath, so it inherits
+the same rules as a drag move. Paste accepts any number of items and both clipboard
+modes; a cut clipboard is spent once pasted, a copy one survives for another paste.
+Cut rows render at 50% opacity until the paste lands. A paste is rejected as a whole
+if any item would land inside itself, and opens the destination when the move carried
+off the folder being viewed.
+
+**Search results are reconciled by re-running the search after a mutation, with an
+instant local touch-up first** (revised 2026-11-04). Every mutation prunes the rows it
+removed by id, and a rename corrects its own row, so what the user acted on responds
+immediately. Everything a mutation implies beyond that — uncached descendants of a
+deleted folder, paths beneath a renamed one — is left to
+`DocumentSearchService.refresh`, which re-runs the last submitted search.
+
+The refresh deliberately **keeps the current rows on screen** until the response lands:
+clearing them, as a user-submitted search does, would replace one stale row with an
+empty table for as long as the query takes. That takes two things, and the service can
+only do one of them — it keeps its results array, while `isRefreshing` is what stops the
+view swapping the table for its loading state. A submitted search sets `isSearching`
+alone and may replace the table; a refresh sets both, and the view shows a non-blocking
+"Updating results…" line above the live rows.
+
+Every path that mutates reconciles, including a **copy**, which removes nothing and so
+prunes no ids: a copy made inside the searched scope is a new match. Drag-copy and
+paste-copy go through the same completion path for exactly that reason.
+
+`clear` **forgets** the submitted search as well as unsubscribing. It runs on every
+navigation away from a search, so a retained query would let a later mutation's refresh
+re-run a search the user has left — against the previous project, since the service
+outlives one project — and the revived `activeQuery`/`activeScopeId` would make the
+container's `alreadyLoaded` check skip the next real search and show those rows.
+
+An earlier version maintained the list entirely locally, matching descendants by path
+prefix; that is removed. Re-querying costs a request but is correct about descendants
+and paths by construction, where the local version produced four separate defects.
+
+Bulk download is deliberately absent: there is no zip endpoint, so it would mean one
+browser download per file.
 
 ### 3.9 Upload with progress
 
@@ -265,8 +407,9 @@ All scenarios must work:
   address-bar navigation paths from the node's canonical `path` and the already-loaded
   list-root `path`.
 - Double-clicking/pressing Enter on a folder result opens that folder. The same action
-  on a file opens its online application. Single-click does not navigate; locating a
-  file is an explicit `Open File Location` action in its context menu.
+  on a file opens it the way a double-click does in the table: locally when it can,
+  online otherwise. Single-click does not navigate; locating a file is an explicit
+  `Open File Location` action in its context menu.
 - Folder and search screens are distinct navigation-history entries. Opening a result
   adds its folder screen; Back restores the search scope/query and reruns it instead of
   retaining stale results. Resubmitting while already on a search screen replaces that
@@ -617,7 +760,7 @@ All stores and feature services are provided at `ProjectDocuments` level.
 - **`FileSystemApi`** (abstract) — §5
 - **`MockFileSystemApi`** — §6
 - **`SharePointFileSystemApi`** — §7
-- **`DragDropService`** — cross-component drag state (signal-based); methods: `startDrag`, `updateEffect`, `endDrag`, `canDropOn`
+- **`DragDropService`** — cross-component drag state (signal-based); methods: `startDrag`, `over`, `drop`, `leave`, `endDrag`, `canDropOn`
 - **`UploadService`** — upload queue with concurrency limit; exposes task signals for the panel
 - **`ClipboardService`** — small signal-based clipboard state holder
 - **`ConcurrencyQueue`** — generic promise-based queue, max N concurrent; used for bulk ops and uploads
@@ -651,7 +794,7 @@ project-documents/
       mock-file-system-api.ts          # mock/dev backend + unit-test double
       mock-seed.ts                     # seed data
       mock-config.token.ts             # mock latency/error settings
-    drag-drop.service.ts
+    interaction/drag-drop.service.ts
     upload.service.ts
     concurrency-queue.ts
     directory-manifest.ts
@@ -677,45 +820,70 @@ project-documents/
 
 ### 9.1 Contract
 
-Draggable elements:
-- `draggable="true"`
-- `(dragstart)` → `dragDropService.startDrag({ source, items, sourceParentId, effect: 'move' })`; set `event.dataTransfer.effectAllowed = 'copyMove'`
-- `(dragend)` → `dragDropService.endDrag()`
+`services/interaction/drag-drop.service.ts` is provided by `ProjectDocuments`.
+Tree/table children emit typed `ItemDragRequest` / `ItemDropRequest` events and
+receive source, target, active-state, and draggable-ID inputs; they inject no stores.
 
-Drop targets:
-- `(dragover)`:
-  - `event.preventDefault()` if `dragDropService.canDropOn(targetId)` is true
-  - Read `event.ctrlKey` → `dragDropService.updateEffect(ctrlKey ? 'copy' : 'move')`
-  - Set `event.dataTransfer.dropEffect` accordingly
-  - Toggle local `isDragOver` signal
-- `(dragleave)` → clear `isDragOver`
-- `(drop)`:
-  - `event.preventDefault()`
-  - If `dragState().source === 'external'` → read `event.dataTransfer.files`, enqueue uploads to target
-  - Else → emit `dropReceived` event; container calls `fileSystemStore.move()` or `.copy()`
+- One cached item per session; only ordinary tree folders and table files/folders
+  are draggable. Roots, bins, deleted records, editing or busy items are excluded.
+- `dragstart` writes a random session token under
+  `application/x-project-documents-item` and sets `effectAllowed = 'copyMove'`.
+  Payload IDs alone never authorize a mutation: an active in-memory session for
+  this component/project is required. Internal events take precedence over `Files`.
+- `dragover` reads only types and `ctrlKey`, validates the current canonical nodes,
+  sets `dropEffect`, and highlights the valid target on its actual surface.
+  Default is move; Ctrl is copy. Modifier changes are read from drag events because
+  native drags suppress ordinary keyboard events.
+- `drop` synchronously reads and verifies the token, reads the final Ctrl state,
+  and validates again before clearing the gesture and awaiting the mutation.
+  Source and destination are marked busy; a second internal operation is rejected.
+- A valid collapsed tree folder expands after 700ms hover without navigation.
+  Leaving/changing targets, cancellation, drop, project changes, and destruction
+  clear the timer. Tree/table tracking uses node IDs to preserve native sources
+  while lazy-loaded entities change.
+- `dragend` clears the gesture, including native Escape cancellation. A document
+  Escape handler also cancels when the browser delivers the keyboard event.
 
-### 9.2 `canDropOn` logic
+### 9.2 Validation and completion
 
-```ts
-canDropOn(targetId: string): boolean {
-  const drag = this.dragState();
-  if (!drag) return false;
-  if (drag.source === 'external') return true;
-  // Cannot drop onto items currently being dragged
-  if (drag.items.some(i => i.id === targetId)) return false;
-  // Cannot drop a folder into its own descendant
-  for (const item of drag.items) {
-    if (item.kind === 'folder' && isAncestorOrSelf(item.id, targetId, allFolders)) {
-      return false;
-    }
-  }
-  // No-op move (same parent)
-  if (drag.effect === 'move' && drag.sourceParentId === targetId) return false;
-  return true;
-}
-```
+`drag-drop-policy.ts` rechecks source/destination availability, current write/edit
+state, node access flags, parent access, and document-list access on hover and drop.
+Search results are draggable (2026-11-03), one row at a time — selection is
+right-pane-table only. Permissions are **item-level**: a read-only item cannot be moved
+or deleted, and the folder it sits in is not consulted, matching every other gate in the
+app (the context menus, tree, table and store all read the item's own access and its
+list, never its parent's). A moved or deleted result leaves the list; a copied one stays.
+The search is not re-run.
 
-`isAncestorOrSelf(ancestorId, candidateId, allFolders)`: walks up from `candidateId` via `parentId` until it either hits `ancestorId` (true) or null (false). Use `id` traversal, not path string matching (paths change on rename, ids don't).
+Roots and bins cannot be dragged. Dropping on a recycle bin **deletes** (2026-11-01):
+the bin is only an affordance, since `FileSystemApi.delete` takes no target and the
+backend routes the item to its own list's bin — so only the bin matching the source's
+`listKey` accepts the drop, and any other bin would misrepresent where the item goes.
+Holding Ctrl asks for a copy, which a bin cannot satisfy, so that is rejected rather
+than silently deleting. There is no confirmation: the item is recoverable from the bin
+and the gesture is deliberate. A multi-selection deletes every item. Deleted records
+inside a bin are not bins and still receive no drops.
+Self/descendant drops and same-parent moves are rejected. Same-parent Ctrl-copy
+retains the existing backend/mock KeepBoth naming (locally `name - Copy`, then
+`name - Copy (2)`). Protected/readonly sources may be copied to a writable target.
+Moving also requires an editable source and a writable source parent/list.
+Protected target folders accept new contents; readonly targets/lists do not.
+
+Containment walks cached parent IDs with a same-list canonical path-prefix fallback
+for a folder resolved without its ancestors. This does not change bin display paths.
+
+Mutations reuse `FileSystemStore.move/copy` and remain pessimistic. Success applies
+canonical returned nodes, prunes moved subtree navigation/clipboard references, and
+shows a notification. The view stays open unless the moved folder contains it; that
+case opens the destination after success. Failure preserves data/view/references.
+The removed subtree is found at completion, including path-resolved descendants
+and records loaded while the move was pending. A connection revision prevents late
+move/copy results patching a reinitialized
+project, including reinitialization with the same ID. Stale completions and
+completions after component destruction produce no drag navigation/toast.
+
+Local mocks support cross-list operations. Real SharePoint move remains a stub;
+actual backend support, especially cross-site support, must be verified separately.
 
 ---
 
@@ -727,7 +895,7 @@ canDropOn(targetId: string): boolean {
 | Rename | Pessimistic | Await server, apply the returned node, repath cached descendants |
 | Single delete | Pessimistic | Await server, then remove the cached subtree |
 | Single move | Pessimistic | Await server; drop the moved subtree and insert only the returned node (collapsed/unloaded), adjust both parent counts, prune dangling refs (replace-on-success) |
-| Single copy | Pessimistic | Same-list only; await server (copy creates a new entity, need real id) |
+| Single copy | Pessimistic | Await canonical returned node; mock supports same/cross-list, real backend capability requires verification |
 | Bulk delete/move/copy | Pessimistic + progress | Run through ConcurrencyQueue, apply each on success, summarize errors |
 | Upload | Pessimistic + progress | Always |
 

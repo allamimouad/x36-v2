@@ -4,6 +4,7 @@ import {
     Component,
     effect,
     ElementRef,
+    HostListener,
     input,
     output,
     signal,
@@ -11,14 +12,18 @@ import {
 } from '@angular/core';
 import { InputText } from 'primeng/inputtext';
 import { ProgressSpinner } from 'primeng/progressspinner';
-import { TableModule } from 'primeng/table';
+import { Table, TableModule } from 'primeng/table';
 import type {
     ItemRenameRequest,
     SearchResultContextMenuRequest
 } from '../../models/context-menu-request.model';
+import type { ItemDragRequest } from '../../models/drag-state.model';
 import type { FileSystemNode } from '../../models/file-system-node.model';
+import type { SelectionRequest } from '../../models/selection-request.model';
 import { FileSystemIcon } from '../../shared/file-system-icon/file-system-icon';
+import { editableName, submittedName } from '../../utils/naming.utils';
 import { parentOfRelativePath, relativePathFromRoot } from '../../utils/path.utils';
+import { resolveSelection } from '../../utils/selection.utils';
 
 @Component({
     selector: 'pr-search-results',
@@ -33,12 +38,23 @@ export class SearchResults {
     public readonly rootPath = input.required<string>();
     public readonly query = input.required<string>();
     public readonly loading = input(false);
+    /** A reconciling re-query with rows already up: indicated, never blocking. */
+    public readonly refreshing = input(false);
     public readonly error = input<string | null>(null);
     public readonly renamingId = input<string | null>(null);
     public readonly renameError = input<string | null>(null);
     public readonly writingIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly deleteConfirmationId = input<string | null>(null);
+    public readonly draggableIds = input<ReadonlySet<string>>(new Set<string>());
+    public readonly internalSourceIds = input<ReadonlySet<string>>(new Set<string>());
+    public readonly selectedIds = input<ReadonlySet<string>>(new Set<string>());
+    public readonly selectionAnchorId = input<string | null>(null);
+    public readonly cutIds = input<ReadonlySet<string>>(new Set<string>());
     public readonly resultActivated = output<FileSystemNode>();
+    public readonly selectionRequested = output<SelectionRequest>();
+    public readonly emptySpaceClicked = output();
+    public readonly dragStarted = output<ItemDragRequest>();
+    public readonly dragEnded = output();
     public readonly contextMenuRequested = output<SearchResultContextMenuRequest>();
     public readonly emptyContextMenuRequested = output<MouseEvent>();
     public readonly renameSubmitted = output<ItemRenameRequest>();
@@ -51,15 +67,12 @@ export class SearchResults {
     private readonly inlineRenameInput = viewChild<ElementRef<HTMLInputElement>>('renameInput');
     private readonly deleteCancelButton =
         viewChild<ElementRef<HTMLButtonElement>>('deleteCancelButton');
+    private readonly table = viewChild(Table);
 
     constructor() {
         effect(() => {
             const result = this.results().find(({ id }) => id === this.renamingId());
-            if (result) {
-                this.inlineRenameValue.set(
-                    result.kind === 'file' ? fileNameParts(result.name).base : result.name
-                );
-            }
+            if (result) { this.inlineRenameValue.set(editableName(result)); }
             const inputElement = this.inlineRenameInput()?.nativeElement;
             if (inputElement) {
                 inputElement.focus();
@@ -70,6 +83,55 @@ export class SearchResults {
             if (this.deleteConfirmationId()) {
                 this.deleteCancelButton()?.nativeElement.focus();
             }
+        });
+    }
+
+    /**
+     * Anything outside a row counts as empty space and clears the selection. The
+     * right-pane table has a dedicated element to test for; this surface is only the
+     * table, so the absence of a row is the test. Bound on the host, as there too, so
+     * the wrapper does not need keyboard handlers of its own — Escape is the keyboard
+     * path and the container owns it.
+     */
+    @HostListener('click', ['$event'])
+    protected onHostClick(event: MouseEvent): void {
+        if (event.target instanceof Element && !event.target.closest('tr')) {
+            this.emptySpaceClicked.emit();
+        }
+    }
+
+    protected onRowClick(event: MouseEvent, result: FileSystemNode): void {
+        if (event.target instanceof HTMLElement && event.target.closest('input, button')) {
+            return;
+        }
+        this.selectionRequested.emit(resolveSelection(event, result.id, {
+            selectedIds: this.selectedIds(),
+            anchorId: this.selectionAnchorId(),
+            renderedIds: this.renderedIds()
+        }));
+    }
+
+    protected onDragStart(event: DragEvent, result: FileSystemNode): void {
+        if (!this.draggableIds().has(result.id) || this.renamingId() === result.id ||
+            this.deleteConfirmationId() === result.id) {
+            event.preventDefault();
+
+            return;
+        }
+        // The rows travel with the ids: a search result is never cached, so the drag
+        // could not resolve this selection from the cache alone.
+        //
+        // Reported ids are intersected with the rows on screen. The container already
+        // reconciles the selection against each new result set, so this is not what
+        // keeps an invisible row out of a drag — it is so this component never forwards
+        // an input it can see is stale, which is its own business either way.
+        const selected = this.selectedIds();
+        const selectedNodes = this.results().filter(({ id }) => selected.has(id));
+        this.dragStarted.emit({
+            event,
+            node: result,
+            selectedIds: new Set(selectedNodes.map(({ id }) => id)),
+            selectedNodes
         });
     }
 
@@ -144,22 +206,16 @@ export class SearchResults {
     }
 
     private submitInlineRename(result: FileSystemNode): void {
-        const editedName = this.inlineRenameValue();
-        if (result.kind === 'folder') {
-            this.renameSubmitted.emit({ node: result, name: editedName });
-
-            return;
-        }
-        const { ext } = fileNameParts(result.name);
-        const trimmedBase = editedName.trim();
-        const completeName = ext && trimmedBase ? `${trimmedBase}.${ext}` : editedName;
-        this.renameSubmitted.emit({ node: result, name: completeName });
+        this.renameSubmitted.emit({
+            node: result,
+            name: submittedName(result, this.inlineRenameValue())
+        });
     }
-}
 
-function fileNameParts(name: string): { base: string; ext: string } {
-    const dot = name.lastIndexOf('.');
-    if (dot <= 0) { return { base: name, ext: '' }; }
+    /** Row ids in the order the table currently renders them, which sorting changes. */
+    private renderedIds(): string[] {
+        const rendered = this.table()?.value as FileSystemNode[] | undefined;
 
-    return { base: name.slice(0, dot), ext: name.slice(dot + 1) };
+        return (rendered ?? []).map(({ id }) => id);
+    }
 }

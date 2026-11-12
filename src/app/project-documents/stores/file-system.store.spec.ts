@@ -409,6 +409,34 @@ describe('FileSystemStore project-scoped API contract', () => {
         expect(removed.length).toBe(directChildren.length + 1);
     });
 
+    it('rejects a move into a descendant whose path differs only in case', async () => {
+        const roots = await store.initialize('project-123');
+        const executionRoot = requireRoot(roots.EXECUTION, 'execution');
+        const top = store.entities().find(
+            (node): node is FolderNode => isFolder(node) && node.parentId === executionRoot.id
+        );
+        if (!top) { throw new Error('Expected an execution folder'); }
+        await store.loadChildren(top.id);
+        const child = store.entities().find(
+            (node): node is FolderNode => isFolder(node) && node.parentId === top.id
+        );
+        if (!child) { throw new Error('Expected a child folder'); }
+        const move = spyOn(api, 'move').and.callThrough();
+        // An uncached source — every search hit is one — so the cached-subtree check
+        // finds nothing and the path comparison is the only guard left. SharePoint
+        // addresses the same folder either way, so the case must not matter.
+        const uncachedSource: FolderNode = {
+            ...top,
+            id: 'uncached-source',
+            path: top.path.toUpperCase()
+        };
+
+        await expectAsync(store.move(uncachedSource, child.id))
+            .toBeRejectedWithError(/itself or a descendant/);
+
+        expect(move).not.toHaveBeenCalled();
+    });
+
     it('uses the destination list context when moving across document lists', async () => {
         const roots = await store.initialize('project-123');
         const executionRoot = requireRoot(roots.EXECUTION, 'execution');

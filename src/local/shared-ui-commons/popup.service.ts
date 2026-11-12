@@ -5,6 +5,10 @@ import {
     type DynamicDialogRef
 } from 'primeng/dynamicdialog';
 import { take } from 'rxjs';
+import {
+    CURRENT_APP_INJECTION_TOKEN,
+    IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN
+} from './app-context.tokens';
 import { ErrorPopup } from './error-popup';
 
 export interface ErrorPopupOptions {
@@ -15,9 +19,14 @@ export interface ErrorPopupOptions {
     isClosable?: boolean;
 }
 
-@Injectable({ providedIn: 'root' })
+// Not provided in the root injector: every consumer lists this service in its own
+// `providers`, so each host owns the dialog references it opens and disposes of them
+// with itself.
+@Injectable()
 export class PopupService {
     private readonly dialogs = inject(DialogService);
+    private readonly currentApp = inject(CURRENT_APP_INJECTION_TOKEN);
+    private readonly supportEmail = inject(IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN);
     private readonly references = new Set<Pick<DynamicDialogRef<unknown>, 'destroy'>>();
 
     constructor() {
@@ -61,7 +70,9 @@ export class PopupService {
             message: options.message,
             escapeMessage: options.escapeMessage ?? true,
             traceId: options.traceId,
-            isClosable: options.isClosable ?? true
+            isClosable: options.isClosable ?? true,
+            application: this.currentApp,
+            supportEmail: this.supportEmail
         });
     }
 }

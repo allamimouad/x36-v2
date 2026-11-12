@@ -6,6 +6,708 @@
 
 ## Current Status
 
+**Active work (2026-11-05): four review rounds on internal drag-and-drop, and one
+search strategy change.** The first round raised five issues; all five were real and all
+are fixed.
+
+The substantive one changed a strategy. Rename, single delete, bulk delete and paste
+re-ran the search after mutating (`refreshActiveSearch`, your colleague's convention
+from the search work), while the drag pruned by id instead — and the drag's version had
+a hole: `removedSubtreeOf` reports only cached nodes, so an uncached search hit produced
+no ids and its row survived a successful delete. Since a search hit is *never* cached,
+that was every drag from search. Rather than give the drag a refresh, pruning won
+everywhere: it costs no query, and it is more accurate than a refresh for a move, which
+would otherwise re-show the item at its new path in a result set nobody asked for.
+`refreshActiveSearch` is removed, `DocumentSearchService` gained `replaceResult` for
+rename, and pruning now includes each operation's own source ids. Only operations that
+take something away prune — a copy prunes nothing, or it clears its own clipboard entry.
+
+The other four: a bulk-delete confirmation could outlive its project (the guard is now
+captured when the dialog opens, not when it is accepted); the menu's session guard
+ignored component lifetime (it now checks `destroyed`, as the drag guard always did); a
+cut-paste could leave the view on a removed folder (it now opens the destination, like a
+drag); and a finishing cut-paste could clear a newer clipboard (it clears only when the
+clipboard still holds what that paste consumed).
+
+A follow-up round found four more, all real and all fixed. Two shared one gap: a search
+result's **descendants** are uncached results of their own, and nothing related them to
+an operation on their ancestor. Deleting a folder therefore left its children's rows,
+and renaming one left their paths stale — which matters because "Open File Location"
+navigates by that path. Pruning now matches by path as well as by id, and
+`replaceResult` became `applyRename`, rewriting the prefix beneath the renamed folder as
+the store already does for cached nodes.
+
+The other two: a cut-paste read the viewed folder from when it started, so opening a
+child of the moving folder mid-paste left the view on something removed — the move
+already resolves removals at completion, so the view is now read there too. And the
+clipboard guard compared ids, so re-copying a file that was mid-cut passed it; the
+explicit clear and its comparison are **deleted** rather than replaced with version
+tracking, because pruning already drops what actually moved. That also makes a partly
+failed cut keep exactly its failures for a retry instead of clearing them.
+
+**Search reconciliation was then revised.** The 30-second search is an edge case rather
+than the norm, so one request per mutation is affordable. The premise that prompted the
+change was wrong and worth recording — the local maintenance was never expensive, once
+per operation at a `Set` lookup plus a prefix compare per folder; the costly thing was
+the per-row drag policy below. The real argument is defect density: local maintenance
+produced four defects across three review rounds, where a refresh has one failure mode.
+So `DocumentSearchService.refresh()` re-runs the last submitted search after every
+mutation, and the path-prefix matching is deleted — ids-only pruning, an id-only
+`replaceResult`, and no `removedRoots` plumbing. Those two stay for instant feedback on
+the row the user touched. `refresh` deliberately does not blank the list, or a slow query
+would trade one stale row for an empty table. No container seam was needed: the service
+remembers its own project id, scope and query, so the drag service calls it directly,
+which also dissolves the seam problem recorded earlier as a blocker.
+
+One performance fix came out of asking what the search path costs per operation.
+Pruning is cheap by design — once per operation, one pass, and it writes only when
+something changed. But marking search rows draggable called a per-node `canDrag`, and
+`policy()` scans every cached entity, so it was O(results x entities) and rebuilt on
+every signal the policy reads — including `pending`, so on every drag start and end.
+`canDrag` is now `draggableAmong`, which takes the list and builds the policy once, as
+`draggableIds` always did for the tree and table. A test counts `entityMap` reads to
+keep the per-row form from coming back.
+
+**A third round found three more findings, and all three were already gone** — they were
+written against the path-matching commit, so the deletion retired them rather than any
+individual fix. All three were verified real against that commit first: a copy pruned
+its source folder's children, `applyRename` rewrote a descendant's path but left its
+Open/Download URLs, and neither prefix test compared `listKey`. One residual is recorded
+as `docs/TODO.md` item 9 rather than fixed, because the only local fix is the sweep that
+was just deleted.
+
+**A fourth round then found three real bugs in the refresh itself**, all fixed.
+`clear` unsubscribed but kept `lastSubmitted`, and it runs on every navigation away from
+a search — so a later mutation's refresh re-ran a dead query, against the previous
+project after a switch, and the revived `activeQuery`/`activeScopeId` made the
+container's `alreadyLoaded` check skip the user's next real search and show those rows
+instead. Drag-copy never reconciled, because `perform` guarded `finishBatch` behind
+`intent !== 'copy'` and that is the only path to `refresh`; copy now goes through it with
+`removed` as `[]`, and is excluded from the navigation decision since its source
+survives and the containment test would otherwise move the view. And the refresh hid the
+results anyway: `[loading]="isSearching()"` fed a template that replaces the whole table,
+so `reset: false` preserved an array nothing rendered. `isRefreshing` now separates the
+two, and a refresh shows a non-blocking line above the live rows.
+
+The lesson from that last one is the one to keep: the covering test asserted
+`service.results()` stayed populated — the right property at the wrong layer, passing
+while the screen was blank. A claim about what the user sees needs an assertion at the
+rendered level.
+
+**One question about the search table closed a gap in the selection rule.** Search has
+no multi-selection because it was scoped out when selection was built — the table had no
+bulk actions then either — and because `selectedNodes` resolves ids through the cache
+while a search hit is never cached, so a search selection would resolve to zero nodes in
+every bulk action. That stands as recorded, not built. But the rule underneath it —
+every change of view starts with a fresh selection — had two holes, both on the search
+boundary: `openSearch` and `exitSearch`'s in-place branch did not clear. Invisible today
+because nothing in the search view reads the selection, and a live bug the moment one
+does. `exitSearch`'s branch turns out to be unreachable (index 0 is always a folder
+entry), so it is clear-for-consistency with no test; `openSearch` is reachable and has
+one.
+
+**Search multi-select is now implemented** (2026-11-05), to parity with the right-pane
+table: plain/Ctrl/Shift click, selected and cut styling, click-outside and Escape to
+clear, dragging the whole selection, and bulk delete/copy/cut. Two deliberate
+differences — Enter/Space still opens a result, and Paste is not offered on a surface
+with no target folder.
+
+The blocker was never the selection itself: `NavigationStore` holds one surface-agnostic
+id set. It was that **two places turned ids back into nodes through the cache, and a
+search hit is never cached** — `selectedNodes` resolved to zero nodes, so every bulk
+action silently did nothing, and `dragSet` refused the whole gesture. Caching the results
+would fix both for free and was rejected: `currentFolderChildren` takes every entity
+whose `parentId` matches the viewed folder with no check that the listing was fetched, so
+a search hit would later appear as a row and present a partial folder as a complete one.
+Both paths fall back to the surface's own rows instead, while still refusing a selection
+naming something neither source knows — stale is not the same as uncached.
+`resolveSelection` moved into `utils/selection.utils.ts` so both tables share it, each
+passing its own rendered ids to keep a Shift-range in sort order.
+
+Accepted asymmetry: a search selection may span document lists, where the menu Delete
+works (each item to its own bin) but a mixed set dragged onto a bin is refused whole.
+
+**Deselecting did not look like deselecting** (reported from manual use, fixed
+2026-11-05). Ctrl-clicking a selected row left it looking selected, and clicking outside
+the rows appeared to do nothing, while drags acted on the right items — state correct,
+paint wrong. One cause: `pd-row-focused` and `pd-row-selected` shared `--pd-selection-bg`
+in the file table, and every row click focuses, so the row just clicked was always
+painted as selected. Clicking the empty space compounded it, because `clearSelection`
+left `focusedId` set. Recycle-bin rows had the same look for the same reason, though they
+only ever focus. Selection now keeps the fill, focus gets the inset accent edge the
+combined rule already used, and `clearSelection` clears focus too — which also removes an
+asymmetry, since right-clicking the empty space already did. The search table never had
+this: no focused class, and a hover colour plainly distinct from the selection fill.
+
+**The descendant guard is now case-insensitive, and item 6 is answered.** You tested the
+real API through Postman: copying a folder into its own descendant returns HTTP 500 and
+creates nothing, so it fails safely and is no longer a potential P1. That also means the
+backend cannot report the specific problem, which makes the frontend guard the only
+source of the right message — so its last hole was worth closing. The path comparison is
+one helper now, `pathContainsOrEquals`, shared by `containsNode`'s fallback,
+`targetsOwnSubtree` and `isNodeAncestorOrSelf`; SharePoint addresses the same folder as
+`/Contracts` or `/contracts`. I deliberately did **not** map the 500 to
+`descendant-move`: that would relabel every server-side copy failure.
+
+**Two consequences of search multi-select, both found by review and both fixed.** A bulk
+action treated a folder and its own child as two items (P1): `topMostNodes` existed but
+was used only by the drag, and only a search can put a parent and child in one selection,
+since table rows are always siblings. A cut therefore pulled the file out of the folder it
+travelled with, a copy duplicated it, and a delete failed on the second item. The drag had
+always collapsed, so the same selection behaved differently by gesture. Collapsing now
+happens in `selectedNodes` rather than inside the batch runner, so each caller's count and
+confirmation text still describe what will run — which is why the delete dialog gained a
+singular form.
+
+And a selected search row could survive its own disappearance (P2): a re-query drops a row
+that stops matching, but its id stayed selected and a cached node behind it let bulk
+actions and drags reach something invisible. Three overlapping guards now, because it is a
+class of bug rather than one path: the container reconciles the selection against the
+current result ids, `selectedNodes` resolves from the active surface only instead of
+merging cache-then-results, and the search surface reports only the ids it is showing when
+a drag starts.
+
+One of my own tests was wrong rather than merely inconvenient and had to be repaired: it
+drove the search service directly without opening a search, a state the app cannot produce.
+
+**A quality pass followed, since the reviews had only hunted defects.** Behaviour
+unchanged, with the suite held at 258 and **no test edits** — the condition set in
+advance, because a refactor needing its tests rewritten has changed behaviour.
+
+Worst finding was mine: `fileNameParts` was byte-identical in both table components while
+`naming.utils.ts` already split filenames a third way, and I had extracted
+`resolveSelection` earlier the same day on exactly the "both tables need this" reasoning
+while leaving the bigger duplication beside it. Now one `splitFileName`, plus
+`editableName`/`submittedName` for the parts of the inline-rename block that carry logic;
+the `viewChild`s, focus effects and thin emitters stay duplicated on purpose. Three
+ancestry implementations became one — a dead export in `path.utils.ts` deleted, and the
+container's two private walks replaced by `containsNode`, which unlike them has a cycle
+guard. `BulkOperationService.pruneReferences` became `reconcileAfterBatch`, since it also
+issues a request.
+
+One finding went against my own preference: removing the drag's visible-ids intersection
+failed only the test I wrote for it, which is circular evidence, so it is not load-bearing
+given the reconciliation effect. Kept, with the comment corrected to say the real reason
+rather than claim it closes a gap.
+
+Declined and recorded as `docs/TODO.md` item 10: splitting `project-documents.ts`, 1,548
+effective lines behind an eslint waiver, which this branch grew by ~150. The seam is the
+ten context-menu builders; doing it here would bury fifteen commits of behaviour change.
+
+**A second quality round applied three of four further suggestions.** `BulkOutcome` is a
+discriminated union now (`done | failed | skipped`) instead of optional `error`/
+`abandoned` flags: the old shape was a convention, the filter pair appeared three times
+across two files, and `report` trusted callers to have stripped skipped items — forget it
+and a batch where nothing ran claimed success. `report` drops them itself now, and the
+compiler found every site that had relied on the convention. No test changes were needed,
+which is the evidence it preserved behaviour.
+
+`naming.utils.ts` had **no spec at all** — `validateName` and `resolveNameCollision` were
+never covered, and the previous commit added three functions and changed trailing-dot
+behaviour without a test, having said in its own message that none existed. Sixteen tests
+now cover it. And the container's batch-lifetime guard, which the handoff admitted was
+"covered by inspection", has a real test in a new `project-documents-lifetime.spec.ts`
+that pins concurrency to 1 to create the window at all.
+
+Half right was the fourth: the stray blank line in `path.utils.ts` was mine and is gone,
+but the "two comments describing deleted helpers" could not be substantiated — every
+backticked identifier in the feature's comments resolves to a real definition.
+
+Still deferred for stated reasons: the container split (`docs/TODO.md` item 10) wants its
+own branch, and replacing the bulk specs' timer flushing waits on item 8, since the
+flushing exists to absorb the double initialization.
+
+**ESLint rules mirrored from the other laptop (2026-11-06).** Four classes were failing
+there and passing here, so the local config was weaker. `no-loop-func`,
+`no-nested-ternary` and `@typescript-eslint/no-unsafe-assignment` are new; `no-shadow`
+was already enabled but its default `hoist: 'functions'` misses an inner name shadowing
+an outer one declared later in the file, and `hoist: 'all'` reproduced the reported error
+verbatim. Eight errors fixed: three parameterised test loops now build their cases
+through a factory declared outside the loop, one `any` assignment is asserted, two
+`callFake` parameters that shadowed a later `const target` are renamed, and two nested
+ternaries became named helpers.
+
+One correction: the report arrived as "do not necessary expressions", which I read as
+`no-unnecessary-condition` and investigated at length before asking for the rule name.
+It was `no-nested-ternary` — a different rule with a one-line fix. The
+`no-unnecessary-condition` measurement stands as `docs/TODO.md` item 11 but was never
+among the reported errors.
+
+One rule is deliberately **not** mirrored, recorded as `docs/TODO.md` item 11:
+`no-unnecessary-condition` reports 57 problems of which 37 are correct guards it wants
+deleted, because `noUncheckedIndexedAccess` is off and every `entityMap()[id]` therefore
+reads as always-defined. Enabling that flag drops the reports to 20 but costs 134
+TypeScript errors, and the 20 survivors contain no defects.
+
+**Aligned with the colleague's open-file PR** (CFO-12577, ported 2026-11-06). Opening a
+file now defaults to the **local** application and falls back to online, through one
+`openFile` used by the table double-click, an activated search result and the menu —
+previously both activation paths went straight to online, so a Word document opened in
+the browser viewer even with Word installed. The menu shape follows the same question: a
+file with no local application gets a single **Open** instead of a submenu whose only
+usable child is Online Application. Also took `padding: 0.25rem` on the tree node
+content. Her `fileNodeResponse` doc changes have no counterpart here — that generated
+model is an enum stub locally — but the same three fields are on our own `FileNode`
+domain model, so the contract they state (`desktopUrl` null for non-Office, `onlineUrl`
+always populated and the fallback) is documented there instead, and in SPEC 3.5. It is
+why the branch is on "can it open locally".
+
+The port arrived untested: the suite was 275 before and after, so nothing covered either
+activation path or the menu shape. Two tests now cover both halves.
+
+**Test sync from a colleague's unit-test PR** (2026-11-06). Only one of the three files
+shown applied: `sharepoint-file-system-api.spec.ts` now uses real project ids (`'1'`,
+`'2'`) instead of `'project 1'`/`'project'`. Her second change — exact URL matching to
+`endsWith` — was **not** taken: her own before-state matched exactly and passed, so no
+base path exists to tolerate, and `endsWith` only loses strictness. Prefixing every
+service URL with `/WRONG` fails 7 tests under exact matching and would pass all of them
+under `endsWith`. A control run also showed her change silently dropped the only coverage
+of
+`encodeURIComponent` on the project segment — stripping it left the suite green — so one
+additive test now holds that, using a space deliberately. The other two files were not
+applied: our `file-system.store.spec.ts` already copies into Contracts (via
+`loadPathListing`, one step shorter than hers), and our `navigation.store.spec.ts`
+already asserts 5 folders including `Recycle Bin`, where hers asserts 4 — taking it would
+have been a regression.
+
+**Two compile errors reported from the other repo, both fixed** (2026-11-06). A fixture
+wrote `accessLevel: 'READONLY'` as a raw string, which assigns against our literal-union
+type but not against their real `enum`; it uses
+`FolderNodeResponseAccessLevelEnum.Readonly` now, the only such occurrence in the tree.
+And four `projectDTO.set({ … })` fixtures failed against their generated `ProjectDTO`
+with its dozen required fields; they assert through `OverviewDto`, an alias derived from
+the service rather than imported, so it resolves correctly in both repos. Both were
+reproduced locally first by swapping in a real `enum` and a twelve-field DTO, and
+re-checked the same way afterwards. That simulation also surfaced a third site their
+report did not list — the local demo route — left alone as it is not migrated.
+
+**Container specs now provide HttpClient** (2026-11-06). Every bulk-action test failed in
+the other repo with `NG0201: No provider found for _HttpClient`, one cause for all of
+them: the four specs that build `ProjectDocuments` provided none, which only passes here
+because this component hardcodes the mock API and never constructs anything HTTP-backed.
+Reproduced locally by pointing the component at `SharePointFileSystemApi` — 32 NG0201
+errors, then 0 once the providers were added.
+
+**Container specs now provide PopupService, and the stand-in stopped hiding it**
+(2026-11-06). The next run in the other repo reported 46 failures; **41** were one cause,
+`NG0201: No provider found for _PopupService`, raised while constructing
+`ProjectDocuments` rather than in any assertion. The library's service is not
+root-provided — each consumer lists it in its own `providers` — while the local stand-in
+was `@Injectable({ providedIn: 'root' })`, so the specs here never had to. Fixed at the
+stand-in: it is now plain `@Injectable()`, which makes this repo reproduce the
+requirement. Confirmed by removing the provider from one spec and getting the reported
+error verbatim, then restoring it. This is the third stand-in that was looser than the
+real dependency, now recorded as `docs/TODO.md` item 12 with two more measured and still
+open.
+
+**The SharePoint copy tests were made portable, and one was deleted** (2026-11-06). The
+remaining failures are that suite running against the destination's own adapter, which
+the transfer boundaries say to keep. Its copy goes through the generated backend client,
+so the request carries a configured base path. The spec now matches on the path the
+adapter contributes rather than the whole URL — which is the colleague's `endsWith`
+change, **rejected on 2026-11-06 and taken the same day once her evidence turned out to
+be right**; see the handoff. Controls: prefixing the copy URL with the destination's
+origin keeps the suite green, and a wrong path still fails 3 tests. The
+percent-encoding test is deleted — it used `'a b'` as a project id, which becomes `NaN`
+where the adapter passes the id to a numeric parameter, and project ids are integers.
+`encodeURIComponent` stays and is now untested; the alternative was a permanently red
+test in the destination.
+
+**The last two loose stand-ins were tightened** (2026-11-06). Rather than wait for a
+fourth round of migration errors, the whole class was swept: `src/local/` and
+`src/services/` hold six files in total, and the two that were looser than the real
+dependency are now as strict. The access-level stubs are real `enum`s (zero breakage, as
+measured) and `ProjectDTO` requires its five fields, typing only `name` and leaving the
+rest `unknown` instead of guessing types that belong to another feature (one breakage,
+the local demo harness, as measured). Both were confirmed to reject what they are meant
+to reject — `TS2322` and `TS2739`, the same codes the other repo reported. `docs/TODO.md`
+item 12 is closed; what survives is the rule, not a backlog entry.
+
+**PopupService's own two tokens, and exact parity reached** (2026-11-06). Providing the
+real `PopupService` moved the failure one hop down its dependency path: it injects
+`CURRENT_APP_INJECTION_TOKEN` and `IB_PORTAL_SUPPORT_EMAIL_ADDRESS_INJECTION_TOKEN`,
+supplied by the application and therefore owed by a test module. Fourth instance of the
+stand-in pattern, and the last one: both tokens now exist in
+`src/local/ibportal-web-ui-commons/app-context.tokens.ts`, the stand-in injects them, and
+this repo reproduced the other repo's failure exactly — same error, same injection path,
+**46 failures**, the same number reported there. All four specs provide them; the suite
+is green. The recommended alternative, `{ provide: PopupService, useValue: {} }`, was
+measured instead of argued: it leaves **12** failures, because jasmine cannot spy a
+method that does not exist and several tests click the real rendered confirmation
+dialog.
+
+**Shared-package imports funnelled through one file** (2026-11-06). At the user's
+request, the shared UI package's exported names no longer appear throughout the feature.
+`tokens/shared-ui.ts` re-exports what this feature uses under local names
+(`CURRENT_APPLICATION`, `SUPPORT_EMAIL_ADDRESS`, `TargetApplication`) and all six
+consumers import from there, so in the migrated tree the package is named in exactly one
+file instead of six. Re-exporting preserves identity, so the DI entries still match what
+the application provides. The stand-in directory was renamed to
+`src/local/shared-ui-commons/`; the `tsconfig.json` module specifier cannot change,
+since the migrated imports have to resolve against the real package. Suite, lint, build
+and both TypeScript projects verified after the move.
+
+**The component stopped choosing its own backend** (2026-11-09). `ProjectDocuments` no
+longer carries `{ provide: FileSystemApi, useClass: MockFileSystemApi }`;
+`provideProjectDocuments({ api })` returns `EnvironmentProviders`, so the adapter is
+chosen in a route or the application config and never inside a component. The earlier
+rationale for the hardcoded binding is superseded: its own last clause, that component
+providers shadow parents, is precisely why neither a host nor a test could substitute
+anything, and that was the root of the `HttpClient` report. Three measured costs are
+recorded in the handoff, including the mock's 446-line seed shipping in the built output,
+now out of `main`. The four container specs provide the adapter exactly as the nine other
+specs in this feature already did.
+
+**Popup assertions moved off the library's markup** (2026-11-09). Four tests asserted
+`[data-testid="confirmation-popup-confirm"]` and `<pr-error-popup>`, which are the local
+stand-ins' DOM; the real shared components use classes and a different element name.
+Rewriting the selectors was rejected as trading one version of the problem for another,
+so the assertions moved to what the component asks the popup for, which is identical in
+both repos. No behavioural coverage lost. `PopupService` is now a stub in the specs,
+which also drops the two application-context tokens from test setup. Converting them
+surfaced a real flake, recorded as `docs/TODO.md` item 13: the mock adds 200 ms to writes
+regardless of configuration, and a callback invoked outside the zone has nothing waiting
+for it. Fixed by running it where the dialog's button would; three consecutive full runs
+green.
+
+**The popup graph left the demo's initial bundle** (2026-11-09). A review on the other
+machine flagged that `app.config.ts` pulled the popup service, the error popup and
+PrimeNG's dynamic dialog into the first load, and it was right: the package barrel
+re-exports the service alongside the two application-context tokens, so asking it for a
+token dragged the service in. Introduced here two commits earlier, when that import was
+moved to the barrel on the reasoning that it mirrors a real host — weak reasoning, since
+`app.config.ts` is local scaffolding that never migrates. The tokens now come from the
+module that defines them, which imports only `InjectionToken`. Measured rather than
+asserted: initial total **658.49 kB -> 514.57 kB** (transfer 152.40 -> 126.08), budget
+overshoot 158.49 kB -> 14.57 kB, and the chunk holding `ErrorPopup` and `PopupService` is
+no longer preloaded by `index.html` nor referenced by `main`. That restores the 514.37 kB
+baseline this branch had before the regression. Demo-only: nothing on the migration copy
+list is affected.
+
+**The shared-UI barrel was removed** (2026-11-09, correcting the 2026-11-06 entry above).
+`tokens/shared-ui.ts` existed to alias the two application-context tokens on the way
+through, so the long names appeared once rather than in every spec. Once the specs moved
+to a popup stub those tokens had no consumer in this feature, and the file was left
+re-exporting `PopupService` and `TRACE_ID_HEADER` unchanged — indirection with nothing
+behind it, and the user queried it on sight. Deleted; the six consumers import from the
+package directly again, which is what the destination's own code does. What remains of
+the package name in the migrated tree is five import statements, which an import cannot
+avoid.
+
+**The mock honours its configured latency** (2026-11-09). `latencyMs` added a fixed
+200 ms to every write regardless of config, so the 13 specs that ask for zero never got
+it — the cause behind the flake found while converting the recycle-bin tests. Removed,
+along with the now-unused `kind` parameter. Measured over five consecutive runs: **31.3 s
+to a 23.96-24.32 s band**, 23% faster, with the run-to-run spread down to 0.36 s and
+277/277 every time. `docs/TODO.md` item 13 closes.
+
+**`ProjectDocuments` shrank by a sixth** (2026-11-09, Stage 1). The user overruled the
+recommendation to defer this to its own branch, so it happens here. Five extractions,
+one commit each, every one verified at 277/277 with `project-documents.html` byte-
+identical and no test edited: tree-section building and the bootstrap helpers became pure
+utils, the deep-link query parser joined them, every context menu moved into
+`context-menu.builder.ts`, and the recycle-bin operations became a component-provided
+service. **1,564 -> 1,300 effective lines.** The menu builder is the substantive one: it
+follows the `drag-drop-policy.ts` pattern, so the menus no longer reach a store, and the
+search-result menus — previously built inline, duplicating the folder menu with different
+locking rules — moved in beside the others. Two stale doc comments were found and
+removed on the way, both orphaned by earlier deletions. Stage 1 was planned at ~1,050 and
+landed at 1,300; the estimate counted neighbouring code that did not move. `docs/TODO.md`
+item 10 carries the measured remainder and what reaching 500 would actually cost.
+
+**`lines-between-class-members` mirrored** (2026-11-09). Four errors reported from the
+other repo, all the same thing and all mine: the `StubPopupService` added to each
+container spec had two single-line methods with no blank line between them. The rule is
+no longer in ESLint 9 core, so it comes from `@stylistic`. Its default option would have
+been wrong here — it flags **290** places in this tree, 275 of them consecutive
+`inject(...)` fields, which the other repo plainly does not enforce or it would have
+reported hundreds rather than four. Configured instead to enforce only between methods,
+which reproduces their report exactly: 4 violations, at lines 34, 30, 41 and 47, the
+four they named. Fixed by `--fix`; the diff is four blank lines.
+
+**Verification (2026-11-06):** full headless suite **277/277** — checked against a
+stashed tree to confirm the restructured parameterised loops lost no case — production
+build, both TypeScript projects and repository lint pass. Reverting each of the four fourth-round
+fixes failed exactly one test apiece, as did reverting `openSearch`'s clear and each of
+the three multi-select fallbacks. **Not yet verified in a real browser** — Ctrl/Shift
+ranges across sorted columns and dragging a search selection are the parts the headless
+suite cannot judge. Every fix from the earlier rounds has a regression
+test confirmed to fail without it, except the component-lifetime guard, which is covered
+by inspection because testing it needs a different concurrency harness than that spec
+uses.
+
+**Earlier record (2026-11-03): bulk delete, copy and cut.**
+
+The drag already had the batch machinery — bounded queue, per-item failure isolation,
+combined pruning, one summary — but inside `DragDropService`. It is now
+`BulkOperationService`, shared by the drag and the menu actions, with sequencing left to
+the caller since a drag opens its drop target and a delete opens the removed folder's
+parent. That extraction was committed on its own (`cccf884`) with the suite unchanged at
+216 as the evidence it altered nothing.
+
+Delete and Copy/Cut now act on the whole selection; **Rename stays single-item** and is
+the only action still disabled on a multi-selection. A bulk delete asks once in the
+shared `ConfirmationPopup`; a single delete keeps its inline row buttons. Cut is move
+underneath, so it inherits the drag's rules. Paste accepts any number of items and both
+modes: a cut clipboard is spent once pasted, a copy one survives. Cut rows show at 50%
+opacity. A paste is rejected wholesale if any item would land inside itself. Bulk
+download is deliberately absent — no zip endpoint means one browser download per file.
+
+**A finding came out of this, tracked as `docs/TODO.md` item 8:** a project appears to
+initialize **twice** per component startup. The second `_beginInitialize` bumps the
+connection revision, so a mutation overlapping it throws `cancelled` and is discarded —
+right for a real project change, wrong if the second one is spurious — and it means two
+sets of root listings per open. Instrumenting showed it is `connectProject`'s own effect
+firing again rather than a second call site, with `observeInitialFolderPath` ruled out.
+It only surfaces with prolonged waiting, so the drag specs never hit it; the bulk spec
+resolves its API synchronously to stay deterministic. Confirming it outside TestBed
+needs the app in a real browser, and that is the recommended next step.
+
+**Verification (2026-11-03):** full headless suite **222/222**, production build, both
+TypeScript projects and repository lint pass. Reverting the Stage 3 changes failed
+exactly the three cut/copy/paste tests.
+
+**Earlier record (2026-11-03): drag and drop from search results.**
+
+The blocker was never the backend — `api.move` takes a node — but client-side cache
+assumptions: search results live in `DocumentSearchService` and never enter
+`FileSystemStore`. The substantive one was the drag policy requiring an item's **parent**
+to be cached, to check whether that folder was read-only — which turned out to be the
+only parent permission check in the app. Every other gate (context menus, tree, table,
+store) reads the item's own access, the current folder, or the list. The drag was the
+outlier, so it is now aligned: permissions are item-level, `canLeaveParent` became
+`isMutable`, and the search blocker disappeared as a consequence rather than through a
+special case.
+
+The rest followed: a `sessionNodes` snapshot carries an uncached source through the
+gesture, `move` accepts a node like `copy`/`delete`/`rename` already did, and
+`performOne` now passes the node rather than its id — widening `move` alone changed
+nothing while the caller still passed an id, which cost a debugging round. Result rows
+are kept honest by `DocumentSearchService.pruneReferences` in `finishBatch`: a delete or
+move removes ids so the row goes, a copy removes none so the list is untouched. The
+search is **not** re-run, since it can take seconds. That also closes the stale-search
+gap for move and copy from the tree and table.
+
+Trade recorded: if a file inside a read-only folder is ever returned without its own
+read-only flag, the drag is offered and the server refuses — exactly how the
+context-menu delete has always behaved.
+
+**Verification (2026-11-03):** full headless suite **216/216**, production build, both
+TypeScript projects and repository lint pass. Reverting the parent-check removal and the
+node-passing failed exactly the two tests covering them.
+
+**Earlier record (2026-11-01): drag to the recycle bin deletes.** Multi-select
+drag-and-drop is pushed (`53ff657`); this builds on it and is uncommitted.
+
+A new `DropIntent` (`move | copy | delete`) is resolved from the **target**, not the
+keyboard — `DragEffect` stays move/copy because it is assigned straight to
+`dataTransfer.dropEffect`, and a delete still shows `move`. Holding Ctrl keeps the
+intent at `copy`, which a bin cannot satisfy, so it is rejected rather than quietly
+deleting. Only the bin of the source's own list accepts the drop: `delete` takes no
+target and the backend routes the item to its own list's bin anyway, so any other bin
+would misrepresent the destination. No confirmation (the item is recoverable and the
+gesture is deliberate), and a multi-selection deletes every item.
+
+`FileSystemStore.delete` now returns the ids it removed, as `move` does, which fed the
+batch's pruning and let the container drop its duplicate subtree walk. `finishBatch`
+replaces `finishMove`: a delete that takes the viewed folder opens that item's parent,
+matching the context-menu delete, since a bin is not somewhere to open. The tree's bin
+template branch had `dragover` but no `drop`, so the target highlighted and the drop
+vanished; it now has one, and external file drops are turned away explicitly by
+`isNodeDroppable` instead of by the binding's absence.
+
+Known gap, recorded rather than fixed: deleting by drag does not refresh an active
+search, exactly as moving by drag already does not. Still deferred: bulk delete from the
+context menu (disabled on a multi-selection, so the menu and the drag disagree) and
+dragging out of a bin to restore, which would misrepresent where the item lands.
+
+A review of that work then surfaced two pre-existing `delete` limits, both far easier to
+reach once a drag could delete a selection, and both now fixed. `delete` captured no
+connection revision, so a late response still edited a refreshed cache — the visible
+symptom being the container's `deleteNode` navigating to a parent from the project you
+just left; `createFolder` and `rename` had the same gap and are guarded too. And `delete`
+snapshotted its subtree *before* the request using parent links only, missing descendants
+loaded mid-flight and descendants whose intermediate parents were never cached, which
+survived as orphans holding clipboard and selection references; it now resolves the set
+after the request through the shared `removedSubtreeOf` that `move` already used. Since
+`_checkConnection` throws `cancelled`, `reportPasteFailure` is generalised to
+`reportMutationFailure` so create, rename, delete and paste all suppress a stale
+completion instead of reporting a false failure.
+
+A further review found a third: a folder listing still in flight when its folder was
+deleted was applied anyway, reinserting the removed subtree as orphans and marking a
+deleted folder as loaded. `_loadChildren` discarded responses from a changed connection,
+but a delete does not bump the connection revision; it now also checks the folder is
+still cached. `loadPathListing` remains unguarded — it has neither check, and a revision
+check there needs the path editor to suppress a stale completion the way the toasts now
+do, so it is tracked rather than folded in.
+
+Everything deliberately left undone is tracked in "Deferred / Known Issues" below and
+in `docs/TODO.md` (items 7-9, plus the narrowed item 3), so it does not live only in
+this narrative.
+
+**Verification (2026-11-02):** full headless suite **212/212** (203 plus 9), production
+build, both TypeScript projects and repository lint pass. Reverting the policy branch
+failed exactly the four drag tests; reverting each store fix failed exactly its own
+tests.
+
+**Earlier record (2026-10-28): multi-select drag-and-drop.** The reviewed fixes below are
+committed (`e5b5819`, plus `2d3c209` for stale operation-doc status lines); nothing is
+pushed. Multi-select itself is new and uncommitted.
+
+Selection is right-pane only: click replaces, Ctrl/Cmd toggles, Shift extends from the
+anchor across the **rendered** row order, and changing folder, Escape or clicking below
+the rows clears it. It is wired with explicit click handlers rather than PrimeNG's
+`selectionMode="multiple"`, because the rows own native drag listeners and a range has
+to follow the sorted order; the table resolves the next selection and the store only
+stores it. See SPEC 3.7.
+
+A drag now carries a set, collapsed to top-most ancestors so a folder and something
+inside it never both travel. Validation is set-wide at both ends — any item failing
+refuses the whole gesture. Execution loops the single-item store methods through the
+existing `ConcurrencyQueue` at `bulkOpConcurrency` with per-item failures isolated,
+which supersedes the PHASES line about the store accepting arrays. A move prunes per
+item but decides once whether the viewed folder should follow the batch. Partial
+failures are never rolled back and produce one summary that, for a move, names what
+stayed in place. While several rows are selected, single-item Rename/Copy/Delete are
+disabled; bulk delete and bulk paste remain deferred.
+
+A review of the batching then found that a queued item was still issued after a project
+change: `perform` checked the project only once the whole queue had drained, so with a
+selection larger than `bulkOpConcurrency` the waiting overflow went out against the new
+connection. `performOne` now checks `isCurrentProject` before touching the store, and
+abandoned items are filtered out before the summary and the move bookkeeping, which both
+read a missing error as success. Nothing is reported, by decision: a toast about the
+previous project would land while the new one is on screen, and the items that never ran
+stay where they are. The same check covers component destruction. Requests already sent
+still cannot be recalled — `connectionRevision` discards their results — so an
+interrupted batch can still end up half-applied.
+
+**Verification (2026-10-29):** full headless suite **202/202** (199 plus 3), production
+build, both TypeScript projects and repository lint pass. Each new behavioural test was
+confirmed to fail against the pre-change code; for the queue guard, the third test kept
+passing with the guard removed, showing it does not block the normal path.
+
+**Type-check with `npx tsc --noEmit -p tsconfig.app.json`.** Bare `npx tsc --noEmit`
+checks nothing — the root `tsconfig.json` sets `"files": []` and only references the app
+and spec projects. Earlier entries in this file that cite the bare command overstate
+what it verified; `ng build` and the suite were the real checks.
+
+**Earlier record (2026-10-27): reviewed internal drag-and-drop and fixed three defects.**
+A code review of the uncommitted feature (cross-checked independently) found five
+issues; three confirmed ones are fixed, two are deliberately deferred.
+
+Fixed: (1) hover auto-expansion invalidated the target it had just expanded. `expand`
+always refetches — `loadChildren` dedupes only *concurrent* loads — so the folder sat in
+`folderIdsWithLoadingChildren`, which feeds the policy's `unavailableIds`, for a whole
+round-trip; a release in that window was discarded silently. `NavigationStore` gained
+`expandWithoutReload`, which skips the refetch when `folderIdsWithLoadedChildren`
+already holds the folder, and hover expansion now uses it. `FileSystemStore` keeps an
+in-flight children-load map and exposes `pendingChildrenLoad`, so a drop onto a folder
+loading for the first time awaits that listing, then re-checks before mutating; the
+wait also orders the mutation after the listing, which the stale-id pruning requires.
+Target feedback is deliberately lenient about an in-flight load so the highlight no
+longer flickers, while the authoritative drop check stays strict.
+(2) Paste reported a successful copy as "cancelled" when the project changed mid-request;
+`reportPasteFailure` now swallows that code. The store's connection guard is unchanged.
+(3) The current-folder space invited every rejected destination because it keyed off
+drag existence. A new `internalCurrentFolderDropActive` computed asks the policy
+instead. It is a separate input: `internalDragActive` also routes drag events and must
+stay true for the whole gesture.
+
+Deferred, with reasons recorded: a stranded drag session after a missed `dragend` has no
+document-level fallback, but is unproven without a reproduction and `Escape` already
+recovers it; and `connectionRevision` is still absent from `createFolder`/`rename`/
+`deleteNodes`, which is pre-existing and belongs in its own commit.
+
+A follow-up review then found a regression in fix (1) itself, now also fixed. The
+in-flight children-load map had no lifecycle: it replaced a guard that read
+`folderIdsWithLoadingChildren` — state `_beginInitialize` resets — with a closure map
+keyed only by folder id, so a load issued before a reinitialization kept answering for
+its folder and the next expand/navigate/refresh of it issued no request. The map now
+clears in `_beginInitialize`; a settling request deletes only its own entry (boxed for
+identity, since a newer load may own the id by then); and that deletion shares the
+`finally` with `_unmarkLoading`, closing a window where a caller gated on the marker got
+an already-settled promise instead of a fresh fetch. Clearing is preferred over
+revision-keyed entries because reinitialization re-resolves every folder id anyway.
+A third round then made a discarded children load fully inert. Releasing the loading
+marker is now owner-only, inside the same ownership check as the map entry:
+`_unmarkLoading` previously ran unconditionally, so an old request settling after a
+reinitialization cleared the *replacement* request's marker. That one predates this work
+— the committed original behaves the same — but the drag path depends on the marker
+(`pendingChildrenLoads` filters by it, and the policy folds it into `unavailableIds`),
+so a false clear would make a folder look droppable while its listing was in flight and
+stop the drop from awaiting it. `_loadChildren` now also captures `connectionRevision`
+up front and skips both post-await writes when it moves, so a discarded request cannot
+insert its listing, mark the folder loaded, or record its error against the connection
+that replaced it. The revision is compared directly rather than through
+`_checkConnection`, whose `cancelled` throw would land in this function's own `catch`
+and be stored as a folder error. The deferred guard item is now just
+`createFolder`/`rename`/`deleteNodes`.
+
+**Verification (2026-10-27):** full headless suite **190/190** (182 existing plus 8 new),
+production build, both TypeScript projects and repository lint pass. Each new test was
+confirmed to fail against its corresponding pre-fix code. Only the existing initial
+bundle/container style budget warnings and two path-bar accessibility warnings remain.
+Pushed to `origin/feat/internal-drag-drop` on 2026-10-29; the earlier hold on pushing
+was lifted by the user. The branch stays active for further fixes and the user merges
+it themselves, so no pull request was opened.
+
+Running the suite in this WSL environment needs
+`LD_LIBRARY_PATH=/tmp/x36-browser-deps/root/usr/lib/x86_64-linux-gnu` and
+`CHROME_BIN=<puppeteer>/chrome-headless-shell-linux64/chrome-headless-shell`; the full
+`chrome` binary still lacks `libcups`/`libcairo`/`libpango`.
+
+**Earlier record (2026-10-23): internal drag-and-drop implemented** on
+`feat/internal-drag-drop`, created from merged `main` (`ea8bfd0`). The user requested
+a commit marked **not reviewed yet** and will review it later; no push is requested.
+User-owned `.vscode/launch.json`, `tmp-screenshots/`, and the temporary
+backend-search investigation document were preserved.
+
+**Open review feedback (2026-10-23):** the green current-folder drop area appears
+when dragging an item that already belongs to that folder. Normal same-parent
+moves are already rejected, but the indicator still appears. No indicator change
+has been applied; review this later, including whether same-parent Ctrl-copy stays
+available. The implementation is **not reviewed yet**; the requested commit preserves this open feedback.
+
+Single ordinary tree folder/table file or folder can move (default) or copy (Ctrl)
+to tree folders, table folder rows, and unused current-folder space. Same-parent
+moves are rejected; same-parent copies retain existing KeepBoth names. Search-result
+sources, cut, multi-selection/bulk drag and new backend endpoints remain deferred.
+A component-provided DragDropService owns the in-memory MIME-token session,
+permission/busy checks repeated at drop, target feedback, 700ms hover expansion,
+lifecycle cleanup and mutation coordination. PrimeNG source event propagation is
+isolated from its disabled DnD handlers; node/row tracking preserves native DOM
+sources during lazy loading. Children retain typed inputs/outputs and inject no stores.
+
+Move/copy stay pessimistic through the existing public API/store signatures.
+Connection revisions reject late results after any project reinitialization,
+including the same project ID. Move computes the removed cached subtree at completion,
+including path-only descendants and records loaded while pending, then prunes
+navigation/clipboard references. A moved current folder/ancestor opens the destination;
+normal drops preserve the view, and failures preserve data/view/references.
+Stale or destroyed-component completions do not show drag notifications/navigation.
+The bin `slice(3)` formatter and broad current-bin activation guard remain unchanged.
+
+**Verification (2026-10-23):** full headless Chrome suite passed **182/182** tests
+(145 existing plus 37 new). After the final completion-helper extraction, all **37/37**
+focused drag tests passed again. Production build, spec TypeScript, repository lint
+and whitespace checks pass. Only the existing initial bundle/container-style budget
+warnings, two path-bar accessibility warnings and test font 404 remain.
+Native Chrome/CDP checks against the user's already-running app passed table-to-tree
+cross-list move, tree-to-table folder move into a protected target, file move,
+Ctrl-copy/KeepBoth, target highlight, 700ms expansion without navigation and protected
+source move rejection. No second development server was started.
+
+**Remaining acceptance:** physical Escape and desktop cursor icons need confirmation
+in Edge/Chrome: the headless CDP cancellation check delivered neither keydown nor
+native dragend. DOM Escape/dragend cleanup is covered by integration tests. The real
+SharePoint move adapter remains unimplemented; verify actual endpoints, returned nodes,
+permissions, collisions and cross-list/site capability on the backend machine.
+See [the drag handoff](handoffs/internal-drag-drop.md); SPEC and PHASES are updated.
+
+### Earlier synchronization record (2026-10-22)
+
 **Active Work**: PR-only behavior restored (2026-10-22). Reverted the extra bin path
 normalization and restored the broad current-bin activation guard. The rollback
 is kept in a separate commit on `sync/pr-changes`.
@@ -154,7 +856,12 @@ The user requested a follow-up commit after `62ce0fa` and will push manually.
 
 - [x] External OS file/folder upload drops on tree folders, right-pane folders, and
   the unused right-pane space below the table rows
-- [ ] Internal move/copy drag state and the remaining matrix
+- [x] Single-item internal move/Ctrl-copy across tree/table/current-folder targets
+- [x] Session/permission/busy guards, 700ms expansion and project-scoped completion
+- [x] Canonical subtree/reference cleanup, including path-only and late-loaded nodes
+- [x] Automated drag regression and native browser smoke checks
+- [ ] Desktop Escape/cursor acceptance and actual SharePoint adapter verification
+- [ ] Multi-selection/bulk drag and search-result drag (deferred)
 
 ---
 
@@ -184,34 +891,28 @@ The user requested a follow-up commit after `62ce0fa` and will push manually.
 
 ## Current Focus
 
-1. Review PR-only behavior before starting internal drag-and-drop. The user
-   explicitly rejected additional bug fixes: keep the original `slice(3)` table
-   formatter and the broad current-bin guard, including tree Open Folder doing
-   nothing while a bin is displayed. Do not apply the proposed narrower guard.
-   Bug fixes require a separate explicit task after synchronization is reviewed.
-   The support message is deferred until supplied; the user handles the unused
-   mock import, generator settings, and user-specific configuration on the
-   destination. No actual-path sample is needed to justify extra normalization.
-2. Use [the PR synchronization handoff](handoffs/pr-sync.md) when transferring this
-   feature. Keep the destination's generated services, working SharePoint adapter,
-   document/error mappers, providers, and shared popup/reporting integrations.
-   Common names, declaration/property order, helpers, and templates now follow the
-   screenshots. The handoff lists the remaining local adaptations and screenshot
-   anchors; the alignment is kept as a separate commit on `sync/pr-changes`.
-   Popup imports and calls now match PR1. Their local implementations, aliases,
-   and demo providers live outside the copied feature directory; the destination
-   keeps its existing package, shared confirmation component, and reporting flow.
-   Access enums also use the original `@api/model/folderNodeResponse` and
-   `@api/model/fileNodeResponse` imports. Local equivalents live in `src/local/api/`;
-   keep the destination's generated models and `@api` alias when copying the feature.
-3. Permission gaps deliberately preserved from the PRs (protected search results,
-   actual row/tree drops, cross-list paste target access) need a separate decision
-   before hardening. No new role inference or mutation retries were added.
-4. Complete manual Edge/Chrome acceptance and real backend verification for uploads,
-   search, and recycle-bin operations on the destination. The local browser suite
-   passed again after the PR-only rollback: 144 tests in headless Chrome. App/spec TypeScript
-   checks, production build, lint, and whitespace checks pass; existing
-   budget/accessibility warnings remain.
+1. Manually check in a desktop browser: Ctrl/Shift selection; dragging a selection to a
+   tree folder and a table row; Ctrl-drag to copy; a selection holding a folder and a
+   file inside it; one where a single item is protected; and dragging one item and a
+   selection onto each list's bin, plus onto the other list's bin.
+2. Confirm physical Escape and move/copy/no-drop cursor icons in desktop Edge/Chrome,
+   the last acceptance item for the feature. The code review is done (2026-10-27) and
+   its three confirmed defects are fixed, including the current-folder indicator
+   feedback that was previously left open.
+3. Use [the drag handoff](handoffs/internal-drag-drop.md) alongside
+   [the PR synchronization handoff](handoffs/pr-sync.md) when transferring the feature.
+   Keep the destination's generated services/models, working SharePoint adapter and
+   mappers, providers, shared popup/reporting integrations and overview service.
+4. Implement/verify the real SharePoint move method using the existing abstract
+   move/copy contract; no new endpoint or cross-site capability is assumed here.
+   Backend and desktop acceptance remain separate from the passing local mock suite.
+5. Two reviewed issues are deliberately left open: reproduce a missed `dragend` before
+   adding a document-level drag fallback, and extend `connectionRevision` to
+   `createFolder`/`rename`/`deleteNodes` as its own pre-existing-bug commit.
+6. Preserve the PR's bin display formatter and broad current-bin activation guard.
+   Additional permission gaps outside internal drag, notification text changes,
+   unrelated bug fixes, cut, multi-selection/bulk operations and search-result drag
+   remain outside this authorization.
 
 Backend upload implementation handoff: use
 `docs/backend-operations/upload-file-feign-buffered.md` for the first bounded
@@ -540,14 +1241,35 @@ _Keep a running record of non-obvious choices. Update as you go. Future you will
 
 _Things noticed during implementation but not fixed in the current phase. Review before starting the next phase._
 
-- **Real descendant-copy rejection needs verification** (2026-07-31, review finding):
-  the mock rejects copying a folder into itself or a descendant, but the existing real
-  copy service has not yet been confirmed. Frontend guards are cache-based and can
-  miss a deep descendant opened through typed-path resolution. Test the disposable
-  `Contracts/Vendors/2026` scenario against the real API on 2026-08-01, capture the
-  response, and confirm that no partial copy is created. Potential P1 if the backend
-  does not reject safely. Full procedure: `docs/TODO.md` item 6.
-- **Stale async results after a project switch** (2026-07-31, review finding):
+- **A renamed folder's search results are briefly stale** (2026-11-05, review finding):
+  a result beneath the renamed folder keeps its old path and its Open / Download URLs
+  until the reconciling search returns. Left to `refresh()` on purpose — the local
+  alternative is the path-prefix rewriting deleted in `e8a1dc6`. No worse than the
+  behaviour it replaced, which showed the new path with the old URLs. Detail:
+  `docs/TODO.md` item 9.
+
+- **A missed `dragend` can leave a drag session latched** (2026-10-27, unproven): the
+  next external file drag would be routed as internal and silently lost. The MIME token
+  prevents a wrong mutation and `Escape` recovers it. Reproduce before adding a
+  document-level fallback. Detail: `docs/TODO.md` item 7.
+
+- **Real descendant-copy rejection: verified 2026-11-05** (raised 2026-07-31): tested by
+  hand through Postman against real SharePoint — the API returns **HTTP 500** and
+  **creates nothing**, so it fails safely. No longer a potential P1. What is left is
+  message quality and it belongs to the backend: a 500 carries no descendant signal, so
+  nothing can be mapped to `descendant-move`, and keying it off a 500 would relabel every
+  server-side copy failure. The frontend guard is therefore the only source of the
+  specific message, and is now case-insensitive. Detail: `docs/TODO.md` item 6.
+- **Stale async results after a project switch** (2026-07-31, review finding;
+  **store half fixed 2026-11-02**): every `FileSystemStore` mutation now captures
+  `connectionRevision` and checks it after its request (`move`/`copy` already did;
+  `createFolder`, `rename`, `delete` added), `loadChildren` discards listings from a
+  replaced connection or for a folder deleted mid-flight, and callers suppress the
+  `cancelled` code through `reportMutationFailure`. **Still open:** `loadPathListing`
+  has no check at all, the external-drop flow still awaits its decode without
+  confirming the session, and `UploadService.reset()` keeps its single-worker
+  preparation queue. Original finding below; full detail in `docs/TODO.md` item 3.
+
   `copy` can start against project A, finish after project B has initialized,
   and then insert A's returned node into B's cache and alter B's parent count.
   External-drop directory decoding has the same race before upload enqueueing:

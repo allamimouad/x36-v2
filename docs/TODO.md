@@ -2,7 +2,8 @@
 
 > Open findings from the ongoing working-tree reviews. Findings 1–2 came from
 > the 2026-07-06 partial document-root / `ProjectDocuments` review; findings
-> 3–6 came from the 2026-07-31 copy/paste reviews. These are deliberately left for
+> 3–6 came from the 2026-07-31 copy/paste reviews; findings 7–11 came from the
+> 2026-11 internal drag-and-drop reviews, items 10–11 from its quality pass. These are deliberately left for
 > later and are also tracked in `PROGRESS.md` → "Deferred / Known Issues".
 > This file carries the full detail. Remove entries here (and in PROGRESS.md)
 > as they are fixed.
@@ -27,6 +28,23 @@
 - **Suggested fix**: extend `MOCK_CONFIG` with an optional `unavailableListKeys?: readonly DocumentListKey[]` that makes `listDocumentRoot` throw `FileSystemError('not-found')` for the listed keys, mirroring the existing `unavailableFolderPaths` pattern (see the 2026-07-03 session note). Optionally a second option (or an error-code field) to simulate the `error` status too, so the healthy-list-plus-console-error branch is also reachable.
 
 ## 3. A stale async result can be written into a newly selected project
+
+> **Status (2026-11-02): the store half is done; the rest is still open.** Every
+> `FileSystemStore` mutation now captures `connectionRevision` and calls
+> `_checkConnection` after its request — `move` and `copy` already did, and
+> `createFolder`, `rename` and `delete` were added. `loadChildren` discards a listing
+> from a replaced connection, and also one whose folder was deleted while it was in
+> flight. Callers route failures through `reportMutationFailure`, which suppresses the
+> `cancelled` code so a discarded-but-successful operation is not reported as a failure.
+>
+> **Still open, and the reason this item stays:**
+> - `loadPathListing` has **no** check at all. An existence check would be wrong there
+>   — resolving an uncached folder is the method's purpose — but a revision check
+>   belongs. It needs `resolveAndOpen`'s caller to suppress a stale completion too,
+>   since it feeds the path editor's error state rather than a toast.
+> - The external-drop upload flow still awaits `ExternalDropService.read(...)` without
+>   confirming the project session.
+> - `UploadService.reset()` still retains the single-worker directory-preparation queue.
 
 - **Where**:
   - `src/app/project-documents/stores/file-system.store.ts`, currently visible
@@ -212,42 +230,308 @@
 - **Status / priority**: unresolved backend authorization boundary (P0). The
   frontend permission to copy across lists does not close this item.
 
-## 6. Confirm the real API rejects descendant folder copies
+## 6. The real API answers a descendant copy with a generic 500
 
-- **Where**:
-  - `ProjectDocuments.isAncestorOrSelf` walks through the frontend entity cache;
-  - `FileSystemStore.copy` enumerates only cached descendants;
-  - `docs/backend-operations/copy.md` does not currently confirm that the existing
-    backend copy service performs an authoritative descendant check.
-- **Why verification is needed**: the normal tree flow usually has enough ancestors
-  cached for the frontend to block the operation. Typed-path resolution intentionally
-  returns only the target listing, however, so an intermediate ancestor may be absent
-  from the cache. Both frontend guards can then miss that the destination is beneath
-  the copied folder. `MockFileSystemApi` still rejects the operation because it owns
-  the complete in-memory tree; the existing real backend behavior is unconfirmed.
-- **Manual real-API check planned for 2026-08-01**:
-  1. Create or use a disposable hierarchy such as `Contracts/Vendors/2026`.
-  2. Copy `Contracts`.
-  3. Open `2026` through the typed address path so the test does not depend on a fully
-     expanded frontend tree.
-  4. Attempt to paste `Contracts` into `2026`.
-  5. Capture the HTTP status and public error body.
-  6. Confirm that no folder or partial recursive copy was created anywhere.
-- **Expected result**: the backend rejects the request before starting the copy and
-  returns a deterministic error that Angular can map to `descendant-move`. A generic
-  SharePoint failure is safe only if the copy definitely did not start.
-- **If the backend already rejects it explicitly**: record the controller/service
-  location, add backend coverage, and update `docs/backend-operations/copy.md` with the
-  guard and error mapping. No frontend change is required for correctness, although
-  the cache guards remain useful for immediate feedback.
-- **If it does not reject it explicitly**: add an authoritative backend guard using
-  normalized, separator-aware paths. Let `sourceFolderPath` be
-  `sourceParentPath + sourceName`; reject when `targetParentPath` equals that path or
-  begins with `sourceFolderPath + '/'`. Normalize casing and separators according to
-  the existing SharePoint path rules so `/Contracts2` is not treated as a descendant
-  of `/Contracts`.
-- **Status / priority**: verification pending; potential P1 if the real backend does
-  not reject the operation safely.
+- **Verified 2026-11-05** against real SharePoint, by hand through Postman: the request
+  returns **HTTP 500**, and **nothing is created** — no folder, no partial recursive
+  copy. The question this item was opened for is answered.
+- **No longer a P1.** It carried that only because an unverified generic failure might
+  have left a half-finished copy behind. It does not.
+- **What remains is message quality, and it is the backend's to fix.** A 500 carries no
+  descendant signal, so nothing in the response can be mapped to `descendant-move`.
+  `sharepoint-error.mapper.ts` classifies `>= 500` as `network`, so a request that did
+  reach the server would surface as "We could not complete this action. Try again
+  later." — a safe fallback, but not the truth.
+  - **Deliberately not mapped in the frontend**: keying `descendant-move` off a 500
+    would relabel every server-side copy failure as a descendant problem, which is
+    worse than the generic message. Revisit only if the API starts returning something
+    deterministic.
+- **So the frontend guard is the only source of the specific message**, which is why it
+  is now **case-insensitive** (`pathContainsOrEquals` in
+  `utils/node-containment.utils.ts`, used by `containsNode`'s fallback,
+  `FileSystemStore.targetsOwnSubtree` and `ProjectDocuments.isNodeAncestorOrSelf`).
+  SharePoint addresses the same folder as `/Contracts` or `/contracts`, and the previous
+  exact compare would have let a differently-cased destination past every guard.
+- **Recipe for whoever adds the backend guard** (unchanged, still wanted so the API
+  answers deterministically rather than with a 500): let `sourceFolderPath` be
+  `sourceParentPath + sourceName`; reject when `targetParentPath` equals it or begins
+  with `sourceFolderPath + '/'`. Normalize casing and separators per the existing
+  SharePoint path rules, so `/Contracts2` is not treated as a descendant of
+  `/Contracts`. Then record the controller location and update
+  `docs/backend-operations/copy.md`.
+- **Status / priority**: frontend side closed. Backend improvement open, P3 — the
+  current behaviour is safe, only poorly worded.
+
+## 7. A missed `dragend` can leave a drag session latched
+
+- **Where**: `src/app/project-documents/services/interaction/drag-drop.service.ts` —
+  `handles()` returns true whenever `state()` is set, and there is no document-level
+  `dragend`/`drop` fallback.
+- **Problem**: if `dragend` is never delivered — the source element torn out of the DOM
+  mid-drag, or the drag ending outside the window in some browsers — the session stays
+  latched and the next external file drag is routed as internal. The MIME token still
+  prevents a wrong mutation; the cost is one silently lost upload. `Escape` recovers it.
+- **Suggested fix**: reproduce it first. Both reviews agreed it is unproven, and a
+  document-level fallback is not worth adding against a hypothesis.
+- **Priority**: P3 until reproduced.
+
+## 8. A project may initialize twice, and a late one aborts work in flight
+
+- **Where**: `project-documents.ts` constructor — `this.fileSystem.connectProject(this.id)`
+  — reaching `_beginInitialize` through `_initialize$`'s `defer` (`file-system.store.ts`).
+- **Problem**: in both integration specs the store's `connectionRevision` reaches 2 for a
+  single component, so `_beginInitialize` runs twice per startup. Instrumenting the
+  second call shows every stack frame below it is rxjs internal — it is `connectProject`'s
+  own effect firing again, not a second call site. `observeInitialFolderPath` is ruled
+  out: it is `untracked` and returns early without query params, which these specs have.
+- **Why it matters beyond tests**: `_beginInitialize` bumps the connection revision, and
+  every guarded mutation throws `cancelled` when that happens mid-flight. A delete or
+  move that overlaps the second initialization is silently discarded — correct behaviour
+  given a genuine project change, but wrong if the second initialization is spurious. It
+  also means two sets of root listings per project open.
+- **Why it was not chased further**: it only surfaces with prolonged waiting, so the
+  drag specs never see it; `project-documents-bulk.spec.ts` resolves its API
+  synchronously to stay deterministic, with a comment pointing here. Confirming whether
+  it reproduces outside TestBed needs the app in a real browser.
+- **Suggested next step**: log `_beginInitialize` in the running app and open a project.
+  If it fires twice there too, inspect how `rxMethod` subscribes to the `id` input
+  signal — a required input set after `createComponent` is the most likely source of the
+  extra emission.
+- **Priority**: P2 — invisible today, but it makes mutations abort unpredictably and
+  doubles startup reads.
+
+## 9. A renamed folder's search results keep their old path and launch URLs briefly
+
+- **Where**: `src/app/project-documents/services/search/document-search.service.ts` —
+  `replaceResult`, and the `refresh()` that follows it in `project-documents.ts`'s
+  inline rename.
+- **Problem**: `replaceResult` corrects only the renamed row, from the server's own
+  node. A search result *beneath* that folder keeps its old `path` and its old
+  `onlineUrl` / `desktopUrl` / `downloadUrl` until the reconciling search returns —
+  the full search latency, which is seconds and occasionally much worse. "Open File
+  Location" navigates by that path, and Open / Download use those URLs, so both act on
+  a location the rename has already invalidated.
+- **Why it is this way**: descendants are deliberately left to `refresh()`. The local
+  alternative is a path-prefix rewrite over the results, which existed and was deleted
+  in `e8a1dc6` after producing four defects across three review rounds — including one
+  that rewrote results from an unrelated document list, because the prefix test never
+  compared `listKey` and the paths are server-relative.
+- **Why it is not a regression**: before the deletion, those rows showed the *new* path
+  with the *old* URLs, so the links were equally broken and additionally looked
+  correct. The window is now self-consistent and self-healing.
+- **Suggested fix**: ideally a rename response that names the affected descendants, so
+  no client-side matching is needed. Failing that, blank `onlineUrl` / `desktopUrl` /
+  `downloadUrl` on results beneath the renamed node — which disables the launch actions
+  rather than pointing them somewhere wrong, and needs the `listKey` guard the deleted
+  code lacked. Worth doing only if the window is observed to matter.
+- **Priority**: P3 — bounded, self-healing, and no worse than the behaviour it replaced.
+
+## 10. `ProjectDocuments` is still past the `max-lines` waiver
+
+**Stage 1 done (2026-11-09): 1,564 -> 1,300 effective lines**, five extractions, each
+its own commit and each verified at 277/277 with the template byte-identical.
+
+| Moved to | Effective |
+|---|---|
+| `utils/tree-section.utils.ts` | -24 |
+| `utils/bootstrap.utils.ts` (helpers, then the deep-link parser) | -29 |
+| `services/interaction/context-menu.builder.ts` | -170 |
+| `services/interaction/recycle-bin.service.ts` | -41 |
+
+The menu builder is the one worth knowing about: it follows `drag-drop-policy.ts` —
+pure functions over a capabilities object of plain values and an actions object of
+callbacks — so nothing in it reaches a store, and what each entry offers can be read in
+one place. The search-result menus moved with it; they had been built inline, duplicating
+the folder menu's structure with different locking rules.
+
+**What the first estimate got wrong**: Stage 1 was planned at ~1,050 and landed at 1,300.
+The block measurements counted neighbouring code that did not move, and every extraction
+leaves a delegation behind. Measure the methods, not the line range, next time.
+
+**Still over budget by 800.** What remains, measured:
+
+| Candidate | Effective |
+|---|---|
+| external drop + upload pickers | ~114 |
+| search handlers | ~113 |
+| bulk delete / paste / selection privates | ~113 |
+| rename, delete, clipboard | ~102 |
+| path bar + history | ~94 |
+| the three `observe*` effects | ~52 |
+| fields and computeds at the top of the class | ~200 |
+
+Reaching 500 means moving essentially all of it, **including component state** — the
+search, external-drop and inline-rename signals would have to live in the services that
+own those concerns. That turns the container into a thin shell over six or so services.
+It is a real option, not a fantasy, but it is a different size of change from Stage 1 and
+should be decided deliberately rather than drifted into.
+
+**The `/* eslint-disable max-lines */` stays until then**, and its comment should keep
+saying what is left.
+
+### Stage 2, planned but not started
+
+**Recommendation: do it, but for cohesion rather than for the line count.** Three of the
+four services below are concepts this feature already has and has no file for — a reader
+looking for "how does renaming work" has nowhere to go but a 1,300-line component.
+Getting under 500 would be a byproduct and is **not promised**: the honest estimate is
+550-700, and chasing a number is a poor reason to move code. If it lands just above 500,
+the right answer is probably to keep the waiver with a smaller cap, not to contort
+further.
+
+Two decisions carried over from Stage 1 and should hold: **the component's public surface
+stays identical** (the 391-line template and every child binding untouched), and **one
+concern per commit** with the suite green at each.
+
+**The mechanic.** Stage 1 moved private helpers, which could leave alone. Everything left
+is a handler plus the signals it reads, so Stage 2 moves **state**, which is where
+behaviour lives. Each service owns its signals; the component re-exposes each by
+reference so the template never changes:
+
+```ts
+protected readonly pathEditing = this.pathNav.pathEditing;   // same signal, still reactive
+protected onUp(): Promise<void> { return this.pathNav.goUp(); }
+```
+
+Budget about one line per exposed signal and three per handler — that overhead is already
+in the 550-700 estimate. Every service is component-provided like its siblings, so it
+shares the component's `FileSystemStore` and is destroyed with it; an `effect()` in such a
+service's constructor is in a valid injection context and is torn down with it, which is
+what makes step 5 possible at all.
+
+**Order, lowest risk first:**
+
+1. **`services/navigation/path-navigation.service.ts`** (~94 + state) — `onSegmentClicked`,
+   `onPathSubmitted`, `onUp`, `onBack`, `onForward`, `onEditRequested`, `onEditCancelled`,
+   `closePathEditor`, `resolveAndOpen`, plus `pathEditing`, `pathError`,
+   `currentEditablePath`. Fewest entanglements; the right place to prove the pattern.
+2. **`services/search/search-ui.service.ts`** (~150 + state) — the search handlers, the two
+   search observers, `searchStatusText`, `resetSearchState`, and the `search*` signals. A
+   **separate service that injects `DocumentSearchService`** — that one is the data layer
+   and should not grow UI state.
+3. **`services/upload/upload-ui.service.ts`** (~114 + state) — the seven `onExternal*`
+   handlers, `uploadExternalDrop`, `clearExternalDropState`, the drop-target signals and
+   the two current-folder drop computeds. `pickFiles`, `onFilesPicked` and
+   `openToolbarUploadMenu` **stay on the component**: they reach `fileInput` and
+   `uploadMenu`, which are `viewChild`s.
+4. **`services/interaction/node-mutation.service.ts`** (~215 + state) — rename, delete,
+   clipboard and paste, with `mutationWritingIds`, `inlineRenameError`,
+   `inlineRenameSurface`, `pendingDelete`, `pasting`, `cutIds` and the delete-confirmation
+   computeds. Largest and most entangled: it feeds the menu builder's capabilities and
+   actions, so leave it until the pattern has held three times.
+5. **The three `observe*` effects** (~52) — `observeProjectChanges`,
+   `observeInitializedRoots`, `observeReadErrors`. **Riskiest, deliberately last.** They
+   coordinate across concerns and a mistimed effect changes behaviour without failing a
+   compile. If moving one would change ordering, leave it and record why.
+
+**Verification per step**: both TypeScript projects, `npx eslint src` (only the two known
+`path-bar` warnings), the suite at **277/277** with **no test edited**, and
+`git diff --stat` on `project-documents.html` empty. Run the suite **three times** after
+steps 4 and 5 — those move state and effects, and a timing regression will not show
+reliably in one pass. A refactor that needs its tests rewritten has changed behaviour:
+stop and say so.
+
+## 11. `no-unnecessary-condition` needs `noUncheckedIndexedAccess` first
+
+- **Where**: `eslint.config.mjs` (the rule is deliberately absent, with a comment
+  pointing here) and `tsconfig.json` (`noUncheckedIndexedAccess` is off).
+- **Why it is not simply enabled**: it reports **57** problems in `src`, and **37 of them
+  are correct guards it wants deleted**. With `noUncheckedIndexedAccess` off, a
+  `Record<string, FileSystemNode>` lookup is typed as always-defined, so every
+  `if (!entityMap()[id])` reads as "always falsy" — while at runtime those lookups do
+  return `undefined` for an uncached search hit, a deleted node, or a project switch.
+  Acting on those reports would remove the guards this feature depends on.
+- **Measured cost of doing it honestly** (2026-11-06): turning
+  `noUncheckedIndexedAccess` on drops the rule's reports from 57 to 20 but produces
+  **134 TypeScript errors** — 12 in `tsconfig.app.json`, 122 in `tsconfig.spec.json`.
+- **What the 20 survivors actually are**: 16 redundant `?.` (13 in specs, 3 in
+  `folder-tree.ts`), two `while (true)` loops, one dead `if (listKey)` on a required
+  field, and two deliberate guards against DOM and Angular-forms types that lie
+  (`external-drop.service.ts:41`, `name-dialog.utils.ts:7`). **No defects.** That is the
+  argument for leaving it off: it costs 134 type errors to make meaningful and finds
+  nothing wrong.
+- **Not actually reported by the other laptop.** This item came out of misreading a
+  report of `no-nested-ternary` as this rule. It is kept because the measurement is
+  real and worth having before anyone enables it. The single thing it flags in
+  `project-documents-drag.spec.ts` is the `files[0]` guard, which is correct and
+  must stay.
+- **What would change the decision**: enabling `noUncheckedIndexedAccess` for its own
+  sake, since honest index types are worth having independently. Then enable this rule
+  in the same change and clear the 20.
+- **Priority**: P3, and explicitly a decision rather than a defect.
+
+## 12. Local stand-ins are looser than the real dependencies they stand for
+
+Every local stand-in under `src/local/` and `src/services/` exists so this repo can
+build without the host application. Each time one has been **more permissive** than the
+real thing, the suite stayed green here and failed on first contact with the host. Three
+instances so far, all the same shape:
+
+- **`ProjectDTO` / `FolderNodeResponseAccessLevelEnum`** (resolved 2026-11-06, commit
+  `ee0bfd6`): the stubs were a loose `interface` and a string union where the generated
+  client has required fields and a real `enum`. Two test fixtures did not compile.
+- **`HttpClient`** (resolved 2026-11-06, commit `815571e`): the container's dependency
+  graph reaches `HttpClient` through the real API, which the specs never provided
+  because the mock short-circuits it here. `NG0201` on every container spec.
+- **`PopupService`** (resolved 2026-11-06): the stand-in was
+  `@Injectable({ providedIn: 'root' })`; the library's is not root-provided and every
+  consumer lists it in its own `providers`. `NG0201: No provider found for PopupService`
+  on all 41 container tests.
+
+**The rule this gives us**: a stand-in must be at least as strict as the real thing —
+same injector scope, same required fields, same enum identity. A looser stand-in does not
+make the tests pass, it makes them stop asking. Where the real shape is unknown, prefer
+the stricter guess: it fails here, where it is cheap, instead of after migration.
+
+**The last two were tightened the same day** (2026-11-06):
+- `folderNodeResponse.ts` and `fileNodeResponse.ts` are real `enum`s now, as the
+  generated client declares them. Zero breakage, as measured.
+- `ProjectDTO` in `src/services/project-overview.service.ts` is an exported interface
+  whose five fields are **required**. Only `name` is typed, because only `name` is read
+  here; the rest are `unknown`, which is honest — their types belong to the overview
+  feature and guessing them would invent a constraint the real DTO may not have.
+  Required-ness is the part that carries: it keeps a bare literal illegal, so a fixture
+  has to assert its shape, and an assertion compiles against both declarations. Broke
+  exactly one line (`project-documents-demo.ts:27`, the local harness), as measured.
+
+Both guards were confirmed to bite by compiling the code they are meant to reject:
+`const a: FolderNodeResponseAccessLevelEnum = 'READONLY'` gives **TS2322** and
+`const b: ProjectDTO = { name: 'x' }` gives **TS2739** — the same error codes the other
+repo reported before the stubs were tightened.
+
+**Status**: closed as a backlog item. What remains is the rule, which applies to any
+stand-in added later: *at least as strict as the thing it stands for — same injector
+scope, same required fields, same enum identity.* Where the real shape is unknown,
+declare the part that is known and leave the rest `unknown` rather than guessing a type
+or, worse, omitting the field.
+
+
+## 13. The mock's write latency ignored its own configuration — resolved 2026-11-09
+
+`MockFileSystemApi.latencyMs` added a fixed 200 ms ceiling to **writes** whatever the
+injected config said:
+
+```ts
+const max = kind === 'read' ? this.config.maxLatencyMs : this.config.maxLatencyMs + 200;
+```
+
+Every spec in the feature — 13 files — sets `minLatencyMs: 0, maxLatencyMs: 0`, and not
+one of them got it; each write took a random 0-200 ms instead. That is what produced the
+flake chased down while the recycle-bin confirmation tests were being converted. Those two
+specs were fixed at their own end by running the accepted callback inside the zone, where
+`whenStable` waits for the tracked timer; this entry was the cause still standing behind
+them.
+
+`latencyMs` now honours the configured range for reads and writes alike, and `kind` is
+gone with it. Measured: the suite went from **31.3 s to a 23.96-24.32 s band across five
+consecutive runs**, a 23% drop, and the spread between runs fell to 0.36 s. All five were
+277/277, so nothing was relying on the extra delay.
+
+Demo behaviour is unchanged in character: `DEFAULT_MOCK_CONFIG` is 150-400 ms, so writes
+went from 150-600 ms to 150-400 ms.
+
+**The rule worth keeping**: a caller that configures zero latency is asking for
+deterministic timing, and a mock that quietly adds its own is not a mock of anything.
 
 > (Two former items were resolved: `initialize`'s reduce-with-spread pipeline —
 > 2026-07-06, by the reactive `connectProject` refactor — and the duplicated

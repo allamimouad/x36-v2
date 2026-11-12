@@ -57,6 +57,8 @@ interface NavigationState {
     currentHistoryIndex: number;
     expandedTreeIds: Set<string>;
     selectedIds: Set<string>;
+    /** Row a Shift-range extends from; moves with every plain or toggling click. */
+    selectionAnchorId: string | null;
     focusedId: string | null;
     renamingId: string | null;
     /** Set when Back/Forward lands on a history id that is no longer cached. */
@@ -69,6 +71,7 @@ const initialState: NavigationState = {
     currentHistoryIndex: -1,
     expandedTreeIds: new Set<string>(),
     selectedIds: new Set<string>(),
+    selectionAnchorId: null,
     focusedId: null,
     renamingId: null,
     navigationError: null
@@ -240,7 +243,8 @@ export const NavigationStore = signalStore(
                 currentFolderId: id,
                 history: newHistory,
                 currentHistoryIndex: newHistory.length - 1,
-                navigationError: null
+                navigationError: null,
+                ..._clearedSelection()
             });
             _loadChildrenUnlessAlreadyLoading(id);
         };
@@ -264,7 +268,8 @@ export const NavigationStore = signalStore(
                 currentFolderId: folderId,
                 history: newHistory,
                 currentHistoryIndex: newHistory.length - 1,
-                navigationError: null
+                navigationError: null,
+                ..._clearedSelection()
             });
         };
 
@@ -277,7 +282,8 @@ export const NavigationStore = signalStore(
             const location = locationOf(entry);
             patchState(store, {
                 currentHistoryIndex: newIdx,
-                currentFolderId: location.folderId
+                currentFolderId: location.folderId,
+                ..._clearedSelection()
             });
             if (!fsReader.entityMap()[location.folderId]) {
                 patchState(store, { navigationError: NAVIGATION_UNAVAILABLE });
@@ -304,10 +310,15 @@ export const NavigationStore = signalStore(
             const history = currentEntry.kind === 'search'
                 ? [...store.history().slice(0, idx), searchEntry]
                 : [...store.history().slice(0, idx + 1), searchEntry];
+            // A search is a change of view, so it starts with a fresh selection like
+            // every folder navigation does. Leaving one behind would keep rows selected
+            // that the new view does not show, and arm the multi-item actions against
+            // them.
             patchState(store, {
                 history,
                 currentHistoryIndex: currentEntry.kind === 'search' ? idx : history.length - 1,
-                navigationError: null
+                navigationError: null,
+                ..._clearedSelection()
             });
         };
 
@@ -321,11 +332,13 @@ export const NavigationStore = signalStore(
 
                 return;
             }
+            // The branch above clears through `_goToHistory`; this one replaces the
+            // search entry in place and so must clear for itself.
             const replacement = folderEntry(currentEntry.scope);
             const history = store.history().map((entry, index) =>
                 index === idx ? replacement : entry
             );
-            patchState(store, { history });
+            patchState(store, { history, ..._clearedSelection() });
         };
 
         const initialize = (args: { currentFolderId: string; expandedRootIds: string[] }): void => {
@@ -334,7 +347,8 @@ export const NavigationStore = signalStore(
                 history: [folderEntry({ folderId: args.currentFolderId })],
                 currentHistoryIndex: 0,
                 expandedTreeIds: new Set(args.expandedRootIds),
-                navigationError: null
+                navigationError: null,
+                ..._clearedSelection()
             });
         };
 
@@ -378,28 +392,53 @@ export const NavigationStore = signalStore(
      * Drop references to ids that were removed from the cache (e.g. a moved subtree),
      * so expansion/selection/focus/rename state can't point at deleted nodes.
      */
+        /**
+     * A fresh cleared selection. Returns a new Set each call: sharing one object
+     * across patches would share its Set instance between them.
+     */
+        const _clearedSelection = (): Pick<
+            NavigationState, 'selectedIds' | 'selectionAnchorId'
+        > => ({ selectedIds: new Set<string>(), selectionAnchorId: null });
+
         const pruneReferences = (ids: Iterable<string>): void => {
             const removed = new Set(ids);
             if (removed.size === 0) { return; }
             const focusedId = store.focusedId();
             const renamingId = store.renamingId();
+            const anchorId = store.selectionAnchorId();
             patchState(store, {
                 expandedTreeIds: new Set(
                     [...store.expandedTreeIds()].filter((x) => !removed.has(x))
                 ),
                 selectedIds: new Set([...store.selectedIds()].filter((x) => !removed.has(x))),
+                selectionAnchorId: anchorId !== null && removed.has(anchorId) ? null : anchorId,
                 focusedId: focusedId !== null && removed.has(focusedId) ? null : focusedId,
                 renamingId: renamingId !== null && removed.has(renamingId) ? null : renamingId
             });
         };
 
-        const expand = (id: string): void => {
+        const _markExpanded = (id: string): void => {
             const set = store.expandedTreeIds();
-            if (!set.has(id)) {
-                const next = new Set(set);
-                next.add(id);
-                patchState(store, { expandedTreeIds: next });
-            }
+            if (set.has(id)) { return; }
+            const next = new Set(set);
+            next.add(id);
+            patchState(store, { expandedTreeIds: next });
+        };
+
+        const expand = (id: string): void => {
+            _markExpanded(id);
+            _loadChildrenUnlessAlreadyLoading(id);
+        };
+
+        /**
+         * Expand a folder without refetching children that are already cached.
+         * `expand` always refreshes the listing; this variant loads only when the
+         * folder has none, so an expansion the user did not ask for does not mark
+         * the folder as loading for a whole round-trip.
+         */
+        const expandWithoutReload = (id: string): void => {
+            _markExpanded(id);
+            if (fsReader.folderIdsWithLoadedChildren().includes(id)) { return; }
             _loadChildrenUnlessAlreadyLoading(id);
         };
 
@@ -417,6 +456,53 @@ export const NavigationStore = signalStore(
 
         const focus = (id: string | null): void => {
             patchState(store, { focusedId: id });
+        };
+
+        /**
+     * Select a single row, or add/remove one from the current selection. Both forms
+     * move the anchor to `id`, so a following Shift-range extends from the row the
+     * user last touched.
+     *
+     * A Shift-range is not handled here: it depends on the order rows are rendered in,
+     * which changes with column sorting and is only known to the table. The table
+     * resolves the range and reports the result through `setSelection`.
+     */
+        const select = (id: string, mode: 'single' | 'toggle'): void => {
+            const current = store.selectedIds();
+            if (mode === 'single') {
+                patchState(store, { selectedIds: new Set([id]), selectionAnchorId: id });
+
+                return;
+            }
+            const next = new Set(current);
+            if (!next.delete(id)) { next.add(id); }
+            patchState(store, { selectedIds: next, selectionAnchorId: id });
+        };
+
+        /** Replace the selection wholesale, e.g. with a range the table resolved. */
+        const setSelection = (ids: Iterable<string>, anchorId: string | null): void => {
+            patchState(store, {
+                selectedIds: new Set(ids),
+                selectionAnchorId: anchorId
+            });
+        };
+
+        /**
+         * Focus goes with the selection. Clicking the empty space or pressing Escape is
+         * a "nothing is chosen" gesture, and leaving the last-clicked row focused meant
+         * it kept a highlight of its own afterwards. Right-clicking the empty space
+         * already cleared focus, so this also removes that asymmetry.
+         */
+        const clearSelection = (): void => {
+            if (store.selectedIds().size === 0 && store.selectionAnchorId() === null &&
+                store.focusedId() === null) {
+                return;
+            }
+            patchState(store, {
+                selectedIds: new Set<string>(),
+                selectionAnchorId: null,
+                focusedId: null
+            });
         };
 
         const startRename = (id: string): void => {
@@ -438,20 +524,14 @@ export const NavigationStore = signalStore(
             up,
             refresh,
             expand,
+            expandWithoutReload,
             collapse,
             setExpanded,
             focus,
             pruneReferences,
-            // TODO: implement with the multi-select US.
-            select(_id: string, _mode: 'single' | 'toggle' | 'range'): void {
-                /* intentionally empty */
-            },
-            selectRange(_id: string): void {
-                /* intentionally empty */
-            },
-            clearSelection(): void {
-                /* intentionally empty */
-            },
+            select,
+            setSelection,
+            clearSelection,
             startRename,
             endRename
         };
@@ -538,6 +618,7 @@ function navigationDevtoolsFeature(): SignalStoreFeature<EmptyFeatureResult, Emp
                 currentHistoryIndex: state.currentHistoryIndex,
                 expandedTreeIds: [...state.expandedTreeIds],
                 selectedIds: [...state.selectedIds],
+                selectionAnchorId: state.selectionAnchorId,
                 focusedId: state.focusedId,
                 renamingId: state.renamingId,
                 navigationError: state.navigationError

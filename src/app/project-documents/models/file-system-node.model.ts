@@ -32,8 +32,18 @@ export interface FileNode {
     modifiedAt: string;
     modifiedBy?: string;
     contentType?: string;
+    /**
+     * URL to open the file in the browser (Office Online viewer for Office documents,
+     * direct SharePoint URL otherwise). Always populated for file nodes; it is the
+     * fallback when desktopUrl is null.
+     */
     onlineUrl?: string;
+    /**
+     * Office desktop protocol URI (ms-word:, ms-excel:, ms-powerpoint:) to launch the
+     * installed Office application. Null when the file type is not an Office document.
+     */
     desktopUrl?: string;
+    /** URL to download the file via SharePoint's download handler. Always populated. */
     downloadUrl?: string;
     accessLevel?: FileNodeResponseAccessLevelEnum;
 }

@@ -19,6 +19,7 @@
 
 :host ::ng-deep .pd-tree .p-tree-node-content {
   border-radius: 6px;
+  padding: 0.25rem;
 }
 
 :host ::ng-deep .pd-tree .p-tree-node-label {
@@ -141,4 +142,8 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.pd-internal-drag-source {
+  opacity: 0.5;
 }

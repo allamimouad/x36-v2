@@ -127,6 +127,81 @@ describe('FileTable', () => {
         expect(dropped).not.toHaveBeenCalled();
     });
 
+    it('replaces the selection on a plain click and toggles on Ctrl', () => {
+        fixture.componentRef.setInput('selectedIds', new Set([folder.id]));
+        fixture.detectChanges();
+        const requested = jasmine.createSpy('selectionRequested');
+        fixture.componentInstance.selectionRequested.subscribe(requested);
+
+        clickRow(file.id, {});
+        expect(requested).toHaveBeenCalledWith({ ids: [file.id], anchorId: file.id });
+
+        clickRow(file.id, { ctrlKey: true });
+        expect(requested).toHaveBeenCalledWith({
+            ids: [folder.id, file.id], anchorId: file.id
+        });
+    });
+
+    it('extends a Shift-range across the rendered rows and keeps the anchor', () => {
+        fixture.componentRef.setInput('selectedIds', new Set([folder.id]));
+        fixture.componentRef.setInput('selectionAnchorId', folder.id);
+        fixture.detectChanges();
+        const requested = jasmine.createSpy('selectionRequested');
+        fixture.componentInstance.selectionRequested.subscribe(requested);
+
+        clickRow(file.id, { shiftKey: true });
+
+        // Folders render before files, so the range spans both rows; the anchor stays
+        // put so a further Shift-click re-extends from the same row.
+        expect(requested).toHaveBeenCalledWith({
+            ids: [folder.id, file.id], anchorId: folder.id
+        });
+    });
+
+    it('falls back to a plain click when Shift is used with no anchor', () => {
+        fixture.detectChanges();
+        const requested = jasmine.createSpy('selectionRequested');
+        fixture.componentInstance.selectionRequested.subscribe(requested);
+
+        clickRow(file.id, { shiftKey: true });
+
+        expect(requested).toHaveBeenCalledWith({ ids: [file.id], anchorId: file.id });
+    });
+
+    it('does not paint a focused row as a selected one', () => {
+        // The theme variables come from an ancestor in the running app, so the host has
+        // to supply them here or every colour resolves to nothing and the comparison
+        // below passes for the wrong reason.
+        hostElement().style.setProperty('--pd-selection-bg', 'rgb(232, 244, 239)');
+        hostElement().style.setProperty('--pd-accent', 'rgb(0, 128, 96)');
+        fixture.componentRef.setInput('selectedIds', new Set([folder.id]));
+        fixture.componentRef.setInput('focusedId', file.id);
+        fixture.detectChanges();
+
+        // Asserted on the rendered colour, not the class list: the defect was that both
+        // classes resolved to the same background, so a row Ctrl-click-deselected went
+        // on looking selected while the drag correctly left it out.
+        expect(getComputedStyle(row(folder.id)).backgroundColor).toBe('rgb(232, 244, 239)');
+        expect(getComputedStyle(row(file.id)).backgroundColor)
+            .not.toBe('rgb(232, 244, 239)');
+        // Focus is still marked, by an edge of its own.
+        expect(getComputedStyle(row(file.id)).boxShadow).toContain('rgb(0, 128, 96)');
+    });
+
+    function row(id: string): HTMLElement {
+        const element = hostElement().querySelector(`[data-testid="pd-row-${id}"]`);
+        if (!(element instanceof HTMLElement)) { throw new Error(`Missing row ${id}`); }
+
+        return element;
+    }
+
+    function clickRow(id: string, modifiers: MouseEventInit): void {
+        const element = hostElement().querySelector(`[data-testid="pd-row-${id}"]`);
+        if (!(element instanceof HTMLElement)) { throw new Error(`Missing row ${id}`); }
+        element.dispatchEvent(new MouseEvent('click', { bubbles: true, ...modifiers }));
+        fixture.detectChanges();
+    }
+
     function button(testId: string): HTMLButtonElement | null {
         return hostElement().querySelector<HTMLButtonElement>(`[data-testid="${testId}"]`);
     }

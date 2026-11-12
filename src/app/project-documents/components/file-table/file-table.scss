@@ -90,8 +90,22 @@
     background: var(--pd-hover-bg);
   }
 
-  .p-datatable-tbody > tr.pd-row-focused {
+  // Cut rows stay in place but read as pending until the paste lands.
+  .p-datatable-tbody > tr.pd-row-cut {
+    opacity: 0.5;
+  }
+
+  .p-datatable-tbody > tr.pd-row-selected {
     background: var(--pd-selection-bg);
+  }
+
+  // Focus must not borrow the selection fill. Every row click focuses, so sharing one
+  // colour made a row that had just been Ctrl-click-deselected still read as selected,
+  // and left the last-clicked row looking selected after the selection was cleared.
+  // The inset edge marks focus in both states, including inside a multi-selection,
+  // where it is also what keeps the focused row findable within one block of colour.
+  .p-datatable-tbody > tr.pd-row-focused {
+    box-shadow: inset 2px 0 0 var(--pd-accent);
   }
 
   .p-datatable-tbody > tr.pd-row-external-drop-target {
@@ -264,4 +278,13 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.pd-internal-drag-source {
+  opacity: 0.5;
+}
+
+.pd-current-folder-internal-target {
+  outline: 2px solid var(--pd-accent);
+  outline-offset: -2px;
 }

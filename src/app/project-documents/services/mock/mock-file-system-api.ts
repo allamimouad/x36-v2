@@ -381,16 +381,16 @@ export class MockFileSystemApi extends FileSystemApi {
 
     /** Simulated read: emits the factory result after randomized read latency. */
     private read<T>(factory: () => T, additionalDelayMs = 0): Observable<T> {
-        return timer(this.latencyMs('read') + additionalDelayMs).pipe(map(factory));
+        return timer(this.latencyMs() + additionalDelayMs).pipe(map(factory));
     }
 
     /**
-   * Simulated write: after randomized write latency, runs the configured failure
+   * Simulated write: after the configured latency, runs the configured failure
    * check then the factory. A throw from either surfaces as an Observable error
    * notification — same outcome as the previous `await delay; throw` flow.
    */
     private write<T>(factory: () => T): Observable<T> {
-        return timer(this.latencyMs('write')).pipe(
+        return timer(this.latencyMs()).pipe(
             map(() => {
                 this.maybeFail();
 
@@ -399,9 +399,13 @@ export class MockFileSystemApi extends FileSystemApi {
         );
     }
 
-    private latencyMs(kind: 'read' | 'write'): number {
+    /**
+   * Latency within the configured range, for reads and writes alike. Writes used to
+   * add a fixed 200 ms on top, which meant a caller configuring zero never got it.
+   */
+    private latencyMs(): number {
         const min = this.config.minLatencyMs;
-        const max = kind === 'read' ? this.config.maxLatencyMs : this.config.maxLatencyMs + 200;
+        const max = this.config.maxLatencyMs;
 
         return min + Math.random() * Math.max(0, max - min);
     }

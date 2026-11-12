@@ -1,7 +1,8 @@
 # RENAME Document
 
-> **Status: contract agreed; frontend pessimistic rename flow implemented, backend
-> pending.** This is the operation-specific companion to the
+> **Status (2026-10-28): implemented end to end.** The contract is agreed, the frontend
+> pessimistic rename flow is implemented, and the backend controller exists. This is the
+> operation-specific companion to the
 > [backend endpoint overview](../backend-endpoints.md).
 
 ## Domain endpoint

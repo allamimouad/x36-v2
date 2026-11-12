@@ -6,6 +6,7 @@ import {
     effect,
     ElementRef,
     HostListener,
+    DestroyRef,
     inject,
     input,
     signal,
@@ -30,8 +31,7 @@ import {
     DOCUMENT_LIST_KEYS,
     DOCUMENT_LIST_LABELS,
     type DocumentListKey,
-    type DocumentListRoots,
-    type DocumentListRootStatus
+    type DocumentListRoots
 } from './models/document-list.model';
 import {
     type FileNode,
@@ -40,8 +40,12 @@ import {
     isFolder
 } from './models/file-system-node.model';
 import { FileSystemError } from './models/file-system-error.model';
-import { FileSystemApi } from './services/file-system/file-system-api';
-import { ClipboardService } from './services/interaction/clipboard.service';
+import type { SelectionRequest } from './models/selection-request.model';
+import { DragDropService } from './services/interaction/drag-drop.service';
+import { BulkOperationService, doneOf } from './services/interaction/bulk-operation.service';
+import {
+    type ClipboardMode, ClipboardService
+} from './services/interaction/clipboard.service';
 import { ExternalDropService } from './services/upload/external-drop.service';
 import { FileLaunchService } from './services/interaction/file-launch.service';
 import {
@@ -49,6 +53,7 @@ import {
     PROJECT_DOCUMENTS_TOAST_KEY
 } from './services/interaction/notification.service';
 import { UploadService } from './services/upload/upload.service';
+import { RecycleBinService } from './services/interaction/recycle-bin.service';
 import { DocumentSearchService } from './services/search/document-search.service';
 import { FileSystemReader } from './stores/file-system-reader';
 import { FileSystemStore } from './stores/file-system.store';
@@ -66,26 +71,39 @@ import type {
     SearchResultContextMenuRequest
 } from './models/context-menu-request.model';
 import type { ExternalFolderDropRequest } from './models/external-drop-request.model';
+import { containsNode, topMostNodes } from './utils/node-containment.utils';
 import { parentOfRelativePath, relativePathFromRoot } from './utils/path.utils';
-import { MockFileSystemApi } from './services/mock/mock-file-system-api';
+import {
+    bootstrapFailureMessage,
+    logRootLoadErrors,
+    parseInitialFolderParams,
+    retryForReadError,
+    rootFromStatus
+} from './utils/bootstrap.utils';
+import { buildTreeSection } from './utils/tree-section.utils';
+import {
+    type ContextMenuDeps,
+    disabledSearchContextMenu,
+    emptyContextMenu,
+    fileContextMenu,
+    folderContextMenu,
+    isMultiSelected,
+    recycleBinContextMenu,
+    searchResultFileMenu,
+    searchResultFolderMenu,
+    uploadMenuItems
+} from './services/interaction/context-menu.builder';
 import { ProjectOverviewService } from '../../services/project-overview.service';
-import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
+import { PopupService } from 'ibportal-web-ui-commons';
 import {
     ConfirmationPopup,
     DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG
 } from '@shared/components/confirmation-popup/confirmation-popup';
-import { HttpErrorResponse } from '@angular/common/http';
 import { SearchResults } from './components/search-results/search-results';
 import { FolderNodeResponseAccessLevelEnum } from '@api/model/folderNodeResponse';
-import { FileNodeResponseAccessLevelEnum } from '@api/model/fileNodeResponse';
 import { ActivatedRoute, Router } from '@angular/router';
 
 const DEFAULT_FOLDER_NAME = 'New folder';
-
-interface ProjectDocumentsMenuData {
-    symbol: string;
-    testId: string;
-}
 
 type NodeSurface = 'tree' | 'table' | 'search';
 
@@ -119,14 +137,16 @@ interface PendingDelete {
         FileSystemStore,
         { provide: FileSystemReader, useExisting: FileSystemStore },
         NavigationStore,
+        BulkOperationService,
         ClipboardService,
+        DragDropService,
         ExternalDropService,
         FileLaunchService,
         MessageService,
         NotificationService,
         UploadService,
         DocumentSearchService,
-        { provide: FileSystemApi, useClass: MockFileSystemApi }
+        RecycleBinService
     ],
     templateUrl: './project-documents.html',
     styleUrl: './project-documents.scss'
@@ -138,6 +158,7 @@ export class ProjectDocuments {
     protected readonly fileSystem = inject(FileSystemStore);
     protected readonly navigation = inject(NavigationStore);
     protected readonly clipboard = inject(ClipboardService);
+    protected readonly dragDrop = inject(DragDropService);
     protected readonly externalDrops = inject(ExternalDropService);
     protected readonly fileLauncher = inject(FileLaunchService);
     protected readonly notifications = inject(NotificationService);
@@ -155,7 +176,10 @@ export class ProjectDocuments {
         return folder !== null && this.fileLauncher.canOpenSharePointWeb(folder);
     });
 
-    protected readonly writingIds = signal<ReadonlySet<string>>(new Set<string>());
+    protected readonly mutationWritingIds = signal<ReadonlySet<string>>(new Set<string>());
+    protected readonly writingIds = computed(() => new Set([
+        ...this.mutationWritingIds(), ...this.dragDrop.busyIds()
+    ]));
     protected readonly inlineRenameError = signal<string | null>(null);
     protected readonly inlineRenameSurface = signal<NodeSurface | null>(null);
     protected readonly focusedSurface = signal<NodeSurface>('table');
@@ -177,13 +201,14 @@ export class ProjectDocuments {
     });
     protected readonly creatingFolder = signal(false);
     protected readonly isCreateFolderButtonDisabled = computed(() => {
-        return !this.navigation.currentFolder() || this.creatingFolder() ||
+        return this.dragDrop.pending() || !this.navigation.currentFolder() ||
+            this.creatingFolder() ||
             this.searchActive()
             || this.navigation.currentFolderIsRecycleBin()
             || this.navigation.isCurrentFolderReadonly();
     });
     protected readonly isUploadButtonDisabled = computed(() => {
-        return !this.navigation.currentFolder() || this.searchActive()
+        return this.dragDrop.pending() || !this.navigation.currentFolder() || this.searchActive()
             || this.navigation.currentFolderIsRecycleBin()
             || this.navigation.isCurrentFolderReadonly();
     });
@@ -192,6 +217,29 @@ export class ProjectDocuments {
     protected readonly uploadPanelCollapsed = signal(false);
     protected readonly externalDropTargetId = signal<string | null>(null);
     protected readonly externalDropSurface = signal<'table' | 'tree' | null>(null);
+    /**
+     * Whether the current-folder space should invite the active internal drag. Asks the
+     * policy rather than merely checking that a drag exists, so a readonly destination,
+     * a same-parent move or a drop onto the source itself is not advertised.
+     */
+    /**
+     * Search results never enter the cache, so `draggableIds` cannot cover them; each
+     * result is asked about directly.
+     */
+    protected readonly draggableSearchResultIds = computed(
+        () => this.dragDrop.draggableAmong(this.search.results())
+    );
+    /** Ids on the clipboard as a cut; empty for a copy, which leaves rows untouched. */
+    protected readonly cutIds = computed<ReadonlySet<string>>(
+        () => this.clipboard.mode() === 'cut' ? this.clipboard.ids() : new Set<string>()
+    );
+    protected readonly internalCurrentFolderDropActive = computed(() => {
+        const session = this.dragDrop.state();
+        const currentFolderId = this.navigation.currentFolderId();
+        if (session === null || currentFolderId === null) { return false; }
+
+        return this.dragDrop.canDropOn(currentFolderId, session.effect);
+    });
     protected readonly currentFolderDropActive = computed(() => {
         if (this.externalDropSurface() !== 'table' || this.currentFolderError() ||
             this.navigation.isCurrentFolderReadonly()) {
@@ -238,7 +286,7 @@ export class ProjectDocuments {
         if (!roots) { return null; }
         const anyLoaded = DOCUMENT_LIST_KEYS.some((key) => roots[key].status === 'loaded');
 
-        return anyLoaded ? null : this.bootstrapFailureMessage(roots);
+        return anyLoaded ? null : bootstrapFailureMessage(roots);
     });
 
     /** One tree section per document list, each rooted at its list root. */
@@ -347,7 +395,11 @@ export class ProjectDocuments {
 
     protected readonly bootstrapLoading = computed(() => this.fileSystem.isInitializing());
     private pendingFileTarget: FolderNode | null = null;
+    /** Set once this component is torn down, so queued batch work stops going out. */
+    private destroyed = false;
     private readonly popupService = inject(PopupService);
+    private readonly bulk = inject(BulkOperationService);
+    private readonly recycleBin = inject(RecycleBinService);
     private readonly router = inject(Router);
     private readonly activatedRoute = inject(ActivatedRoute);
 
@@ -355,6 +407,13 @@ export class ProjectDocuments {
         // Reactive project connection: the store re-initializes (cancelling any in-flight
         // load via switchMap) whenever the host rebinds `id`.
         this.fileSystem.connectProject(this.id);
+        this.dragDrop.connect(() => ({
+            writingIds: this.mutationWritingIds(),
+            editingIds: new Set([
+                this.navigation.renamingId(), this.pendingDelete()?.node.id
+            ].filter((id): id is string => typeof id === 'string')),
+            blocked: this.internalDragBlocked()
+        }));
         this.observeProjectChanges();
         this.observeInitializedRoots();
         this.observeReadErrors();
@@ -362,7 +421,15 @@ export class ProjectDocuments {
             this.projectLabel.set(this.projectOverviewService.projectDTO()?.name ?? '');
         });
         this.observeSearchHistory();
+        this.observeSearchSelection();
         this.observeInitialFolderPath();
+        inject(DestroyRef).onDestroy(() => { this.destroyed = true; });
+    }
+
+    @HostListener('document:keydown.escape')
+    protected cancelInternalDrag(): void {
+        this.dragDrop.endDrag();
+        this.navigation.clearSelection();
     }
 
     @HostListener('document:pointerdown', ['$event'])
@@ -373,6 +440,15 @@ export class ProjectDocuments {
             return;
         }
         this.cancelDeleteConfirmation();
+    }
+
+    protected onSelectionRequested(request: SelectionRequest): void {
+        this.navigation.setSelection(request.ids, request.anchorId);
+    }
+
+    protected onSearchSelectionRequested(request: SelectionRequest): void {
+        this.focusedSurface.set('search');
+        this.navigation.setSelection(request.ids, request.anchorId);
     }
 
     protected onItemFocused(id: string): void {
@@ -422,7 +498,7 @@ export class ProjectDocuments {
 
     protected async onSearchResultActivated(result: FileSystemNode): Promise<void> {
         if (!isFolder(result)) {
-            this.openInOnlineApplication(result);
+            this.openFile(result);
 
             return;
         }
@@ -445,49 +521,21 @@ export class ProjectDocuments {
         } catch (error) {
             this.notifications.error(
                 error,
-                this.retryForReadError(error, () => void this.openSearchResultLocation(result))
+                retryForReadError(error, () => void this.openSearchResultLocation(result))
             );
         }
     }
 
     protected onSearchResultContextMenu(request: SearchResultContextMenuRequest): void {
         const result = request.result;
-        if (!isFolder(result)) {
-            this.showContextMenu(request.event, [
-                this.menuItem(
-                    'Open File Location',
-                    'drive_file_move',
-                    'pd-menu-open-search-result',
-                    () => { void this.openSearchResultLocation(result); }
-                ),
-                { separator: true },
-                ...this.fileContextMenu(result, 'search')
-            ]);
-
-            return;
-        }
-        const locked = this.isWriting(result.id) ||
-            result.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly ||
-            this.navigation.isListReadonly();
-        this.showContextMenu(request.event, [
-            this.menuItem('Open Folder', 'folder_open', 'pd-menu-open-folder', () => {
-                void this.onSearchResultActivated(result);
-            }),
-            { separator: true },
-            this.menuItem('Rename Folder', 'edit', 'pd-menu-rename-folder', () => {
-                this.startInlineRename(result, 'search');
-            }, locked),
-            this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
-                this.copyToClipboard(result);
-            }, locked),
-            this.menuItem('Delete Folder', 'delete', 'pd-menu-delete-folder', () => {
-                this.requestDelete(result, 'search');
-            }, locked)
-        ]);
+        const deps = this.contextMenuDeps();
+        this.showContextMenu(request.event, isFolder(result)
+            ? searchResultFolderMenu(result, deps)
+            : searchResultFileMenu(result, deps));
     }
 
     protected onSearchEmptyContextMenu(event: MouseEvent): void {
-        this.showContextMenu(event, this.disabledSearchContextMenu());
+        this.showContextMenu(event, disabledSearchContextMenu());
     }
 
     protected onNodeContextMenu(request: NodeContextMenuRequest): void {
@@ -502,7 +550,7 @@ export class ProjectDocuments {
     protected onEmptyContextMenu(event: MouseEvent): void {
         this.focusedSurface.set('table');
         this.navigation.focus(null);
-        this.showContextMenu(event, this.emptyContextMenu());
+        this.showContextMenu(event, emptyContextMenu(this.contextMenuDeps()));
     }
 
     protected async createFolder(parentId = this.navigation.currentFolderId()): Promise<void> {
@@ -519,7 +567,7 @@ export class ProjectDocuments {
                 this.notifications.success(`Folder “${created.name}” was created.`);
             }
         } catch (error) {
-            this.notifications.error(error);
+            this.reportMutationFailure(error);
         } finally {
             this.creatingFolder.set(false);
         }
@@ -529,7 +577,7 @@ export class ProjectDocuments {
         const target = this.navigation.currentFolder();
         const menu = this.uploadMenu();
         if (!target || !menu) { return; }
-        this.toolbarUploadItems.set(this.uploadMenuItems(target));
+        this.toolbarUploadItems.set(uploadMenuItems(target, this.contextMenuDeps()));
         menu.toggle(event);
     }
 
@@ -578,6 +626,11 @@ export class ProjectDocuments {
         event: DragEvent,
         surface: 'table' | 'tree'
     ): void {
+        if (this.dragDrop.handles(event)) {
+            this.dragDrop.over(event, null, surface);
+
+            return;
+        }
         if (!this.externalDrops.containsFiles(event.dataTransfer)) { return; }
         this.externalDropSurface.set(surface);
         this.externalDropTargetId.set(null);
@@ -598,11 +651,18 @@ export class ProjectDocuments {
 
     protected onExternalCurrentFolderDragOver(event: DragEvent): void {
         const target = this.navigation.currentFolder();
+        if (this.dragDrop.handles(event)) {
+            this.dragDrop.over(event, this.currentFolderError() ? null : target?.id ?? null,
+                'current-folder');
+
+            return;
+        }
         if (!target || this.currentFolderError()) { return; }
         this.onExternalFolderDragOver({ event, target }, 'table');
     }
 
     protected onExternalDragLeave(event: DragEvent): void {
+        this.dragDrop.leave(event);
         const pane = event.currentTarget;
         const nextTarget = event.relatedTarget;
         if (
@@ -616,6 +676,11 @@ export class ProjectDocuments {
     }
 
     protected onExternalDropOutsideTarget(event: DragEvent): void {
+        if (this.dragDrop.handles(event)) {
+            void this.dragDrop.drop(event, null);
+
+            return;
+        }
         if (!this.externalDrops.containsFiles(event.dataTransfer)) { return; }
         event.preventDefault();
         event.stopPropagation();
@@ -629,6 +694,12 @@ export class ProjectDocuments {
     }
 
     protected async onExternalCurrentFolderDrop(event: DragEvent): Promise<void> {
+        if (this.dragDrop.handles(event)) {
+            await this.dragDrop.drop(event, this.currentFolderError() ? null :
+                this.navigation.currentFolderId());
+
+            return;
+        }
         await this.uploadExternalDrop(event, this.navigation.currentFolder());
     }
 
@@ -646,14 +717,17 @@ export class ProjectDocuments {
             const renamed = await this.fileSystem.rename(request.node, name);
             this.navigation.endRename();
             this.inlineRenameSurface.set(null);
-            this.refreshActiveSearch();
+            // The row survives a rename, so it is corrected rather than re-queried.
+            // Corrects the row now; the refresh below reconciles its descendants.
+            this.search.replaceResult(renamed);
+            this.search.refresh();
             this.notifications.success(`“${request.node.name}” was renamed to “${renamed.name}”.`);
         } catch (error) {
             const fieldError = this.mutationFieldError(error);
             if (fieldError) {
                 this.inlineRenameError.set(fieldError);
             } else {
-                this.notifications.error(error);
+                this.reportMutationFailure(error);
             }
         } finally {
             this.setWriting(request.node.id, false);
@@ -670,6 +744,13 @@ export class ProjectDocuments {
         if (node.parentId === null || this.isWriting(node.id)) { return; }
         this.cancelInlineRename();
         this.focusedSurface.set(surface);
+        // A whole selection cannot be confirmed on one row, so it asks in the shared
+        // popup instead of arming the inline buttons.
+        if (isMultiSelected(node, surface, this.navigation.selectedIds())) {
+            this.requestBulkDelete(this.selectedNodes());
+
+            return;
+        }
         this.navigation.focus(node.id);
         this.pendingDelete.set({ node, surface });
     }
@@ -687,58 +768,64 @@ export class ProjectDocuments {
 
     protected async deleteNode(node: FileSystemNode): Promise<void> {
         if (this.isWriting(node.id)) { return; }
-        const removedIds = this.cachedSubtreeIds(node.id);
         const currentId = this.navigation.currentFolderId();
-        const removesCurrent = currentId !== null && removedIds.includes(currentId);
         const parentId = node.parentId;
         this.setWriting(node.id, true);
         try {
-            await this.fileSystem.delete(node);
-            this.navigation.pruneReferences(removedIds);
-            this.clipboard.pruneReferences(removedIds);
+            const removedIds = await this.fileSystem.delete(node);
+            const removesCurrent = currentId !== null && removedIds.includes(currentId);
+            // The node's own id is included explicitly: an uncached source — every
+            // search hit is one — contributes nothing to what the cache removed.
+            this.bulk.reconcileAfterBatch([...removedIds, node.id]);
             if (removesCurrent && parentId) { this.navigation.navigateTo(parentId); }
-            this.refreshActiveSearch();
             this.notifications.success(`“${node.name}” was deleted.`);
         } catch (error) {
-            this.notifications.error(error);
+            this.reportMutationFailure(error);
         } finally {
             this.setWriting(node.id, false);
         }
     }
 
-    protected copyToClipboard(node: FileSystemNode): void {
-        if (node.parentId === null || this.isWriting(node.id)) { return; }
-        this.clipboard.copy([node]);
-        this.notifications.info(`“${node.name}” is ready to paste.`);
+    protected copyToClipboard(node: FileSystemNode, source: NodeSurface): void {
+        this.setClipboard(node, source, 'copy');
+    }
+
+    protected cutToClipboard(node: FileSystemNode, source: NodeSurface): void {
+        this.setClipboard(node, source, 'cut');
     }
 
     protected async pasteInto(target: FolderNode): Promise<void> {
         if (!this.canPaste(target) || this.isWriting(target.id)) { return; }
-        const clipboardSource = this.clipboard.nodes()[0];
-        const source = clipboardSource
-            ? this.fileSystem.entityMap()[clipboardSource.id] ?? clipboardSource
-            : undefined;
-        if (!source) {
+        const cut = this.clipboard.mode() === 'cut';
+        const sources = this.clipboard.nodes()
+            .map((node) => this.fileSystem.entityMap()[node.id] ?? node);
+        if (sources.length === 0) {
             this.clipboard.clear();
             this.notifications.warning('The copied item is no longer available.');
 
             return;
         }
-        if (isFolder(source) && this.isNodeAncestorOrSelf(source, target)) {
+        // Rejected as a set, like a drag: pasting part of what is on the clipboard
+        // would do less than the user asked without saying so.
+        //
+        // `containsNode` is the same test the drag policy applies, rather than a second
+        // walk of its own: it checks the list, walks parent ids with a cycle guard, and
+        // falls back to a case-insensitive path prefix for a source the cache never held.
+        // It reports a node as containing itself only by id, which is the only way two
+        // nodes can share a path anyway.
+        const entities = this.fileSystem.entityMap();
+        if (sources.some((node) => isFolder(node) && containsNode(node, target, entities))) {
             this.notifications.warning(
-                'A folder cannot be copied inside itself or one of its subfolders.'
+                `A folder cannot be ${cut ? 'moved' : 'copied'} inside itself ` +
+                'or one of its subfolders.'
             );
 
             return;
         }
-
         this.pasting.set(true);
         this.setWriting(target.id, true);
         try {
-            await this.fileSystem.copy(source, target);
-            this.notifications.success(`“${source.name}” was copied.`);
-        } catch (error) {
-            this.notifications.error(error);
+            await this.runPaste(sources, target, cut);
         } finally {
             this.setWriting(target.id, false);
             this.pasting.set(false);
@@ -763,7 +850,7 @@ export class ProjectDocuments {
     protected onItemDoubleClicked(node: FileSystemNode): void {
         if (this.navigation.currentFolderIsRecycleBin()) { return; }
         if (!isFolder(node)) {
-            this.openInOnlineApplication(node);
+            this.openFile(node);
 
             return;
         }
@@ -800,7 +887,7 @@ export class ProjectDocuments {
             } catch (e) {
                 this.notifications.error(
                     e,
-                    this.retryForReadError(e, () => void this.onSegmentClicked(seg))
+                    retryForReadError(e, () => void this.onSegmentClicked(seg))
                 );
             }
         }
@@ -838,7 +925,7 @@ export class ProjectDocuments {
             this.pathError.set(null);
             this.notifications.error(
                 e,
-                this.retryForReadError(e, () => void this.onPathSubmitted(raw))
+                retryForReadError(e, () => void this.onPathSubmitted(raw))
             );
         }
     }
@@ -860,7 +947,7 @@ export class ProjectDocuments {
             } catch (e) {
                 this.notifications.error(
                     e,
-                    this.retryForReadError(e, () => void this.onUp())
+                    retryForReadError(e, () => void this.onUp())
                 );
             }
 
@@ -924,20 +1011,175 @@ export class ProjectDocuments {
     }
 
     /**
-   * Coordination point for move flows initiated by the container.
-   * TODO: wire to the cut/copy/paste and drag-and-drop USs.
-   * Guards against moving a folder whose subtree contains the current view — that
-   * would orphan `currentFolderId` in a removed subtree. On success, prunes
-   * navigation/clipboard references that pointed into the removed subtree.
-   */
-    protected async moveNode(sourceId: string, targetParentId: string): Promise<void> {
-        const currentId = this.navigation.currentFolderId();
-        if (currentId && this.isAncestorOrSelf(sourceId, currentId)) {
-            return; // blocked: would remove the folder we're currently viewing
+     * Put the row, or the whole selection it belongs to, on the clipboard. Cut and copy
+     * differ only in mode: the paste decides whether that means move or copy.
+     */
+    private setClipboard(
+        node: FileSystemNode,
+        source: NodeSurface,
+        mode: ClipboardMode
+    ): void {
+        const nodes = isMultiSelected(node, source, this.navigation.selectedIds())
+            ? this.selectedNodes() : [node];
+        const eligible = nodes.filter(
+            (candidate) => candidate.parentId !== null && !this.isWriting(candidate.id)
+        );
+        if (eligible.length === 0) { return; }
+        if (mode === 'cut') {
+            this.clipboard.cut(eligible);
+        } else {
+            this.clipboard.copy(eligible);
         }
-        const removed = await this.fileSystem.move(sourceId, targetParentId);
-        this.navigation.pruneReferences(removed);
-        this.clipboard.pruneReferences(removed);
+        const what = eligible.length === 1
+            ? `“${eligible[0].name}”`
+            : `${eligible.length} items`;
+        this.notifications.info(`${what} ready to paste.`);
+    }
+
+    private async runPaste(
+        sources: FileSystemNode[],
+        target: FolderNode,
+        cut: boolean
+    ): Promise<void> {
+        const isCurrent = this.projectSessionGuard();
+        const outcomes = await this.bulk.run({
+            items: sources,
+            isCurrent,
+            run: (node) => cut
+                ? this.fileSystem.move(node, target.id)
+                : this.fileSystem.copy(node, target.id).then(() => [])
+        });
+        if (!isCurrent()) { return; }
+        const done = doneOf(outcomes);
+        // A copy takes nothing away, so it prunes nothing: its source still exists and
+        // its clipboard entry stays valid. A cut includes the source ids, because an
+        // uncached hit reports nothing through the cache.
+        const removed = cut
+            ? done.flatMap((outcome) => [...outcome.removed, outcome.node.id])
+            : [];
+        // Read now, not when the paste began: opening a child of a moving folder while
+        // the move runs makes that child the one that disappears. The move already
+        // resolves its removals at completion, so such a child is in `removed`.
+        const currentId = this.navigation.currentFolderId();
+        const viewTaken = currentId !== null && removed.includes(currentId);
+        this.bulk.reconcileAfterBatch(removed);
+        if (viewTaken) { this.navigation.navigateTo(target.id); }
+        // No explicit clear: pruning above already drops whatever actually moved, so a
+        // full cut empties the clipboard, a partial one keeps exactly the failures for
+        // a retry, and a clipboard taken while this paste ran is left alone.
+        this.bulk.report(outcomes, cut ? 'moved' : 'copied', cut ? 'stayed in place' : 'failed');
+    }
+
+    private requestBulkDelete(nodes: FileSystemNode[]): void {
+        if (nodes.length === 0) { return; }
+        // Captured now, not on acceptance: the dialog can outlive its project, and
+        // confirming afterwards would send these nodes against whatever is loaded then.
+        const isCurrent = this.projectSessionGuard();
+        this.popupService.showPopup(
+            ConfirmationPopup,
+            { ...DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG, width: '28rem' },
+            {
+                confirmButtonText: 'Confirm',
+                declineButtonText: 'Cancel',
+                // Singular is reachable even though this dialog needs more than one row
+                // selected: collapsing a folder and its own child leaves one item.
+                message: nodes.length === 1
+                    ? `Are you sure you want to delete “${nodes[0].name}”?`
+                    : `Are you sure you want to delete ${nodes.length} items?`,
+                onAccept: () => void this.deleteNodes(nodes, isCurrent)
+            }
+        );
+    }
+
+    private async deleteNodes(
+        nodes: FileSystemNode[],
+        isCurrent: () => boolean
+    ): Promise<void> {
+        if (!isCurrent()) { return; }
+        const currentId = this.navigation.currentFolderId();
+        for (const node of nodes) { this.setWriting(node.id, true); }
+        try {
+            const outcomes = await this.bulk.run({
+                items: nodes,
+                isCurrent,
+                run: (node) => this.fileSystem.delete(node)
+            });
+            if (!isCurrent()) { return; }
+            const done = doneOf(outcomes);
+            // Source ids included: an uncached hit reports nothing through the cache.
+            const removed = done.flatMap((outcome) => [...outcome.removed, outcome.node.id]);
+            // Decided once for the batch, and before pruning clears the reference.
+            const remover = done.find((o) => o.removed.includes(currentId ?? ''));
+            this.bulk.reconcileAfterBatch(removed);
+            if (remover?.node.parentId) { this.navigation.navigateTo(remover.node.parentId); }
+            this.bulk.report(outcomes, 'deleted', 'were not deleted');
+        } finally {
+            for (const node of nodes) { this.setWriting(node.id, false); }
+        }
+    }
+
+    /**
+     * The selected rows as nodes, resolved from whichever surface is showing them and
+     * collapsed to top-most ancestors.
+     *
+     * Resolved from the active surface, never both: a search hit is not in the cache
+     * (results come straight from the endpoint and nothing inserts them, because the
+     * table derives a folder's children from whatever entity claims it as a parent and
+     * would present a partial listing as a complete one), while a table row always is.
+     * A selection cannot span the two, since it is cleared on entering and leaving a
+     * search — so asking only the visible surface makes a row the user cannot see
+     * impossible to act on, rather than merely absent from the list.
+     *
+     * Collapsed because a result set is recursive: a folder and something inside it can
+     * both be rows, and acting on both pulls the child out of the parent it is travelling
+     * with — the same reason a drag has always collapsed its own set.
+     */
+    private selectedNodes(): FileSystemNode[] {
+        const selected = this.navigation.selectedIds();
+        const visible = this.searchActive() ? this.search.results() : this.fileSystem.entities();
+
+        return topMostNodes(
+            visible.filter((node) => selected.has(node.id)),
+            this.fileSystem.entityMap()
+        );
+    }
+
+    /**
+     * Captures the project session so a batch can tell when its work stopped belonging
+     * to the loaded project — the same test the drag applies to its own queue.
+     */
+    private projectSessionGuard(): () => boolean {
+        const projectId = this.fileSystem.projectId();
+        const roots = this.fileSystem.initializedRoots();
+
+        // `destroyed` matters as much as the project: navigating away must stop queued
+        // work from going out, which the drag guard has always checked and this did not.
+        return (): boolean => !this.destroyed &&
+            this.fileSystem.projectId() === projectId &&
+            roots !== null && this.fileSystem.initializedRoots() === roots;
+    }
+
+    /**
+     * Surface a failed mutation, except when the project changed while the request was
+     * in flight: the store deliberately discards that result, and the server operation
+     * may well have succeeded, so reporting it as a failure would be wrong. Every
+     * mutation guarded by the store's connection revision reports through here.
+     */
+    private reportMutationFailure(error: unknown): void {
+        if (error instanceof FileSystemError && error.code === 'cancelled') { return; }
+        this.notifications.error(error);
+    }
+
+    private internalDragBlocked(): boolean {
+        const activeUploads = this.uploads.tasks().some((task) =>
+            task.status === 'queued' || task.status === 'uploading' ||
+            task.status === 'finalizing');
+        const activeBatches = this.uploads.batches().some((batch) =>
+            batch.status === 'queued' || batch.status === 'preparing' ||
+            batch.status === 'uploading');
+
+        return this.creatingFolder() || this.pasting() || this.mutationWritingIds().size > 0 ||
+            activeUploads || activeBatches;
     }
 
     private observeProjectChanges(): void {
@@ -955,7 +1197,10 @@ export class ProjectDocuments {
     }
 
     private searchStatusText(): string {
-        if (this.search.isSearching()) { return 'Searching…'; }
+        // A refresh is excluded on purpose: the counted rows are still on screen, so
+        // reporting "Searching…" would contradict them. The count below goes stale for
+        // the length of the re-query, which the table's own indicator accounts for.
+        if (this.search.isSearching() && !this.search.isRefreshing()) { return 'Searching…'; }
         const searchError = this.searchError();
         if (searchError) { return searchError; }
         const count = this.search.results().length;
@@ -989,12 +1234,41 @@ export class ProjectDocuments {
                     const isInlineCurrentError =
                         parentId === currentFolderId && currentFolderError !== null;
                     if (isInlineCurrentError) { continue; }
-                    const retry = this.retryForReadError(
+                    const retry = retryForReadError(
                         readError,
                         () => void this.fileSystem.loadChildren(parentId)
                     );
                     this.notifications.error(readError, retry);
                 }
+            });
+        });
+    }
+
+    /**
+     * Keep the selection within the rows the search is actually showing.
+     *
+     * A re-query can drop a row the user had selected — renaming it so it stops
+     * matching is the easiest way, but any refresh can. The id would otherwise stay
+     * selected with nothing on screen, and a cached node behind it, so a bulk action or
+     * a drag would act on something invisible.
+     *
+     * Only while a search is active: the table's selection is not derived from results
+     * and must not be measured against them.
+     */
+    private observeSearchSelection(): void {
+        effect(() => {
+            if (!this.searchActive()) { return; }
+            const visible = new Set(this.search.results().map(({ id }) => id));
+            untracked(() => {
+                const selected = this.navigation.selectedIds();
+                const remaining = [...selected].filter((id) => visible.has(id));
+                if (remaining.length === selected.size) { return; }
+                const anchorId = this.navigation.selectionAnchorId();
+
+                this.navigation.setSelection(
+                    remaining,
+                    anchorId !== null && visible.has(anchorId) ? anchorId : null
+                );
             });
         });
     }
@@ -1039,34 +1313,14 @@ export class ProjectDocuments {
             }
 
             untracked(() => {
-                const params = this.getInitialFolderParamsFromRoute();
+                const params = parseInitialFolderParams(
+                    this.activatedRoute.snapshot.queryParamMap
+                );
                 if (params) {
                     void this.navigateToInitialFolder(params.listKey, params.folderPath);
                 }
             });
         });
-    }
-
-    private getInitialFolderParamsFromRoute(): {
-        listKey: DocumentListKey;
-        folderPath: string;
-    } | null {
-        const snapshot = this.activatedRoute.snapshot;
-        const listKeyParam = snapshot.queryParamMap.get('listKey');
-        const folderPath = snapshot.queryParamMap.get('folderPath');
-
-        if (!listKeyParam || !folderPath) {
-            return null;
-        }
-
-        const listKey = DOCUMENT_LIST_KEYS.find(
-            (key) => key.toLowerCase() === listKeyParam.toLowerCase()
-        );
-        if (!listKey) {
-            return null;
-        }
-
-        return { listKey, folderPath };
     }
 
     private async navigateToInitialFolder(
@@ -1094,174 +1348,78 @@ export class ProjectDocuments {
     }
 
     private getContextMenu(request: NodeContextMenuRequest): MenuItem[] {
+        const deps = this.contextMenuDeps();
         if (this.navigation.currentFolderIsRecycleBin()
             && request.node.parentId === this.navigation.currentFolderId()
         ) {
-            return this.recycleBinContextMenu(request.node);
+            return recycleBinContextMenu(request.node, deps);
         }
 
         if (isFolder(request.node)) {
-            return this.folderContextMenu(request.node, request.source);
+            return folderContextMenu(request.node, request.source, deps);
         }
 
-        return this.fileContextMenu(request.node);
+        return fileContextMenu(request.node, 'table', deps);
     }
 
-    private folderContextMenu(folder: FolderNode, source: NodeSurface): MenuItem[] {
-        const locked = this.isWriting(folder.id);
-        const root = folder.parentId === null;
-        const isProtected = folder.accessLevel === FolderNodeResponseAccessLevelEnum.Protected;
-        const isReadonly = this.isRightClickedFolderReadonly(folder);
-
-        return [
-            this.menuItem('Open Folder', 'folder_open', 'pd-menu-open-folder', () => {
-                this.onItemDoubleClicked(folder);
-            }),
-            { separator: true },
-            this.menuItem('Rename Folder', 'edit', 'pd-menu-rename-folder', () => {
-                this.startInlineRename(folder, source);
-            }, root || locked || isProtected || isReadonly),
-            this.menuItem('Copy Folder', 'content_copy', 'pd-menu-copy-folder', () => {
-                this.copyToClipboard(folder);
-            }, root || locked),
-            this.menuItem('Paste', 'content_paste', 'pd-menu-paste', () => {
-                void this.pasteInto(folder);
-            }, locked || !this.canPaste(folder)),
-            this.menuItem('Delete Folder', 'delete', 'pd-menu-delete-folder', () => {
-                this.requestDelete(folder, source);
-            }, root || locked || isProtected || isReadonly),
-            { separator: true },
-            this.menuItem(
-                'Upload within folder',
-                'upload',
-                'pd-menu-upload-within-folder',
-                undefined,
-                isReadonly,
-                this.uploadMenuItems(folder)
-            )
-        ];
+    /** The state and the callbacks the menu builders need, read once per open. */
+    private contextMenuDeps(): ContextMenuDeps {
+        return { can: this.menuCapabilities(), on: this.menuActions() };
     }
 
-    private isRightClickedFolderReadonly(folder: FolderNode): boolean {
-        if (folder.accessLevel === FolderNodeResponseAccessLevelEnum.Readonly) {
-            return true;
-        }
-        const listKey = folder.listKey;
-        if (listKey) {
-            return this.navigation.readonlyAccessByListKey().get(listKey) ?? false;
-        }
-
-        return false;
+    private menuCapabilities(): ContextMenuDeps['can'] {
+        return {
+            writingIds: this.writingIds(),
+            selectedIds: this.navigation.selectedIds(),
+            readonlyByList: this.navigation.readonlyAccessByListKey(),
+            isCurrentFolderReadonly: this.navigation.isCurrentFolderReadonly(),
+            isListReadonly: this.navigation.isListReadonly(),
+            currentFolder: this.navigation.currentFolder(),
+            canCreateFolder: this.navigation.currentFolder() !== null
+                    && !this.creatingFolder() && !this.navigation.isCurrentFolderReadonly(),
+            canPasteInto: (target): boolean => this.canPaste(target),
+            canOpenDesktop: (file): boolean => this.fileLauncher.canOpenDesktop(file),
+            canOpenOnline: (file): boolean => this.fileLauncher.canOpenOnline(file),
+            canDownload: (file): boolean => this.fileLauncher.canDownload(file)
+        };
     }
 
-    private fileContextMenu(file: FileNode, source: NodeSurface = 'table'): MenuItem[] {
-        const locked = this.isWriting(file.id);
-        const openItems = this.fileOpenMenuItems(file, locked);
-        const isReadonly = file.accessLevel === FileNodeResponseAccessLevelEnum.Readonly
-            || this.navigation.isCurrentFolderReadonly();
-
-        return [
-            this.menuItem(
-                'Open File in',
-                'file_open',
-                'pd-menu-open-file-in',
-                undefined,
-                openItems.every((item) => item.disabled === true),
-                openItems
-            ),
-            { separator: true },
-            this.menuItem('Rename File', 'edit', 'pd-menu-rename-file', () => {
-                this.startInlineRename(file, source);
-            }, locked || isReadonly),
-            this.menuItem('Copy File', 'content_copy', 'pd-menu-copy-file', () => {
-                this.copyToClipboard(file);
-            }, locked),
-            this.menuItem('Delete File', 'delete', 'pd-menu-delete-file', () => {
-                this.requestDelete(file, source);
-            }, locked || isReadonly),
-            { separator: true },
-            this.menuItem('Download File', 'download', 'pd-menu-download-file', () => {
-                this.downloadFile(file);
-            }, locked || !this.fileLauncher.canDownload(file))
-        ];
-    }
-
-    private fileOpenMenuItems(file: FileNode, locked: boolean): MenuItem[] {
-        return [
-            this.menuItem(
-                'Local application',
-                'grid_view',
-                'pd-menu-open-local',
-                () => { this.openInDesktopApplication(file); },
-                locked || !this.fileLauncher.canOpenDesktop(file)
-            ),
-            this.menuItem(
-                'Online Application',
-                'language',
-                'pd-menu-open-online',
-                () => { this.openInOnlineApplication(file); },
-                locked || !this.fileLauncher.canOpenOnline(file)
-            )
-        ];
-    }
-
-    private recycleBinContextMenu(fileSystemNode: FileSystemNode): MenuItem[] {
-        return [
-            this.menuItem('Restore', 'undo', 'pd-menu-restore', () => {
-                void this.restoreRecycleBinItem(fileSystemNode);
-            }, this.navigation.isListReadonly()),
-            this.menuItem('Delete', 'delete', 'pd-menu-permanently-delete', () => {
-                this.deleteRecycleBinItem(fileSystemNode);
-            }, this.navigation.isListReadonly())
-        ];
-    }
-
-    private deleteRecycleBinItem(node: FileSystemNode): void {
-        this.popupService.showPopup(
-            ConfirmationPopup,
-            { ...DEFAULT_CONFIRMATION_POPUP_DIALOG_CONFIG, width: '28rem' },
-            {
-                confirmButtonText: 'Confirm',
-                declineButtonText: 'Cancel',
-                message: `Are you sure you want to permanently delete "${node.name}" ${node.kind}?`,
-                onAccept: () => void this.confirmDeleteRecycleBinItem(node)
+    private menuActions(): ContextMenuDeps['on'] {
+        return {
+            openFolder: (folder): void => { this.onItemDoubleClicked(folder); },
+            rename: (node, source): void => { this.startInlineRename(node, source); },
+            copy: (node, source): void => { this.copyToClipboard(node, source); },
+            cut: (node, source): void => { this.cutToClipboard(node, source); },
+            paste: (target): void => { void this.pasteInto(target); },
+            remove: (node, source): void => { this.requestDelete(node, source); },
+            createFolder: (): void => { void this.createFolder(); },
+            uploadFolder: (target): void => { void this.pickFolder(target); },
+            uploadFile: (target): void => { this.pickFiles(target); },
+            openFile: (file): void => { this.openFile(file); },
+            openDesktop: (file): void => { this.openInDesktopApplication(file); },
+            openOnline: (file): void => { this.openInOnlineApplication(file); },
+            download: (file): void => { this.downloadFile(file); },
+            restore: (node): void => { void this.recycleBin.restore(node); },
+            deletePermanently: (node): void => {
+                this.recycleBin.requestPermanentDelete(node);
+            },
+            openSearchResultLocation: (result): void => {
+                void this.openSearchResultLocation(result);
+            },
+            activateSearchResult: (result): void => {
+                void this.onSearchResultActivated(result);
             }
-        );
+        };
     }
 
-    private async confirmDeleteRecycleBinItem(node: FileSystemNode): Promise<void> {
-        try {
-            await this.fileSystem.deleteRecycleBinNodes(node.id);
-            this.notifications.success(
-                `The ${node.kind} "${node.name}" has been successfully deleted.`
-            );
-        } catch (error) {
-            this.notifications.error(error);
-        }
-    }
+    /** Default open action: the local application when available, the online one otherwise. */
+    private openFile(file: FileNode): void {
+        if (this.fileLauncher.canOpenDesktop(file)) {
+            this.openInDesktopApplication(file);
 
-    private async restoreRecycleBinItem(node: FileSystemNode): Promise<void> {
-        try {
-            await this.fileSystem.restoreRecycleBinNodes(node.id);
-            this.notifications.success(
-                `The ${node.kind} "${node.name}" has been successfully restored.`
-            );
-        } catch (error) {
-            const sharepointError = error instanceof HttpErrorResponse
-                ? (error.error as { message: string })
-                : undefined;
-            this.popupService.showErrorPopupWithReportAction({
-                title: 'Cannot restore the item',
-                message: sharepointError?.message || 'An error occurred when trying to ' +
-                    'restore the item. Please refresh and try again.',
-                escapeMessage: true,
-                traceId:
-                    error instanceof HttpErrorResponse
-                        ? error.headers.get(TRACE_ID_HEADER) ?? undefined
-                        : undefined,
-                isClosable: true
-            });
+            return;
         }
+        this.openInOnlineApplication(file);
     }
 
     private openInOnlineApplication(file: FileNode): void {
@@ -1282,74 +1440,6 @@ export class ProjectDocuments {
         }
     }
 
-    private emptyContextMenu(): MenuItem[] {
-        const currentFolder = this.navigation.currentFolder();
-        const canCreate = currentFolder !== null && !this.creatingFolder()
-            && !this.navigation.isCurrentFolderReadonly();
-        const canUpload = currentFolder !== null && !this.navigation.isCurrentFolderReadonly();
-
-        return [
-            this.menuItem('Create new Folder', 'create_new_folder', 'pd-menu-create-folder', () => {
-                void this.createFolder();
-            }, !canCreate),
-            { separator: true },
-            this.menuItem('Paste', 'content_paste', 'pd-menu-paste', () => {
-                if (currentFolder) { void this.pasteInto(currentFolder); }
-            }, currentFolder === null || !this.canPaste(currentFolder)),
-            this.menuItem(
-                'Upload',
-                'upload',
-                'pd-menu-upload',
-                undefined,
-                !canUpload,
-                currentFolder ? this.uploadMenuItems(currentFolder) : undefined
-            )
-        ];
-    }
-
-    private disabledSearchContextMenu(): MenuItem[] {
-        return [
-            this.menuItem(
-                'Create new Folder',
-                'create_new_folder',
-                'pd-menu-create-folder',
-                undefined,
-                true
-            ),
-            { separator: true },
-            this.menuItem('Paste', 'content_paste', 'pd-menu-paste', undefined, true),
-            this.menuItem('Upload', 'upload', 'pd-menu-upload', undefined, true)
-        ];
-    }
-
-    private uploadMenuItems(target: FolderNode): MenuItem[] {
-        return [
-            this.menuItem('Folder', 'drive_folder_upload', 'pd-menu-upload-folder', () => {
-                void this.pickFolder(target);
-            }),
-            this.menuItem('File', 'upload_file', 'pd-menu-upload-file', () => {
-                this.pickFiles(target);
-            })
-        ];
-    }
-
-    private menuItem(
-        label: string,
-        symbol: string,
-        testId: string,
-        action?: () => void,
-        disabled = false,
-        items?: MenuItem[]
-    ): MenuItem {
-        return {
-            label,
-            disabled,
-            items,
-            data: { symbol, testId } satisfies ProjectDocumentsMenuData,
-            command: action ? (): void => action() : undefined
-        };
-    }
-
     private showContextMenu(event: MouseEvent, items: MenuItem[]): void {
         const menu = this.contextMenu();
         if (!menu) { return; }
@@ -1366,18 +1456,9 @@ export class ProjectDocuments {
 
     private canPaste(target: FolderNode): boolean {
         return !this.pasting() &&
-            this.clipboard.mode() === 'copy' &&
-            this.clipboard.nodes().length === 1 &&
+            !this.clipboard.isEmpty() &&
             target.accessLevel !== FolderNodeResponseAccessLevelEnum.Readonly &&
             !this.navigation.isCurrentFolderReadonly();
-    }
-
-    private refreshActiveSearch(): void {
-        const entry = this.navigation.currentHistoryEntry();
-        const scope = this.navigation.currentFolder();
-        if (entry?.kind === 'search' && scope) {
-            this.search.search(this.id(), scope, entry.query);
-        }
     }
 
     private async uploadExternalDrop(
@@ -1389,6 +1470,7 @@ export class ProjectDocuments {
         event.preventDefault();
         event.stopPropagation();
         this.clearExternalDropState();
+        if (this.dragDrop.pending()) { return; }
         if (!target || this.fileSystem.isInitializing()) { return; }
 
         try {
@@ -1428,64 +1510,35 @@ export class ProjectDocuments {
     }
 
     private isWriting(id: string): boolean {
-        return this.writingIds().has(id);
+        return this.dragDrop.pending() || this.writingIds().has(id);
     }
 
     private setWriting(id: string, writing: boolean): void {
-        const next = new Set(this.writingIds());
+        const next = new Set(this.mutationWritingIds());
         if (writing) {
             next.add(id);
         } else {
             next.delete(id);
         }
-        this.writingIds.set(next);
-    }
-
-    private cachedSubtreeIds(id: string): string[] {
-        const result = [id];
-        for (const node of this.fileSystem.entities()) {
-            if (node.parentId !== id) { continue; }
-            result.push(...isFolder(node) ? this.cachedSubtreeIds(node.id) : [node.id]);
-        }
-
-        return result;
+        this.mutationWritingIds.set(next);
     }
 
     /** Build the `p-tree` nodes for one loaded document-list root. */
     private buildTreeSection(listKey: DocumentListKey): TreeNode<FolderNode>[] {
         const roots = this.fileSystem.initializedRoots();
         if (!roots) { return []; }
-        const initializedRoot = this.rootFromStatus(roots[listKey]);
+        const initializedRoot = rootFromStatus(roots[listKey]);
         if (!initializedRoot) { return []; }
         const root = this.fileSystem.entityMap()[initializedRoot.id];
         if (!root || !isFolder(root)) { return []; }
-        const all = this.fileSystem.entities();
-        const expanded = this.navigation.expandedTreeIds();
-        const loaded = new Set(this.fileSystem.folderIdsWithLoadedChildren());
-        const buildNode = (folder: FolderNode, isRoot: boolean): TreeNode<FolderNode> => {
-            const childFolders = all
-                .filter((n): n is FolderNode => isFolder(n) && n.parentId === folder.id)
-                .sort((a, b) => this.sortFoldersByAlphabeticalAndRecycleBin(a, b));
-            const isLoaded = loaded.has(folder.id);
 
-            return {
-                key: folder.id,
-                // Section header already carries the full label; the root node shows
-                // the short name.
-                label: isRoot
-                    ? `${listKey[0]}${listKey.slice(1).toLowerCase()}`
-                    : folder.name,
-                data: folder,
-                leaf: isLoaded && childFolders.length === 0 || folder.isRecycleBin,
-                expanded: expanded.has(folder.id),
-                children:
-                    isLoaded && !folder.isRecycleBin
-                        ? childFolders.map((child) => buildNode(child, false))
-                        : []
-            };
-        };
-
-        return [buildNode(root, true)];
+        return buildTreeSection({
+            listKey,
+            root,
+            nodes: this.fileSystem.entities(),
+            expandedIds: this.navigation.expandedTreeIds(),
+            loadedIds: new Set(this.fileSystem.folderIdsWithLoadedChildren())
+        });
     }
 
     /** Runs after every completed initialization (first load, project switch, retry). */
@@ -1494,10 +1547,10 @@ export class ProjectDocuments {
         this.notifications.clear();
         this.clipboard.clear();
         this.closePathEditor();
-        const marketingRoot = this.rootFromStatus(roots.MARKETING);
-        const executionRoot = this.rootFromStatus(roots.EXECUTION);
+        const marketingRoot = rootFromStatus(roots.MARKETING);
+        const executionRoot = rootFromStatus(roots.EXECUTION);
         const currentRoot = executionRoot ?? marketingRoot;
-        this.logRootLoadErrors(roots);
+        logRootLoadErrors(roots);
         // No root at all: leave navigation untouched — `bootstrapError` derives the
         // message from the same roots result.
         if (!currentRoot) { return; }
@@ -1518,61 +1571,6 @@ export class ProjectDocuments {
     private closePathEditor(): void {
         this.pathError.set(null);
         this.pathEditing.set(false);
-    }
-
-    private rootFromStatus(root: DocumentListRootStatus): FolderNode | null {
-        return root.status === 'loaded' ? root.root : null;
-    }
-
-    private bootstrapFailureMessage(roots: DocumentListRoots): string {
-        const allNotFound = DOCUMENT_LIST_KEYS.every((key) => roots[key].status === 'not-found');
-
-        return allNotFound
-            ? 'No documents found for this project.'
-            : 'Documents could not be loaded. Try refreshing.';
-    }
-
-    private logRootLoadErrors(roots: DocumentListRoots): void {
-        for (const key of DOCUMENT_LIST_KEYS) {
-            const root = roots[key];
-            if (root.status !== 'error') { continue; }
-            console.error(`[project-documents] ${key} documents could not be loaded`, root.error);
-        }
-    }
-
-    private retryForReadError(error: unknown, retry: () => void): (() => void) | undefined {
-        return error instanceof FileSystemError && error.code === 'network' ? retry : undefined;
-    }
-
-    /** Sort folders: alphabetical order with recycle bin folder always at the bottom. */
-    private sortFoldersByAlphabeticalAndRecycleBin(a: FolderNode, b: FolderNode): number {
-        if (a.isRecycleBin && !b.isRecycleBin) {
-            return 1;
-        }
-        if (!a.isRecycleBin && b.isRecycleBin) {
-            return -1;
-        }
-
-        return a.name.localeCompare(b.name);
-    }
-
-    /** Walk up from `candidateId` via parentId; true if `ancestorId` is hit (or is it). */
-    private isAncestorOrSelf(ancestorId: string, candidateId: string): boolean {
-        const map = this.fileSystem.entityMap();
-        let cursor: string | null = candidateId;
-        while (cursor) {
-            if (cursor === ancestorId) { return true; }
-            cursor = map[cursor]?.parentId ?? null;
-        }
-
-        return false;
-    }
-
-    private isNodeAncestorOrSelf(source: FolderNode, target: FolderNode): boolean {
-        if (this.isAncestorOrSelf(source.id, target.id)) { return true; }
-
-        return source.listKey === target.listKey &&
-            (target.path === source.path || target.path.startsWith(`${source.path}/`));
     }
 
     private getFoldersLengthDependingOnIfRootFolder(folders: FolderNode[]): number {

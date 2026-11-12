@@ -1,5 +1,6 @@
 import {
     HttpEventType,
+    type HttpRequest,
     provideHttpClient,
     withInterceptorsFromDi
 } from '@angular/common/http';
@@ -38,7 +39,12 @@ describe('SharePointFileSystemApi', () => {
         parentId: parent.id,
         sizeBytes: 4,
         createdAt: '2026-07-30T10:01:00Z',
-        modifiedAt: '2026-07-30T10:01:00Z'
+        modifiedAt: '2026-07-30T10:01:00Z',
+        modifiedBy: undefined,
+        onlineUrl: undefined,
+        desktopUrl: undefined,
+        downloadUrl: undefined,
+        accessLevel: undefined
     };
     const target: FolderNode = {
         kind: 'folder',
@@ -89,11 +95,11 @@ describe('SharePointFileSystemApi', () => {
         };
         let result: FileSystemNode | undefined;
 
-        api.copy('project 1', uploaded, target).subscribe((node) => {
+        api.copy('1', uploaded, target).subscribe((node) => {
             result = node;
         });
 
-        const request = http.expectOne('/projects/project%201/documents/copy');
+        const request = http.expectOne(matchesPath('/projects/1/documents/copy'));
         expect(request.request.method).toBe('POST');
         expect(request.request.body).toEqual({
             kind: 'file',
@@ -118,11 +124,11 @@ describe('SharePointFileSystemApi', () => {
         };
         let result: FileSystemNode | undefined;
 
-        api.copy('project', uploaded, crossListTarget).subscribe((node) => {
+        api.copy('2', uploaded, crossListTarget).subscribe((node) => {
             result = node;
         });
 
-        const request = http.expectOne('/projects/project/documents/copy');
+        const request = http.expectOne(matchesPath('/projects/2/documents/copy'));
         expect(request.request.method).toBe('POST');
         expect(request.request.body).toEqual({
             kind: 'file',
@@ -140,13 +146,13 @@ describe('SharePointFileSystemApi', () => {
     it('maps a missing copy source or destination to not-found', () => {
         let receivedError: unknown;
 
-        api.copy('project', uploaded, target).subscribe({
+        api.copy('2', uploaded, target).subscribe({
             error: (error: unknown) => {
                 receivedError = error;
             }
         });
 
-        const request = http.expectOne('/projects/project/documents/copy');
+        const request = http.expectOne(matchesPath('/projects/2/documents/copy'));
         request.flush(
             { message: 'Not found' },
             { status: 404, statusText: 'Not Found' }
@@ -168,13 +174,12 @@ describe('SharePointFileSystemApi', () => {
         };
         let result: FileSystemNode | undefined;
 
-        api.rename('project 1', uploaded, 'renamed.pdf').subscribe((renamed) => {
+        api.rename('1', uploaded, 'renamed.pdf').subscribe((renamed) => {
             result = renamed;
         });
 
-        const request = http.expectOne((candidate) =>
-            candidate.url ===
-                '/projects/project%201/document-lists/EXECUTION/documents/file-id'
+        const request = http.expectOne(
+            matchesPath('/projects/1/document-lists/EXECUTION/documents/file-id')
         );
         expect(request.request.method).toBe('PATCH');
         expect(request.request.params.get('kind')).toBe('file');
@@ -187,14 +192,14 @@ describe('SharePointFileSystemApi', () => {
     it('maps a locked rename response to locked', () => {
         let receivedError: unknown;
 
-        api.rename('project', uploaded, 'renamed.pdf').subscribe({
+        api.rename('2', uploaded, 'renamed.pdf').subscribe({
             error: (error: unknown) => {
                 receivedError = error;
             }
         });
 
-        const request = http.expectOne((candidate) =>
-            candidate.url === '/projects/project/document-lists/EXECUTION/documents/file-id'
+        const request = http.expectOne(
+            matchesPath('/projects/2/document-lists/EXECUTION/documents/file-id')
         );
         request.flush(
             { message: 'The file is locked for shared use' },
@@ -215,14 +220,13 @@ describe('SharePointFileSystemApi', () => {
         const progress: number[] = [];
         let result: FileNode | undefined;
 
-        api.upload('project 1', parent, file, (percent) => progress.push(percent))
+        api.upload('1', parent, file, (percent) => progress.push(percent))
             .subscribe((created) => {
                 result = created;
             });
 
-        const request = http.expectOne((candidate) =>
-            candidate.url ===
-                '/projects/project%201/document-lists/EXECUTION/documents/parent-id/files'
+        const request = http.expectOne(
+            matchesPath('/projects/1/document-lists/EXECUTION/documents/parent-id/files')
         );
         expect(request.request.method).toBe('POST');
         expect(request.request.body).toBe(file);
@@ -314,3 +318,13 @@ describe('SharePointFileSystemApi', () => {
         );
     });
 });
+
+/**
+ * Matches a request on the path this adapter builds, ignoring whatever precedes it. The
+ * adapter contributes the path only; the origin and any deployment prefix belong to the
+ * HTTP layer that carries the request, and asserting them here would tie the spec to one
+ * backend client configuration.
+ */
+function matchesPath(expected: string): (request: HttpRequest<unknown>) => boolean {
+    return (request) => request.url === expected || request.url.endsWith(expected);
+}

@@ -1,3 +1,5 @@
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { By } from '@angular/platform-browser';
@@ -12,13 +14,39 @@ import { firstValueFrom, throwError } from 'rxjs';
 import { PopupService, TRACE_ID_HEADER } from 'ibportal-web-ui-commons';
 import { FileTable } from './components/file-table/file-table';
 import { FileLaunchService } from './services/interaction/file-launch.service';
-import { isFolder, type FolderNode } from './models/file-system-node.model';
+import {
+    isFolder, type FileSystemNode, type FolderNode
+} from './models/file-system-node.model';
 import { FileSystemApi } from './services/file-system/file-system-api';
+import { MockFileSystemApi } from './services/mock/mock-file-system-api';
+import { provideProjectDocuments } from './project-documents.providers';
 import { MOCK_CONFIG } from './services/mock/mock-config.token';
 import { FileSystemStore } from './stores/file-system.store';
 import { NavigationStore } from './stores/navigation.store';
 import { ProjectDocuments } from './project-documents';
 import { ProjectOverviewService } from '../../services/project-overview.service';
+
+/**
+ * The overview DTO as this component sees it, derived from the service rather than
+ * imported, so the alias follows whatever shape the service actually exposes.
+ *
+ * Only `name` is read here, and the real DTO carries a dozen required fields that say
+ * nothing about documents — so the fixtures below assert the partial rather than
+ * inventing values the assertions never look at.
+ */
+type OverviewDto = NonNullable<ReturnType<ProjectOverviewService['projectDTO']>>;
+
+/**
+ * The popup service is reached only through spies here: these specs assert what this
+ * component asks for, not how the shared popup renders it, which is that component's
+ * own responsibility. A stub keeps the assertions independent of its markup and of
+ * whatever the real service injects.
+ */
+class StubPopupService {
+    public showPopup(): null { return null; }
+
+    public showErrorPopupWithReportAction(): null { return null; }
+}
 
 describe('ProjectDocuments access and recycle-bin integration', () => {
     let fixture: ComponentFixture<ProjectDocuments>;
@@ -31,10 +59,14 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         await TestBed.configureTestingModule({
             imports: [ProjectDocuments],
             providers: [provideRouter([]), provideNoopAnimations(), DialogService,
+                { provide: PopupService, useClass: StubPopupService },
+                provideHttpClient(withInterceptorsFromDi()),
+                provideHttpClientTesting(),
                 ProjectOverviewService,
                 { provide: ActivatedRoute, useValue: { snapshot: {
                     get queryParamMap(): ParamMap { return convertToParamMap(queryParams); }
                 } } },
+                provideProjectDocuments({ api: MockFileSystemApi }),
                 { provide: MOCK_CONFIG, useValue: {
                     minLatencyMs: 0, maxLatencyMs: 0, errorRate: 0, enableErrors: false,
                     protectedFolderPaths: ['execution/Contracts'],
@@ -42,7 +74,7 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
                 } }
             ]
         }).compileComponents();
-        TestBed.inject(ProjectOverviewService).projectDTO.set({ name: 'Project' });
+        TestBed.inject(ProjectOverviewService).projectDTO.set({ name: 'Project' } as OverviewDto);
         fixture = TestBed.createComponent(ProjectDocuments);
         fixture.componentRef.setInput('id', 'project-123');
         store = fixture.debugElement.injector.get(FileSystemStore);
@@ -57,6 +89,16 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         fixture.detectChanges();
     }
 
+    /**
+     * Accept the confirmation the component asked for. The callback runs inside the zone
+     * because that is where the dialog's own button would call it: the mock's write
+     * latency is a tracked timer, and `whenStable` only waits for it from in there.
+     */
+    function accept(show: jasmine.Spy): void {
+        const props = show.calls.mostRecent().args[2] as { onAccept: () => void };
+        fixture.ngZone?.run(() => { props.onAccept(); });
+    }
+
     function host(): HTMLElement {
         return fixture.nativeElement as HTMLElement;
     }
@@ -68,7 +110,7 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         return node;
     }
 
-    function menuFor(node: FolderNode): MenuItem[] {
+    function menuFor(node: FileSystemNode): MenuItem[] {
         const row = host().querySelector(`[data-testid="pd-row-${node.id}"]`);
         if (!row) { throw new Error(`Missing row: ${node.name}`); }
         row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
@@ -105,7 +147,7 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         await render();
         expect(host().querySelector('.pd-project-name')?.textContent?.trim()).toBe('');
 
-        overview.projectDTO.set({ name: 'Loaded project' });
+        overview.projectDTO.set({ name: 'Loaded project' } as OverviewDto);
         await render();
         expect(host().querySelector('.pd-project-name')?.textContent?.trim())
             .toBe('Loaded project');
@@ -114,12 +156,12 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
             'Loaded project - Execution Documents', 'Loaded project - Marketing Documents'
         ]);
 
-        overview.projectDTO.set({ name: 'Renamed project' });
+        overview.projectDTO.set({ name: 'Renamed project' } as OverviewDto);
         await render();
         expect(host().querySelector('.pd-project-name')?.textContent?.trim())
             .toBe('Renamed project');
 
-        overview.projectDTO.set({});
+        overview.projectDTO.set({} as OverviewDto);
         await render();
         expect(host().querySelector('.pd-project-name')?.textContent?.trim()).toBe('');
     });
@@ -214,17 +256,15 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
                     error: { message: '<b>Original name exists</b>' },
                     headers: new HttpHeaders({ [TRACE_ID_HEADER]: 'restore-trace-123' })
                 })));
-            const showError = spyOn(TestBed.inject(PopupService), 'showErrorPopupWithReportAction')
-                .and.callThrough();
+            const showError =
+                spyOn(TestBed.inject(PopupService), 'showErrorPopupWithReportAction');
             const item = menuFor(record).find((candidate) => candidate.label === 'Restore');
             if (!item) { throw new Error('Expected Restore menu action'); }
             item.command?.({ item });
             await render();
-            const dialogs = [...document.querySelectorAll('.p-dialog')];
-            const error = dialogs.find((dialog) => dialog.textContent?.includes('Cannot restore'));
-            expect(error?.textContent).toContain('<b>Original name exists</b>');
-            expect(error?.querySelector('b')).toBeNull();
-            expect(error?.textContent).toContain('restore-trace-123');
+            // The backend message is passed through verbatim with `escapeMessage`, and the
+            // trace id is carried alongside it. How the popup renders either is its own
+            // concern, so it is asserted here and not in the dialog's markup.
             expect(showError).toHaveBeenCalledOnceWith({
                 title: 'Cannot restore the item',
                 message: '<b>Original name exists</b>',
@@ -245,14 +285,21 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         if (!record) { throw new Error('Expected deleted folder in recycle bin'); }
         const api = fixture.debugElement.injector.get(FileSystemApi);
         spyOn(api, 'restoreRecycleBinItem').and.returnValue(throwError(() => new Error('Failed')));
+        const showError =
+            spyOn(TestBed.inject(PopupService), 'showErrorPopupWithReportAction');
         const item = menuFor(record).find((candidate) => candidate.label === 'Restore');
         if (!item) { throw new Error('Expected Restore menu action'); }
         item.command?.({ item });
         await render();
-        const error = document.querySelector('pr-error-popup');
-        expect(error?.textContent).toContain(
-            'An error occurred when trying to restore the item. Please refresh and try again.');
-        expect(error?.querySelector('[data-testid="popup-trace-id"]')).toBeNull();
+        // No HTTP response, so no backend message and no trace id to report.
+        expect(showError).toHaveBeenCalledOnceWith({
+            title: 'Cannot restore the item',
+            message: 'An error occurred when trying to restore the item. ' +
+                'Please refresh and try again.',
+            escapeMessage: true,
+            traceId: undefined,
+            isClosable: true
+        });
         expect(store.entityMap()[record.id]).toBeDefined();
     });
 
@@ -268,15 +315,17 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         if (!record) { throw new Error('Expected deleted folder in recycle bin'); }
         const api = fixture.debugElement.injector.get(FileSystemApi);
         const remove = spyOn(api, 'deletePermanentlyRecycleBinItem').and.callThrough();
+        const show = spyOn(TestBed.inject(PopupService), 'showPopup');
         const item = menuFor(record).find((candidate) => candidate.label === 'Delete');
         if (!item) { throw new Error('Expected Delete menu action'); }
         item.command?.({ item });
         await render();
+        // Nothing is deleted on asking: the confirmation holds the action, and the
+        // component hands the popup the callback that performs it.
         expect(remove).not.toHaveBeenCalled();
-        const confirm = document.querySelector<HTMLButtonElement>(
-            '[data-testid="confirmation-popup-confirm"]');
-        expect(confirm).not.toBeNull();
-        confirm?.click();
+        expect((show.calls.mostRecent().args[2] as { message: string }).message)
+            .toContain(record.name);
+        accept(show);
         await render();
         expect(remove).toHaveBeenCalledOnceWith('project-123', binId, record.id);
         expect(store.entityMap()[record.id]).toBeUndefined();
@@ -293,14 +342,16 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         if (!record) { throw new Error('Expected deleted folder in recycle bin'); }
         const api = fixture.debugElement.injector.get(FileSystemApi);
         const remove = spyOn(api, 'deletePermanentlyRecycleBinItem').and.callThrough();
+        const show = spyOn(TestBed.inject(PopupService), 'showPopup');
         const item = menuFor(record).find((candidate) => candidate.label === 'Delete');
         if (!item) { throw new Error('Expected Delete menu action'); }
         item.command?.({ item });
         await render();
-        const cancel = document.querySelector<HTMLButtonElement>(
-            '[data-testid="confirmation-popup-cancel"]');
-        expect(cancel).not.toBeNull();
-        cancel?.click();
+        // Declining is the absence of acceptance: the popup offers a decline action, and
+        // the component does nothing of its own until `onAccept` is invoked. Leaving it
+        // uninvoked here is exactly what declining does.
+        const props = show.calls.mostRecent().args[2] as { declineButtonText: string };
+        expect(props.declineButtonText).toBe('Cancel');
         await render();
         expect(remove).not.toHaveBeenCalled();
         expect(store.entityMap()[record.id]).toBeDefined();
@@ -323,6 +374,69 @@ describe('ProjectDocuments access and recycle-bin integration', () => {
         await render();
         expect(navigation.currentFolderId()).toBe(bin.id);
     });
+
+    it('opens a file locally when it can, and online only when it cannot', async () => {
+        const file = await openContractsFile();
+        const launcher = fixture.debugElement.injector.get(FileLaunchService);
+        const desktop = spyOn(launcher, 'openDesktop').and.returnValue(true);
+        const online = spyOn(launcher, 'openOnline').and.returnValue(true);
+        const canOpenDesktop = spyOn(launcher, 'canOpenDesktop').and.returnValue(true);
+
+        fileTable().itemDoubleClicked.emit(file);
+        await render();
+
+        // The local application is the default when the file has one — opening the
+        // browser viewer for an Office document the user has Word for is the wrong
+        // default.
+        expect(desktop).toHaveBeenCalledTimes(1);
+        expect(online).not.toHaveBeenCalled();
+
+        canOpenDesktop.and.returnValue(false);
+        fileTable().itemDoubleClicked.emit(file);
+        await render();
+
+        expect(online).toHaveBeenCalledTimes(1);
+        expect(desktop).toHaveBeenCalledTimes(1);
+    });
+
+    it('offers one Open entry when a file has no local application, a submenu when it has',
+        async () => {
+            const file = await openContractsFile();
+            const launcher = fixture.debugElement.injector.get(FileLaunchService);
+            const canOpenDesktop = spyOn(launcher, 'canOpenDesktop').and.returnValue(false);
+            spyOn(launcher, 'canOpenOnline').and.returnValue(true);
+
+            // A submenu whose only usable child is "Online Application" is a click the
+            // user should not have to make.
+            const single = menuFor(file).find((item) => item.label === 'Open');
+            expect(single).toBeDefined();
+            expect(single?.items).toBeUndefined();
+            expect(single?.disabled).toBeFalse();
+            expect(menuFor(file).some((item) => item.label === 'Open File in')).toBeFalse();
+
+            canOpenDesktop.and.returnValue(true);
+
+            const submenu = menuFor(file).find((item) => item.label === 'Open File in');
+            expect(submenu?.items?.length).toBe(2);
+            expect(menuFor(file).some((item) => item.label === 'Open')).toBeFalse();
+        });
+
+    /** Navigate into Contracts and return its first file row. */
+    async function openContractsFile(): Promise<FileSystemNode> {
+        await render();
+        const contracts = folder('/execution/Contracts');
+        navigation.navigateTo(contracts.id);
+        await render();
+        const file = store.entities().find((node) =>
+            node.kind === 'file' && node.parentId === contracts.id);
+        if (!file) { throw new Error('Expected a file in Contracts'); }
+
+        return file;
+    }
+
+    function fileTable(): FileTable {
+        return fixture.debugElement.query(By.directive(FileTable)).componentInstance as FileTable;
+    }
 
     it('ignores a deleted file activation emitted while viewing its bin', async () => {
         await render();
